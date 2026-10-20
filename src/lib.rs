@@ -5,6 +5,7 @@ pub mod cfg;
 pub mod coverage;
 pub mod features;
 pub mod leaf;
+pub mod parse;
 pub mod purdom;
 pub mod refine;
 pub mod tokens;

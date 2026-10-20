@@ -377,9 +377,28 @@ impl<'b> Verifier<'b> {
     }
 }
 
+/// How much text a prose leaf can span, as `leaf_rule` reads its Syntax Rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Span {
+    /// One character.
+    One,
+    /// Any length, and every prefix of a valid leaf is valid.
+    Run,
+    /// Any length.
+    Any,
+}
+
+pub(crate) fn leaf_span(def: &str) -> Span {
+    match def {
+        "whitespace" | "truncating whitespace" | "bracketed comment contents" => Span::Run,
+        "external object reference" | "SQL-datetime literal" | "SQL-interval literal" => Span::Any,
+        _ => Span::One,
+    }
+}
+
 /// Each prose leaf against the Syntax Rule that defines it. Where a rule depends on context
 /// or on implementation choices, this checks a stricter form.
-fn leaf_rule(def: &str, text: &str) -> Result<(), (&'static str, String)> {
+pub(crate) fn leaf_rule(def: &str, text: &str) -> Result<(), (&'static str, String)> {
     let mut chars = text.chars();
     let one = match (chars.next(), chars.next()) {
         (Some(c), None) => Some(c),

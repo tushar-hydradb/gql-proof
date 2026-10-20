@@ -37,6 +37,26 @@ enum Cmd {
     Negatives(NegativesArgs),
     /// The conformance map from `just features`, and what a claim leaves in force.
     Features(FeaturesArgs),
+    /// Parse sentences from elsewhere (another suite, an engine's tests) with the ISO grammar,
+    /// verify them, and measure their coverage like ours. Two files are also compared.
+    Cover(CoverArgs),
+}
+
+#[derive(Parser)]
+struct CoverArgs {
+    /// Sentence files: jsonl with a `query` or `sentence` field, or one sentence per line.
+    files: Vec<PathBuf>,
+    /// Cover every chain of up to this many symbol occurrences (k-path coverage).
+    #[arg(long, default_value_t = 3)]
+    k: u32,
+    #[arg(long, default_value = "GQL-program")]
+    start: String,
+    /// Print every sentence that has no ISO parse.
+    #[arg(long)]
+    failures: bool,
+    /// Targets to list per difference between two files.
+    #[arg(long, default_value_t = 10)]
+    show: usize,
 }
 
 #[derive(Parser)]
@@ -190,6 +210,7 @@ fn main() -> Result<()> {
         Cmd::CheckGrammar(args) => check_grammar(args),
         Cmd::Negatives(args) => negatives(args),
         Cmd::Features(args) => features(args),
+        Cmd::Cover(args) => cover(args),
     };
     // A closed pipe (`| head`) is the reader being done, not an error.
     match result {
@@ -911,6 +932,248 @@ fn features(args: FeaturesArgs) -> Result<()> {
                 writeln!(out, "    {c}")?;
             }
         }
+    }
+    Ok(())
+}
+
+/// One file's sentences as the ISO grammar reads them.
+struct Covered {
+    sentences: usize,
+    /// Sentences with no ISO parse, with why.
+    unparsed: Vec<(String, String)>,
+    /// Parsed sentences whose every tree (up to the limit) fails the verifier, with the first
+    /// tree's first violation.
+    unverified: Vec<(String, String)>,
+    /// Parsed sentences with more than one tree.
+    ambiguous: usize,
+    prods: BTreeSet<u32>,
+    targets: BTreeSet<Target>,
+}
+
+fn read_sentences(path: &PathBuf) -> Result<Vec<String>> {
+    let text = std::fs::read_to_string(path)?;
+    let mut out = Vec::new();
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        match serde_json::from_str::<serde_json::Value>(line) {
+            Ok(serde_json::Value::Object(record)) => {
+                let sentence = record
+                    .get("query")
+                    .or_else(|| record.get("sentence"))
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("{}: a record with no query", path.display()))?;
+                out.push(sentence.to_string());
+            }
+            _ => out.push(line.to_string()),
+        }
+    }
+    Ok(out)
+}
+
+fn cover(args: CoverArgs) -> Result<()> {
+    let bnf = read_grammar(&None)?;
+    let cfg = Cfg::from_bnf(&bnf);
+    let start = cfg.require(&args.start)?;
+    let criteria = Criteria {
+        cdrc: true,
+        k: args.k,
+        lexical: false,
+    };
+    let all_targets = gql_proof::coverage::targets(&cfg, start, criteria);
+    let mut out = io::stdout().lock();
+    writeln!(
+        out,
+        "# coverage of sentences read with the {EDITION} grammar"
+    )?;
+    let mut results = Vec::new();
+    for path in &args.files {
+        let sentences = read_sentences(path)?;
+        let distinct: BTreeSet<&str> = sentences.iter().map(String::as_str).collect();
+        // A long literal is a deep tree (a repeat desugars to right recursion), and every walk
+        // over a tree recurses, dropping it included: trees stay on threads with deep stacks
+        // and only their coverage comes back.
+        let pool = rayon::ThreadPoolBuilder::new()
+            .stack_size(1 << 30)
+            .build()?;
+        type Read = (Option<String>, bool, Vec<u32>, BTreeSet<Target>);
+        let parsed: Vec<(String, Result<Read>)> = pool.install(|| {
+            distinct
+                .par_iter()
+                .map_init(
+                    || {
+                        let tokens = Grammar::new(&bnf);
+                        let verifier = Verifier::new(Grammar::new(&bnf));
+                        let parser = gql_proof::parse::Parser::new(&cfg, &tokens, &args.start)
+                            .expect("the iso grammar builds");
+                        (parser, verifier)
+                    },
+                    |(parser, verifier), s| {
+                        let accept = |n: &gql_proof::tree::Node| {
+                            verifier.verify(&n.export(&cfg), &n.render(&cfg)).is_empty()
+                        };
+                        let covered = parser.parse(s, accept).map(|p| {
+                            let mut prods = Vec::new();
+                            p.tree.prods(&mut prods);
+                            let targets = gql_proof::coverage::observe(&cfg, &p.tree, criteria);
+                            let violation = (!p.accepted).then(|| {
+                                let tree = &p.tree;
+                                verifier
+                                    .verify(&tree.export(&cfg), &tree.render(&cfg))
+                                    .first()
+                                    .map_or(String::new(), |v| format!("{}: {}", v.rule, v.detail))
+                            });
+                            (violation, p.ambiguous, prods, targets)
+                        });
+                        (s.to_string(), covered)
+                    },
+                )
+                .collect()
+        });
+        let mut c = Covered {
+            sentences: distinct.len(),
+            unparsed: Vec::new(),
+            unverified: Vec::new(),
+            ambiguous: 0,
+            prods: BTreeSet::new(),
+            targets: BTreeSet::new(),
+        };
+        for (s, p) in parsed {
+            match p {
+                Err(e) => c.unparsed.push((s, e.to_string())),
+                Ok((violation, ambiguous, prods, targets)) => {
+                    if let Some(v) = violation {
+                        c.unverified.push((s, v));
+                    }
+                    c.ambiguous += usize::from(ambiguous);
+                    c.prods.extend(prods);
+                    c.targets.extend(targets);
+                }
+            }
+        }
+        writeln!(out, "\n## {}", path.display())?;
+        writeln!(
+            out,
+            "sentences: {} ({} distinct), parsed {}, no iso parse {}, parsed but failing the verifier {}, ambiguous {}",
+            sentences.len(),
+            c.sentences,
+            c.sentences - c.unparsed.len(),
+            c.unparsed.len(),
+            c.unverified.len(),
+            c.ambiguous
+        )?;
+        write_coverage(&mut out, &cfg, &c.prods, &c.targets, &all_targets)?;
+        let mut rules: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
+        for (s, v) in &c.unverified {
+            rules
+                .entry(v.split(": ").next().unwrap_or(v))
+                .or_default()
+                .push((s, v));
+        }
+        if !rules.is_empty() {
+            writeln!(out, "failing the verifier, by rule:")?;
+            for (rule, ss) in &rules {
+                writeln!(
+                    out,
+                    "  {:>5}  {rule}  e.g. {:?}: {}",
+                    ss.len(),
+                    ss[0].0,
+                    ss[0].1
+                )?;
+            }
+        }
+        // Where parsing stopped, grouped by the text just after it.
+        let mut stops: BTreeMap<String, Vec<&str>> = BTreeMap::new();
+        for (s, e) in &c.unparsed {
+            let at = e.split(" | ").nth(1).unwrap_or(e);
+            let word: String = at
+                .trim_matches('"')
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .chars()
+                .take(12)
+                .collect();
+            stops.entry(word).or_default().push(s);
+        }
+        let mut stops: Vec<_> = stops.into_iter().collect();
+        stops.sort_by_key(|(_, v)| std::cmp::Reverse(v.len()));
+        if !stops.is_empty() {
+            writeln!(out, "no iso parse, by the text where parsing stops:")?;
+            for (word, ss) in stops.iter().take(args.show * 2) {
+                writeln!(out, "  {:>5}  {word:?}  e.g. {:?}", ss.len(), ss[0])?;
+            }
+        }
+        if args.failures {
+            for (s, e) in &c.unparsed {
+                writeln!(out, "  {s:?}\n    {e}")?;
+            }
+        }
+        results.push(c);
+    }
+    if let [a, b] = &results[..] {
+        let (na, nb) = (args.files[0].display(), args.files[1].display());
+        writeln!(out, "\n## both")?;
+        let prods: BTreeSet<u32> = a.prods.union(&b.prods).copied().collect();
+        let targets: BTreeSet<Target> = a.targets.union(&b.targets).cloned().collect();
+        write_coverage(&mut out, &cfg, &prods, &targets, &all_targets)?;
+        for (name, x, y) in [(&na, a, b), (&nb, b, a)] {
+            let only_prods: Vec<u32> = x.prods.difference(&y.prods).copied().collect();
+            let only: Vec<&Target> = x.targets.difference(&y.targets).collect();
+            let cdrc = only
+                .iter()
+                .filter(|t| matches!(t, Target::Cdrc(..)))
+                .count();
+            writeln!(
+                out,
+                "\nonly in {name}: {} productions, {cdrc} cdrc targets, {} k-paths",
+                only_prods.len(),
+                only.len() - cdrc
+            )?;
+            for &p in only_prods.iter().take(args.show) {
+                writeln!(out, "  {}", describe(&cfg, p))?;
+            }
+            if only_prods.len() > args.show {
+                writeln!(out, "  ...")?;
+            }
+            for t in only.iter().take(args.show) {
+                writeln!(out, "  {}", describe_target(&cfg, t))?;
+            }
+            if only.len() > args.show {
+                writeln!(out, "  ...")?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn write_coverage(
+    out: &mut impl Write,
+    cfg: &Cfg,
+    prods: &BTreeSet<u32>,
+    targets: &BTreeSet<Target>,
+    all: &BTreeSet<Target>,
+) -> io::Result<()> {
+    writeln!(out, "productions: {} of {}", prods.len(), cfg.prods.len())?;
+    let cdrc = |t: &&Target| matches!(t, Target::Cdrc(..));
+    let hit = targets.intersection(all).collect::<Vec<_>>();
+    writeln!(
+        out,
+        "cdrc: {} of {}",
+        hit.iter().filter(|t| cdrc(t)).count(),
+        all.iter().filter(cdrc).count()
+    )?;
+    let mut by_k: BTreeMap<usize, (usize, usize)> = BTreeMap::new();
+    for t in all {
+        if let Target::Path(p) = t {
+            by_k.entry(p.len()).or_default().1 += 1;
+        }
+    }
+    for t in &hit {
+        if let Target::Path(p) = t {
+            by_k.entry(p.len()).or_default().0 += 1;
+        }
+    }
+    for (k, (h, n)) in by_k {
+        writeln!(out, "{k}-paths: {h} of {n}")?;
     }
     Ok(())
 }
