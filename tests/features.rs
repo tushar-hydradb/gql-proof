@@ -5,7 +5,9 @@
 use gql_proof::bnf;
 use gql_proof::cfg::Cfg;
 use gql_proof::coverage::Criteria;
-use gql_proof::features::{CONFORMANCE_JSON, Claim, ClaimRules, Conformance, Negative, negative};
+use gql_proof::features::{
+    CONFORMANCE_JSON, Claim, ClaimRules, Conformance, Negative, negative, witness,
+};
 use gql_proof::leaf::StubProvider;
 use gql_proof::purdom::{Analysis, Config, Generator, Length};
 use gql_proof::refine::{Rule, accepts, all_rules, refine};
@@ -96,6 +98,7 @@ fn automaton_and_verifier_agree_per_statement() {
         .collect();
     let mut mismatches = Vec::new();
     let mut caught = 0;
+    let mut unbroken = Vec::new();
     for (i, f) in forbidden.iter().enumerate() {
         let rule: Vec<Box<dyn Rule>> = vec![Box::new(
             ClaimRules::new(&BASE, start, std::slice::from_ref(f), &[]).unwrap(),
@@ -114,12 +117,22 @@ fn automaton_and_verifier_agree_per_statement() {
             }
         }
         caught += usize::from(any);
+        if !any {
+            unbroken.push(f.label.clone());
+        }
     }
     eprintln!(
-        "{} trees, {caught} of {} rules broken by some tree",
+        "{} trees, {caught} of {} rules broken by some tree; not: {unbroken:?}",
         trees.len(),
         forbidden.len()
     );
+    // The order rules and the rules read through single-item rules are among those tested.
+    for cite in ["G047 16.7 CR 15)", "GQ14 14.10 CR 1)", "GF10 20.9 CR 1)"] {
+        assert!(
+            !unbroken.contains(&cite.to_string()),
+            "{cite} broken by no tree"
+        );
+    }
     assert!(
         mismatches.is_empty(),
         "{} mismatches:\n{}",
@@ -219,5 +232,172 @@ fn every_claim_keeps_the_devices_out() {
     for tree in trees(&refined.cfg, refined.start, 3, criteria) {
         let violations = verifier.verify(&tree, &verifier.render(&tree));
         assert!(violations.is_empty(), "{violations:?}");
+    }
+}
+
+#[test]
+fn rules_no_unrefined_tree_breaks_have_witnesses() {
+    // Two node patterns side by side (g046) and an aggregate in a sort key (gf20) are in none
+    // of the unrefined trees: build the shortest tree breaking each, and have both
+    // implementations agree it does.
+    let start = BASE.require("GQL-program").unwrap();
+    let forbidden = CONF.forbidden(&Claim::parse("none", &CONF).unwrap());
+    for cite in ["G046 16.7 CR 14)", "GF20 14.10 CR 3)"] {
+        let f = forbidden.iter().find(|f| f.label == cite).unwrap();
+        let (tree, sentence) = witness(
+            &BASE,
+            start,
+            MatchModeDefault::Portable,
+            0,
+            &[],
+            &f.patterns[0],
+        )
+        .unwrap()
+        .unwrap_or_else(|| panic!("{cite}: no tree breaks it"));
+        let verifier = Verifier::new(Grammar::new(&ISO)).with_conformance(vec![f.clone()]);
+        assert_eq!(
+            verifier.broken_conformance(&tree).len(),
+            1,
+            "{cite}: {sentence}"
+        );
+        let rule: Vec<Box<dyn Rule>> = vec![Box::new(
+            ClaimRules::new(&BASE, start, std::slice::from_ref(f), &[]).unwrap(),
+        )];
+        assert!(accepts(&rule, &tree).is_err(), "{cite}: {sentence}");
+        eprintln!("{cite}: {sentence}");
+    }
+}
+
+fn claim_file(text: &str) -> String {
+    let dir = std::env::temp_dir().join(format!("gql-proof-claim-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("{}.claim", text.len()));
+    std::fs::write(&path, text).unwrap();
+    path.to_string_lossy().into_owned()
+}
+
+#[test]
+fn deviations_are_kept_out_and_checked() {
+    let start = BASE.require("GQL-program").unwrap();
+    let claim = Claim::parse(
+        &claim_file(
+            "GG01\n-<session close command>  # sessions are the driver's\n-'CURRENT_GRAPH'\n",
+        ),
+        &CONF,
+    )
+    .unwrap();
+    assert_eq!(claim.deviations.len(), 2);
+    let forbidden = CONF.forbidden(&claim);
+    let deviations: Vec<_> = forbidden
+        .iter()
+        .filter(|f| f.label.starts_with("deviation "))
+        .cloned()
+        .collect();
+    assert_eq!(deviations.len(), 2);
+    // A tree with each is flagged by the verifier and refused by the automaton.
+    let verifier = Verifier::new(Grammar::new(&ISO)).with_conformance(deviations.clone());
+    for d in &deviations {
+        let (tree, sentence) = witness(
+            &BASE,
+            start,
+            MatchModeDefault::Portable,
+            0,
+            &[],
+            &d.patterns[0],
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(verifier.broken_conformance(&tree).len(), 1, "{sentence}");
+        let rule: Vec<Box<dyn Rule>> = vec![Box::new(
+            ClaimRules::new(&BASE, start, &deviations, &[]).unwrap(),
+        )];
+        assert!(accepts(&rule, &tree).is_err(), "{sentence}");
+    }
+    // A name the grammar does not have is an error when the claim is compiled.
+    let bad = Claim::parse(&claim_file("GG01\n-<no such definition>\n"), &CONF).unwrap();
+    assert!(ClaimRules::new(&BASE, start, &CONF.forbidden(&bad), &[]).is_err());
+    assert!(Claim::parse(&claim_file("GG01\n-CURRENT_GRAPH\n"), &CONF).is_err());
+}
+
+#[test]
+fn short_sentences_cover_what_packed_ones_do() {
+    let start = BASE.require("GQL-program").unwrap();
+    let forbidden = CONF.forbidden(&Claim::parse("all", &CONF).unwrap());
+    let mut rules = all_rules(MatchModeDefault::Portable);
+    rules.push(Box::new(
+        ClaimRules::new(&BASE, start, &forbidden, &[]).unwrap(),
+    ));
+    let refined = refine(&BASE, &rules, start).unwrap();
+    let analysis = Analysis::new(&refined.cfg, &StubProvider);
+    let config = || Config {
+        seed: 1,
+        max_depth: analysis.reference_height(refined.start),
+        length: Length::Reference,
+    };
+    let iso = |o: &gql_proof::purdom::Outcome| -> BTreeSet<u32> {
+        o.covered
+            .ones()
+            .map(|p| refined.cfg.prods[p].unrefined)
+            .collect()
+    };
+    let packed = Generator::new(&analysis, config(), StubProvider)
+        .run(refined.start)
+        .unwrap();
+    let short = Generator::new(&analysis, config(), StubProvider)
+        .run_short(refined.start, &BASE, Criteria::default())
+        .unwrap();
+    assert_eq!(iso(&short), iso(&packed));
+    let tokens = |o: &gql_proof::purdom::Outcome| -> Vec<usize> {
+        let mut l: Vec<usize> = o
+            .trees
+            .iter()
+            .map(|t| t.root.render(&refined.cfg).split(' ').count())
+            .collect();
+        l.sort();
+        l
+    };
+    let (s, p) = (tokens(&short), tokens(&packed));
+    assert!(
+        s[s.len() / 2] < p[p.len() / 2],
+        "median {} vs {}",
+        s[s.len() / 2],
+        p[p.len() / 2]
+    );
+}
+
+#[test]
+fn engine_claims_generate_verified_trees() {
+    // A claim forbids many definitions outright, which changes the grammar the rules are
+    // compiled against: every tree under each committed claim still has to pass the verifier.
+    let start = BASE.require("GQL-program").unwrap();
+    for file in ["claims/neo4j.claim", "claims/turbolay.claim"] {
+        let claim = Claim::parse(file, &CONF).unwrap();
+        let forbidden = CONF.forbidden(&claim);
+        let mut rules = all_rules(MatchModeDefault::Portable);
+        rules.push(Box::new(
+            ClaimRules::new(&BASE, start, &forbidden, &[]).unwrap(),
+        ));
+        let refined = refine(&BASE, &rules, start).unwrap();
+        let analysis = Analysis::new(&refined.cfg, &StubProvider);
+        let config = Config {
+            seed: 1,
+            max_depth: analysis.reference_height(refined.start),
+            length: Length::Reference,
+        };
+        let outcome = Generator::new(&analysis, config, StubProvider)
+            .run_short(refined.start, &BASE, Criteria::default())
+            .unwrap();
+        let verifier = Verifier::new(Grammar::new(&ISO))
+            .with_syntax_rules(MatchModeDefault::Portable)
+            .with_conformance(forbidden);
+        for t in &outcome.trees {
+            let tree = t.root.export(&refined.cfg);
+            let violations = verifier.verify(&tree, &verifier.render(&tree));
+            assert!(
+                violations.is_empty(),
+                "{file}: {violations:?} in {}",
+                verifier.render(&tree)
+            );
+        }
     }
 }

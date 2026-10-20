@@ -201,7 +201,50 @@ impl<'a> Tree<'a> {
                 let held = self.parent_def(i).is_some_and(|x| self.is_def(x, &p.nt));
                 held != p.negated
             }
+            Cond::Juxtaposed(j) => self.juxtaposed(i, j),
+            Cond::Unflanked(u) => {
+                let (lo, hi) = (self.nodes[i].lo, self.nodes[i].hi);
+                let defs = (0..self.nodes.len()).filter(|&n| self.is_def(n, &u.by));
+                let (mut before, mut after) = (false, false);
+                for n in defs {
+                    before |= self.nodes[n].hi == lo && self.nodes[n].lo < lo;
+                    after |= self.nodes[n].lo == hi && self.nodes[n].hi > hi;
+                }
+                !(before && after)
+            }
         }
+    }
+
+    /// Two instances of `first` then `then` in `i`, both at `i`'s depth of graph pattern
+    /// matching (no `<procedure body>` or `<graph pattern>` between), with not one token
+    /// between them inside an instance of `unless` or inside a deeper depth.
+    fn juxtaposed(&self, i: usize, j: &crate::features::Juxtaposed) -> bool {
+        let nested = |n: usize| self.is_def(n, "procedure body") || self.is_def(n, "graph pattern");
+        let below = self.below(i);
+        let same: Vec<usize> = below
+            .iter()
+            .filter(|(_, between)| !between.iter().any(|&b| nested(b)))
+            .map(|&(n, _)| n)
+            .collect();
+        // Spans whose tokens break a juxtaposition.
+        let breaks: Vec<(usize, usize)> = below
+            .iter()
+            .map(|&(n, _)| n)
+            .filter(|&n| nested(n) || j.unless.iter().any(|u| self.is_def(n, u)))
+            .map(|n| (self.nodes[n].lo, self.nodes[n].hi))
+            .collect();
+        same.iter()
+            .filter(|&&f| self.is_def(f, &j.first))
+            .any(|&f| {
+                same.iter()
+                    .filter(|&&t| {
+                        t != f && self.is_def(t, &j.then) && self.nodes[t].lo >= self.nodes[f].hi
+                    })
+                    .any(|&t| {
+                        let (s, e) = (self.nodes[f].hi, self.nodes[t].lo);
+                        !(s..e).any(|k| breaks.iter().any(|&(a, b)| a <= k && k < b))
+                    })
+            })
     }
 
     /// How many instances of `alt` `i` contains in the way `how` says (5.3.2.1).

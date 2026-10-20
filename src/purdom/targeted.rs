@@ -330,6 +330,16 @@ impl<L: LeafProvider> Generator<'_, '_, L> {
         (self.lengths.nt(start, r) != INF).then(|| self.materialize(start, r, &Plan::Shortest))
     }
 
+    /// For each target, whether some tree from `start` within the height cap contains it.
+    pub fn realizable(&self, start: NtId, targets: &[Target]) -> Vec<bool> {
+        let ctx = contexts(self.a, &self.lengths, start);
+        let tables = Tables::new(self.a, &self.lengths, &ctx, start);
+        targets
+            .iter()
+            .map(|t| tables.realize(t).is_some())
+            .collect()
+    }
+
     /// The length of the shortest tree from `start` within the height cap containing `t`.
     pub fn shortest_containing(&self, start: NtId, t: &Target) -> Option<u32> {
         let ctx = contexts(self.a, &self.lengths, start);

@@ -1,0 +1,27 @@
+# neo4j cypher 25 (checked against 2026.09.0)
+
+# optional features, from "supported optional gql features":
+# https://neo4j.com/docs/cypher-manual/current/appendix/gql-conformance/supported-optional/
+G002 G003 G004 G005 G010 G011 G013 G016 G017 G018 G019 G020 G035 G036 G043 G050 G051 G060
+G061 G074 G111 G115 GA06 GA07 GB01 GB03 GD01 GD02 GD04 GE07 GF01 GF02 GF03 GF05 GF06 GF12
+GG01 GL01 GL02 GP01 GP03 GP04 GQ01 GQ03 GQ08 GQ09 GQ10 GQ12 GQ13 GQ14 GQ15 GQ16 GQ20 GQ22
+GV39 GV40 GV50 GV55 GV66 GV67 GV70 GV71
+
+# mandatory syntax left out, from "unsupported mandatory gql features":
+# https://neo4j.com/docs/cypher-manual/current/appendix/gql-conformance/unsupported-mandatory/
+# 7.1 to 7.3: sessions are the driver's
+-<session set command>
+-<session reset command>
+-<session close command>
+# 8.1 to 8.4: transactions are the driver's
+-<start transaction command>
+-<commit command>
+-<rollback command>
+# 11.1: graph reference values
+-'CURRENT_GRAPH'
+-'CURRENT_PROPERTY_GRAPH'
+# 17.1: schema references, AT HOME_SCHEMA and CURRENT_SCHEMA
+-<schema reference>
+
+# not on that page, but neo4j rejects it: 14.12, mandatory in the 2024 text
+-<select statement>

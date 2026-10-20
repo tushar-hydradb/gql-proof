@@ -91,25 +91,55 @@ iso defines each optional feature by its conformance rules: 5.3.7 makes every no
 - every feature has a statement (ga01 and gg26 are defined only by "if ... supports" text)
 - table 10 (implied features, read by position) only names known features and has no cycles
 
-result: 280 statements over 228 features. 234 are patterns; 10 typed, 15 context and 4 structural rules are kept for the context provider and later pattern forms; 2 lexical and 15 semantic rules go to the leaf provider and the oracle. on top: 5 rules every claim keeps, 71 implications and 6 rules on claims (24.2, 24.3). where a sentence reads several ways, every parse is tried, the ones claiming containment the grammar cannot have are dropped, and the most deeply nested of the rest wins
+result: 280 statements over 228 features. 236 are patterns; 10 typed, 15 context and 2 structural rules (g031, g033: "fixed length" compares a quantifier's bounds' values, not a tree shape) are kept for the context provider and later; 2 lexical and 15 semantic rules go to the leaf provider and the oracle. on top: 5 rules every claim keeps, 71 implications and 6 rules on claims (24.2, 24.3). where a sentence reads several ways, every parse is tried, the ones claiming containment the grammar cannot have are dropped, and the most deeply nested of the rest wins
 
 `--claim all|none|<file>` on `purdom`: a claim is closed under table 10 and checked against 24.2 and 24.3. the conformance rules of every unclaimed feature, and the 5 every claim keeps, compile into one more automaton:
 - an outer definition sends a flag down to as much of its subtree as the containment word reaches, and a matching inner definition sends a hit back up, so the cost stays under real outer instances
 - keyword phrases are matched over the yield with facts for "ends with the first j words", "starts with the rest", "is a middle piece"
 - a rule "X contains Q" where every Q can only be inside an X is the same as forbidding Q. these are found from the grammar and rewritten, which matters because subqueries make almost everything reachable from almost everything. the same goes for a phrase that can only sit inside definitions that all forbid it
+- order in the yield, for g046 ("between any two `<node pattern>`s ... at least one `<edge pattern>`, `<left paren>`, or `<right paren>`") and g047 ("an `<edge pattern>` shall be immediately preceded and followed by a `<node pattern>`"): facts for what a yield starts and ends with, looked for only where the patterns can sit at the same depth. g047's are kept inside the nearest definition every edge pattern is in whose edges the grammar never puts a node pattern, found from the grammar (`<path pattern expression>`), and decided there
+- a plain "no X contains Q" rejects a Q as soon as it is under an X, and refinement does not look below a node that is rejected whatever its children are. without this, everything a subquery can hold is built again under every combination of outer rules, only to be rejected higher up
+- the automaton's facts are bookkeeping: copies of a production that differ only in them are one context for coverage, so a claim costs no extra trees
 
-`verify.rs` reads every pattern again straight from 5.3.2.1 over the whole tree, sharing nothing with the automaton. tests run both over 799 unrefined trees: 225 of the 236 rules of the smallest claim are broken by some tree, and the two agree on every rule and tree, one rule at a time and all at once
+`verify.rs` reads every pattern again straight from 5.3.2.1 over the whole tree, sharing nothing with the automaton. tests run both over 799 unrefined trees: 231 of the 238 rules of the smallest claim are broken by some tree, and the two agree on every rule and tree, one rule at a time and all at once. rules no unrefined tree breaks get the shortest tree that does, e.g. `MATCH ( ) ( ) FINISH` for g046, checked by both. every tree under the committed engine claims is verified too, since a claim that forbids whole definitions changes the grammar the rules are compiled against
 
-`--claim none` (only gg01, which 24.2 requires, and gc04, which it implies) refines in about a second to 43k nonterminals. 4976 trees cover the 670 iso productions it allows, all verified, in about two minutes
+`--claim none` (only gg01, which 24.2 requires, and gc04, which it implies) refines in about a second to 24k nonterminals; 95 trees cover the 648 iso productions it allows, all verified, in under 3 seconds
 
 readings:
 - keywords after a definition (`<query conjunction> EXCEPT`, `<for ordinality or offset> that is WITH OFFSET`) mean its yield holds them in a row. `that is WITH OFFSET` could never hold of `WITH OFFSET <binding variable>` read as equality. with table 10, which makes gq05 imply gq04 and gq07 imply gq06, this also gives `EXCEPT ALL` to both features
 - "is" holds when the yield of an instance of the other definition is the whole yield
+- g046 counts node patterns at the same depth of graph pattern matching, as 16.4 SR 6 and 14 above, or a node pattern in a subquery in a `WHERE` would be one of "any two"
+- "X immediately contains Y" that can match nothing as written, because Y is never on X's right hand side, is read through the one chain of single-item rules (`<A> ::= <B>`, optional parts left out) leading from X to Y. only where the literal reading is empty, and only where exactly one such chain exists; otherwise the rule is reported as vacuous. six rules need it, the prose skipping a level of the bnf:
+  - gq14 (twice), gf20: `<sort key> > <aggregating value expression> > <value expression>`
+  - gf10, gf11: `<aggregate function> > <general set function> > <general set function type>` and the binary one
+  - gs16: `<session reset arguments> > <session parameter specification> > <general parameter reference> > <parameter name>`
 
-`gql-proof features --claim X` checks every name against the grammar, lists the rewrites, and lists what stays enforced elsewhere. it also tries to break each pattern once. six cannot be broken as written, because the prose skips a level of the bnf:
-- gs16: `<parameter name>` is not immediately in `<session reset arguments>`
-- gq14 (twice) and gf20: `<sort key>` holds an `<aggregating value expression>`, not a `<value expression>`
-- gf10, gf11: the set function types are inside `<general set function>` and `<binary set function>`, not immediately in `<aggregate function>`
+`gql-proof features --claim X` checks every name against the grammar, lists the rewrites and the readings, what stays enforced elsewhere, and tries to break each pattern once; today every one can be
+
+## engines
+
+an engine's claim is a file of feature codes plus the mandatory syntax it leaves out, which no feature code can say:
+
+```
+G002 G004 GQ09         # optional features
+-<session set command> # a whole definition
+-'CURRENT_GRAPH'       # a keyword phrase
+```
+
+deviations are kept out of everything generated and checked by the verifier like any other rule. `claims/neo4j.claim` is neo4j's supported optional and unsupported mandatory pages, `claims/turbolay.claim` is turbolay's `gql/features.md`, each line with its source
+
+`purdom --short` drops purdom's packing: every tree is the shortest one holding a target not covered yet, so one construct an engine cannot handle hides little else. it covers the same productions as the packed run (CDRC down into tokens, plus `--k` paths when asked)
+
+```
+just neo4j                       # throwaway container, EXPLAIN every short sentence, report
+just turbolay ~/code/turbolay-x  # the probe test in a turbolay worktree, report
+```
+
+`tools/engines/report.py` groups the outcomes by status and by the token a parse stops at, with the shortest sentence for each
+
+with the committed claims (seed 1, short sentences, empty graphs):
+- neo4j 2026.09, `EXPLAIN`: 76 of 559 accepted (before deviations, short sentences and the order rules: 12 of 2977). most of the rest is meaning, the context provider's job: unbound variables (`DELETE a`), types (`DELETE EXISTS { ( ) }`), `USE` taking a graph name, `CALL a ( )` with no such procedure
+- turbolay #243: 316 of 825 run (before: 6 of 446). 145 more fail at run time with a type error (`22G03`, `RETURN SESSION_USER / SESSION_USER`), again meaning. to look at: `CALL ( ) { FINISH }` is refused with `0A000`, `RETURN ٣` (an `<other digit>`) and `RETURN LIST [ ]` with `42001`
 
 ## negatives
 

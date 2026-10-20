@@ -107,8 +107,18 @@ pub trait Rule {
     fn cite(&self) -> &str;
     /// The facts this rule owns, with a label for naming refined nonterminals.
     fn labels(&self) -> Vec<(Fact, String)>;
+    /// Whether this rule's facts only serve to enforce it: the states they tell apart are not
+    /// contexts worth covering separately.
+    fn bookkeeping(&self) -> bool {
+        false
+    }
     /// Adds to `out` the inherited facts of the child at `pos`, given this node's.
     fn down(&self, _node: &Node, _inh: &State, _pos: usize, _out: &mut State) {}
+    /// Whether `step` rejects `node` in this inherited context whatever its children are.
+    /// Refinement then does not look below it at all.
+    fn rejects(&self, _node: &Node, _inh: &State) -> bool {
+        false
+    }
     /// The synthesized state of `node`, from its inherited state, each position's synthesized
     /// state (empty for tokens) and `syn`: the union of those, as earlier rules left it.
     /// `None` rejects the node.
@@ -409,6 +419,9 @@ pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined
         let mut prods = Vec::new();
         for &p in &cfg.nts[nt as usize].prods {
             let here = node(p);
+            if rules.iter().any(|r| r.rejects(&here, &inh)) {
+                continue;
+            }
             let kids = cfg.prods[p as usize]
                 .rhs
                 .iter()
@@ -518,6 +531,18 @@ pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined
             });
         }
     }
+    // A production's context: its own, and the states around it with bookkeeping facts left
+    // out, so copies that only carry bookkeeping count as one for coverage.
+    let bookkeeping: BTreeSet<Fact> = rules
+        .iter()
+        .filter(|r| r.bookkeeping())
+        .flat_map(|r| r.labels().into_iter().map(|(f, _)| f))
+        .collect();
+    let visible =
+        |s: &State| -> Vec<Fact> { s.facts().filter(|f| !bookkeeping.contains(f)).collect() };
+    // (the production's context, inherited, synthesized, the children's), all visible only
+    type Key = (u32, Vec<Fact>, Vec<Fact>, Vec<Vec<Fact>>);
+    let mut classes: BTreeMap<Key, u32> = BTreeMap::new();
     let mut prods = Vec::new();
     for (x, expansion) in expansions.iter().enumerate() {
         let inh = &contexts[x].1;
@@ -529,6 +554,14 @@ pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined
                 let Some(s) = state_of(*p, inh, &children) else {
                     return;
                 };
+                let key = (
+                    prod.context,
+                    visible(inh),
+                    visible(&s),
+                    children.iter().map(visible).collect(),
+                );
+                let next = classes.len() as u32;
+                let context = *classes.entry(key).or_insert(next);
                 let lhs = ids[&(x, s)];
                 let rhs = prod
                     .rhs
@@ -546,6 +579,7 @@ pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined
                     rhs,
                     occ: prod.occ.clone(),
                     unrefined: prod.unrefined,
+                    context,
                 });
             })?;
         }

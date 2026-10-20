@@ -12,6 +12,8 @@
       | typed
       | context
       | structural
+      | juxtaposed
+      | unflanked
       | lexical
       | semantic
 
@@ -41,8 +43,12 @@ context: "in" "conforming" "GQL" "language" "," REFERENCE_SHAPE REST
 // syntax, but needing pattern forms not compiled yet: a defined term (fixed length path
 // pattern) and order between siblings
 structural: "in" "conforming" "GQL" "language" "," ART "operand" "of" ART NT "shall" "be" "a" "fixed" "length" "path" "pattern"
-          | "in" "conforming" "GQL" "language" "," "between" REST
-          | "in" "conforming" "GQL" "language" "," ART NT "shall" "be" "immediately" "preceded" REST
+
+// order in the yield: "between any two <A>s contained in a <B> there shall be at least one <C>,
+// <D>, or <E>", and "an <A> shall be immediately preceded and followed by a <B>"
+juxtaposed: "in" "conforming" "GQL" "language" "," "between" "any" "two" NT PLURAL "contained" "in" ART NT "there" "shall" "be" "at" "least" "one" ntlist
+unflanked: "in" "conforming" "GQL" "language" "," ART NT "shall" "be" "immediately" "preceded" "and" "followed" "by" ART NT
+ntlist: NT ("," NT)* ","? "or" NT
 
 // inside a token, where the leaf provider decides
 lexical: "conforming" "GQL" "language" "shall" "not" "contain" ART NT "that" "specifies" "a" "time" "zone" "displacement"

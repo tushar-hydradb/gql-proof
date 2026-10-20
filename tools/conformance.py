@@ -469,6 +469,25 @@ class ToPattern(Transformer):
     def structural(self, *_):
         return {"kind": "structural", "owner": "generator, not compiled yet"}
 
+    def ntlist(self, *names):
+        return [nt(n) for n in names]
+
+    def juxtaposed(self, inner, _plural, _art, outer, unless):
+        cond = {"juxtaposed": {"first": nt(inner), "then": nt(inner), "unless": unless}}
+        return {
+            "kind": "pattern",
+            "forbid": [{"nt": nt(outer), "words": None, "conds": [cond]}],
+            # 16.4 SR 2's depth of graph pattern matching, as for SR 6 and 14: otherwise a
+            # node pattern in a subquery in a WHERE would count as one of "any two"
+            "readings": ["at the same depth of graph pattern matching"],
+        }
+
+    def unflanked(self, _art, inner, _art2, by):
+        return {
+            "kind": "pattern",
+            "forbid": [{"nt": nt(inner), "words": None, "conds": [{"unflanked": {"by": nt(by)}}]}],
+        }
+
     def lexical(self, *_):
         return {"kind": "lexical", "owner": "leaf provider"}
 
@@ -535,6 +554,82 @@ def parse(sentence, subject, bnf):
     return best[2]
 
 
+# Longest chain of immediate containments a reading may go through.
+CHAIN = 4
+
+
+def chains(bnf, outer, inner):
+    """Paths <outer> -> ... -> <inner> of immediate containments in which every step but at
+    most one is a single-item rule (5.3.2.1's "is", optional parts left out)."""
+    out = []
+
+    def walk(path, wide):
+        here = path[-1]
+        if len(path) > CHAIN:
+            return
+        for nxt in sorted(bnf.defs[here][0]):
+            if nxt not in bnf.defs or nxt in path:
+                continue
+            unit = nxt in bnf.defs[here][2]
+            if not unit and wide:
+                continue
+            if nxt == inner:
+                out.append(path + [nxt])
+            else:
+                walk(path + [nxt], wide or not unit)
+
+    walk([outer], False)
+    return out
+
+
+def read_through(node, bnf, readings, vacuous):
+    """Rewrites every "X immediately contains Y" that matches nothing as written (Y is never
+    on X's right hand side) into the one chain of immediate containments through
+    single-item rules that leads from X to Y, recording it. With no such chain, or several,
+    the rule stays as written and is recorded as vacuous."""
+    for cond in node["conds"]:
+        for rel, body in cond.items():
+            if rel not in ("contains", "is"):
+                continue
+            for i, alt in enumerate(body["any"]):
+                if alt["nt"] is not None:
+                    read_through(alt, bnf, readings, vacuous)
+                if rel != "contains" or body["how"] != "immediately" or alt["nt"] is None:
+                    continue
+                outer, inner = node["nt"], alt["nt"]
+                if inner in bnf.defs[outer][0]:
+                    continue
+                found = chains(bnf, outer, inner)
+                if len(found) != 1:
+                    vacuous.append(f"<{outer}> immediately containing <{inner}>: {len(found)} chains")
+                    continue
+                path = found[0]
+                nested = alt
+                for mid in reversed(path[1:-1]):
+                    nested = {
+                        "nt": mid,
+                        "words": None,
+                        "conds": [{"contains": {"how": "immediately", "negated": False, "exactly_one": False, "any": [nested]}}],
+                    }
+                body["any"][i] = nested
+                readings.append(" > ".join(f"<{p}>" for p in path))
+
+
+def with_readings(reading, bnf):
+    """A parsed rule with its vacuous immediate containments read through single-item rules."""
+    if reading["kind"] != "pattern":
+        return reading
+    readings, vacuous = [], []
+    for node in reading["forbid"]:
+        if node["nt"] is not None:
+            read_through(node, bnf, readings, vacuous)
+    if readings:
+        reading["readings"] = reading.get("readings", []) + readings
+    if vacuous:
+        reading["vacuous"] = vacuous
+    return reading
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("pdf")
@@ -583,7 +678,7 @@ def main():
                 failures.append(f"{s['feature']}: named “{s['name']}”, features.xml says “{features[s['feature']]}”")
             subject = s["title"][1:-1] if s["title"] and s["title"].startswith("<") else None
             try:
-                reading = parse(s["body"], subject, bnf)
+                reading = with_readings(parse(s["body"], subject, bnf), bnf)
             except Exception as e:  # lark's errors and ours alike end the run below
                 failures.append(f"{s['feature']} {s['subclause']} {s['rule']}: {e}")
                 continue
@@ -601,7 +696,7 @@ def main():
 
     devices_out = []
     for d in found["devices"]:
-        reading = parse("conforming GQL language shall not contain" + d["body"], None, bnf)
+        reading = with_readings(parse("conforming GQL language shall not contain" + d["body"], None, bnf), bnf)
         if reading["kind"] != "pattern":
             failures.append(f"{d['subclause']} {d['rule']}: an unconditional rule that is not a pattern")
         devices_out.append({"subclause": d["subclause"], "rule": d["rule"], **reading, "sha256": sha(d["text"])})

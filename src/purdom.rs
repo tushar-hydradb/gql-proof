@@ -33,6 +33,7 @@ use fixedbitset::FixedBitSet;
 use rand::SeedableRng;
 use rand::seq::IndexedRandom;
 use rand_chacha::ChaCha8Rng;
+use std::collections::HashMap;
 
 const INF: u32 = u32::MAX;
 
@@ -314,6 +315,8 @@ pub struct Generator<'a, 'g, L> {
     rng: ChaCha8Rng,
     lengths: Lengths,
     unused: FixedBitSet,
+    /// The productions sharing each production's context: using one uses them all.
+    mates: Vec<Vec<ProdId>>,
     /// `cost(nt, r)` memo, tagged with the `generation` it was computed in.
     memo: Vec<(u32, Option<u32>)>,
     generation: u32,
@@ -328,6 +331,19 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
         let mut unused = FixedBitSet::with_capacity(a.cfg.prods.len());
         unused.insert_range(..);
         let slots = a.cfg.nts.len() * (config.max_depth as usize + 1);
+        let mut by_context: HashMap<u32, Vec<ProdId>> = HashMap::new();
+        for (p, prod) in a.cfg.prods.iter().enumerate() {
+            by_context
+                .entry(prod.context)
+                .or_default()
+                .push(p as ProdId);
+        }
+        let mates = a
+            .cfg
+            .prods
+            .iter()
+            .map(|prod| by_context[&prod.context].clone())
+            .collect();
         Generator {
             a,
             cfg: a.cfg,
@@ -336,6 +352,7 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
             config,
             leaf,
             unused,
+            mates,
             memo: vec![(0, None); slots],
             generation: 1,
             slack: 0,
@@ -378,10 +395,11 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
     }
 
     pub fn run(mut self, start: NtId) -> Result<Outcome> {
-        self.run_inner(start)
+        self.run_inner(start, true)
     }
 
-    fn run_inner(&mut self, start: NtId) -> Result<Outcome> {
+    /// Purdom's trees when `pack`, otherwise none: the setup the targeted trees build on.
+    fn run_inner(&mut self, start: NtId, pack: bool) -> Result<Outcome> {
         if !self.a.template_errors.is_empty() {
             bail!("fixed tokens: {}", self.a.template_errors.join(", "));
         }
@@ -402,7 +420,7 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
         };
         let shortest = self.lengths.nt(start, depth);
         let mut trees = Vec::new();
-        while let Some(cost) = self.cost(start, depth) {
+        while pack && let Some(cost) = self.cost(start, depth) {
             // The cheapest sentence that uses something new is the shortest covering sentence
             // of some unused production, never above the reference length.
             if cap.is_some_and(|c| cost > c) {
@@ -440,11 +458,37 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
     /// Purdom's trees, then targeted trees for every CDRC pair and k-path of `criteria` not yet
     /// covered. Targets are counted on `base`, the unrefined grammar `self`'s was refined from.
     pub fn run_with(mut self, start: NtId, base: &Cfg, criteria: Criteria) -> Result<Outcome> {
-        let mut outcome = self.run_inner(start)?;
+        let mut outcome = self.run_inner(start, true)?;
         if criteria.any() {
             let base_start = base.require(self.cfg.base(start))?;
             outcome.targets = self.cover(start, base, base_start, criteria, &mut outcome.trees);
         }
+        Ok(outcome)
+    }
+
+    /// Targeted trees only, no packing: each the shortest tree within the height cap holding
+    /// a target not covered yet, so one construct a reader cannot handle hides little else.
+    /// The targets of `criteria` first, then CDRC down into token-level definitions, which
+    /// covers every production the packed run does.
+    pub fn run_short(mut self, start: NtId, base: &Cfg, criteria: Criteria) -> Result<Outcome> {
+        let mut outcome = self.run_inner(start, false)?;
+        let base_start = base.require(self.cfg.base(start))?;
+        let everything = Criteria {
+            cdrc: true,
+            k: 0,
+            lexical: true,
+        };
+        if criteria.any() && criteria != everything {
+            outcome.targets = self.cover(start, base, base_start, criteria, &mut outcome.trees);
+        }
+        outcome
+            .targets
+            .extend(self.cover(start, base, base_start, everything, &mut outcome.trees));
+        // The productions are covered by the targeted trees here.
+        let covering = self.covering_lengths(start);
+        outcome.uncovered = self.classify(start, &covering, outcome.length_cap);
+        outcome.covered = self.unused.clone();
+        outcome.covered.toggle_range(..);
         Ok(outcome)
     }
 
@@ -522,7 +566,9 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
 
     fn mark_used(&mut self, p: ProdId) {
         if self.unused.contains(p as usize) {
-            self.unused.set(p as usize, false);
+            for &q in &self.mates[p as usize] {
+                self.unused.set(q as usize, false);
+            }
             self.generation += 1;
         }
     }

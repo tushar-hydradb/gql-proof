@@ -64,6 +64,13 @@ pub struct Statement {
     #[serde(default)]
     pub forbid: Vec<Pattern>,
     pub owner: Option<String>,
+    /// "Immediately contains" read through single-item rules, because as written it can
+    /// match nothing: each the chain of definitions it now goes through.
+    #[serde(default)]
+    pub readings: Vec<String>,
+    /// Such containments with no single chain to read them through, left as written.
+    #[serde(default)]
+    pub vacuous: Vec<String>,
     pub sha256: String,
 }
 
@@ -91,6 +98,8 @@ pub struct Device {
     pub kind: String,
     #[serde(default)]
     pub forbid: Vec<Pattern>,
+    #[serde(default)]
+    pub readings: Vec<String>,
     pub sha256: String,
 }
 
@@ -118,6 +127,23 @@ pub enum Cond {
     /// Is one of these pairs, the first followed by the second.
     FollowedBy(Vec<[String; 2]>),
     Parent(Parent),
+    /// Holds an instance of `first` followed by one of `then`, at the same depth of graph
+    /// pattern matching, with no instance of any of `unless` between them (16.7 CR 14).
+    Juxtaposed(Juxtaposed),
+    /// Is not immediately preceded and followed by an instance of `by` (16.7 CR 15).
+    Unflanked(Unflanked),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize)]
+pub struct Juxtaposed {
+    pub first: String,
+    pub then: String,
+    pub unless: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize)]
+pub struct Unflanked {
+    pub by: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize)]
@@ -178,6 +204,7 @@ impl Conformance {
                 ),
                 feature: None,
                 patterns: d.forbid.clone(),
+                readings: d.readings.clone(),
             })
             .collect();
         out.extend(
@@ -188,8 +215,15 @@ impl Conformance {
                     label: s.cite(),
                     feature: Some(s.feature.clone()),
                     patterns: s.forbid.clone(),
+                    readings: s.readings.clone(),
                 }),
         );
+        out.extend(claim.deviations.iter().map(|d| Forbidden {
+            label: format!("deviation {}", d.text),
+            feature: None,
+            patterns: vec![d.pattern.clone()],
+            readings: Vec::new(),
+        }));
         out
     }
 
@@ -208,19 +242,57 @@ pub struct Forbidden {
     pub label: String,
     pub feature: Option<String>,
     pub patterns: Vec<Pattern>,
+    /// The readings through single-item rules its patterns rely on.
+    pub readings: Vec<String>,
 }
 
-/// A set of claimed features, closed under table 10.
+/// A set of claimed features, closed under table 10, and the mandatory syntax the
+/// implementation leaves out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Claim {
     pub features: BTreeSet<String>,
+    pub deviations: Vec<Deviation>,
+}
+
+/// Mandatory syntax an implementation does not support, stated in its claim: a whole
+/// definition (`-<name>`) or a keyword phrase (`-'KEYWORDS'`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Deviation {
+    pub text: String,
+    pub pattern: Pattern,
+}
+
+impl Deviation {
+    fn parse(text: &str) -> Result<Deviation> {
+        let pattern = if let Some(name) = text.strip_prefix('<').and_then(|t| t.strip_suffix('>')) {
+            Pattern {
+                nt: Some(name.to_string()),
+                words: None,
+                conds: Vec::new(),
+            }
+        } else if let Some(words) = text.strip_prefix('\'').and_then(|t| t.strip_suffix('\'')) {
+            Pattern {
+                nt: None,
+                words: Some(words.split_whitespace().map(str::to_uppercase).collect()),
+                conds: Vec::new(),
+            }
+        } else {
+            bail!("a deviation is -<definition> or -'KEYWORDS', got -{text}");
+        };
+        Ok(Deviation {
+            text: text.to_string(),
+            pattern,
+        })
+    }
 }
 
 impl Claim {
-    /// `all`, `none` (only what 24.2 requires: its first option), or a file of feature codes,
-    /// `#` starting a comment.
+    /// `all`, `none` (only what 24.2 requires: its first option), or a file: feature codes,
+    /// and lines `-<definition>` or `-'KEYWORDS'` for mandatory syntax left out, `#` starting
+    /// a comment. Deviation names are checked against the grammar when the claim is compiled.
     pub fn parse(spec: &str, conf: &Conformance) -> Result<Claim> {
         let codes = conf.codes();
+        let mut deviations = Vec::new();
         let named: BTreeSet<String> = match spec {
             "all" => codes.iter().map(|c| c.to_string()).collect(),
             "none" => conf
@@ -232,11 +304,16 @@ impl Claim {
             path => {
                 let text =
                     std::fs::read_to_string(path).with_context(|| format!("reading {path}"))?;
-                text.lines()
-                    .map(|l| l.split('#').next().unwrap_or(""))
-                    .flat_map(str::split_whitespace)
-                    .map(str::to_string)
-                    .collect()
+                let mut named = BTreeSet::new();
+                for line in text.lines() {
+                    let line = line.split('#').next().unwrap_or("").trim();
+                    if let Some(d) = line.strip_prefix('-') {
+                        deviations.push(Deviation::parse(d.trim())?);
+                    } else {
+                        named.extend(line.split_whitespace().map(str::to_string));
+                    }
+                }
+                named
             }
         };
         for c in &named {
@@ -244,7 +321,9 @@ impl Claim {
                 bail!("{c} is not a feature of ISO/IEC 39075");
             }
         }
-        Claim::closed(named, conf)
+        let mut claim = Claim::closed(named, conf)?;
+        claim.deviations = deviations;
+        Ok(claim)
     }
 
     /// The claim closed under table 10, checked against 24.2 and 24.3.
@@ -282,7 +361,10 @@ impl Claim {
                 }
             }
         }
-        Ok(Claim { features })
+        Ok(Claim {
+            features,
+            deviations: Vec::new(),
+        })
     }
 }
 
@@ -348,8 +430,10 @@ pub fn negative(
         .filter(|t| t.feature == s.feature)
         .map(Statement::cite)
         .collect();
+    // What every claim forbids, and what this implementation leaves out.
     let always = conf.forbidden(&Claim {
         features: conf.codes().into_iter().map(str::to_string).collect(),
+        deviations: claim.deviations.clone(),
     });
     let others: Vec<Forbidden> = conf
         .forbidden(claim)
@@ -407,6 +491,9 @@ struct HitUse {
     hits2: Option<Fact>,
     /// Definitions that can be or hold the alternative's definition.
     reach: FixedBitSet,
+    /// The owner is a rule on its own, "no X contains Q" with Q a bare definition: a Q under
+    /// the flag breaks it whatever else holds, so it is rejected right there.
+    immediate: bool,
 }
 
 enum Compiled {
@@ -455,9 +542,46 @@ pub struct ClaimRules {
     pairs: BTreeMap<String, Fact>,
     tokens: BTreeMap<String, Fact>,
     parents: BTreeMap<String, Fact>,
+    juxta: Vec<JuxtaUse>,
+    flank: Vec<FlankUse>,
     labels: Vec<(Fact, String)>,
     ids: HashMap<String, NtId>,
     cite: String,
+}
+
+/// "Between any two `first` and `then` in an `owner` there is an `unless`": searched inside
+/// each owner at its depth of graph pattern matching, with facts for "ends with a `first` and
+/// nothing that breaks since", "starts with nothing that breaks, then a `then`", and "holds
+/// nothing that breaks at all".
+struct JuxtaUse {
+    owner: String,
+    first: String,
+    then: String,
+    unless: Vec<String>,
+    required: bool,
+    scope: Fact,
+    ends: Fact,
+    starts: Fact,
+    clean: Fact,
+    /// Definitions that can hold a `first` or `then` at the same depth: the scope goes no
+    /// further, and anything else counts as breaking.
+    reach: FixedBitSet,
+}
+
+/// "Every `nt` is immediately preceded and followed by a `by`", with facts for the yield
+/// starting and ending with each: `[starts nt, ends nt, starts by, ends by]`. An `nt` at the
+/// edge of a yield waits for the node that has its neighbour.
+///
+/// With an `owner`, the facts live only inside one: the nearest definition every `nt` is
+/// inside, at whose edges the grammar never puts a `by`, so an `nt` at an owner's edge is
+/// decided there. Without one, they live everywhere and the start decides.
+struct FlankUse {
+    nt: String,
+    by: String,
+    required: bool,
+    facts: [Fact; 4],
+    owner: Option<(String, Fact)>,
+    reach: FixedBitSet,
 }
 
 struct Builder<'c> {
@@ -465,6 +589,7 @@ struct Builder<'c> {
     reach: Vec<FixedBitSet>,
     /// Definitions forbidden outright.
     gone: FixedBitSet,
+    start: NtId,
     next: Fact,
     rules: ClaimRules,
     interned: HashMap<Pattern, usize>,
@@ -491,22 +616,17 @@ struct Places {
     part: FixedBitSet,
 }
 
-fn places(cfg: &Cfg, gone: &FixedBitSet, words: &[String]) -> Places {
-    let (n, k) = (cfg.nts.len(), words.len());
-    let usable = |p: u32| {
-        cfg.prod(p)
-            .rhs
-            .iter()
-            .all(|&s| !matches!(s, Sym::Nt(c) if gone.contains(c as usize)))
-    };
-    let lit = |s: Sym, j: usize| match s {
-        Sym::Lit(l) => match &cfg.lits[l as usize] {
-            Lit::Kw(t) | Lit::Term(t) => t.eq_ignore_ascii_case(&words[j]),
-            Lit::Opaque(_) => false,
-        },
-        Sym::Nt(_) => false,
-    };
-    let mut nullable = FixedBitSet::with_capacity(n);
+/// Whether a production uses no definition in `gone`.
+fn usable(cfg: &Cfg, gone: &FixedBitSet, p: u32) -> bool {
+    cfg.prod(p)
+        .rhs
+        .iter()
+        .all(|&s| !matches!(s, Sym::Nt(c) if gone.contains(c as usize)))
+}
+
+/// Definitions that can derive nothing, none in `gone` used.
+fn nullable(cfg: &Cfg, gone: &FixedBitSet) -> FixedBitSet {
+    let mut nullable = FixedBitSet::with_capacity(cfg.nts.len());
     let mut changed = true;
     while changed {
         changed = false;
@@ -515,7 +635,7 @@ fn places(cfg: &Cfg, gone: &FixedBitSet, words: &[String]) -> Places {
                 continue;
             }
             let empty = nt.prods.iter().any(|&p| {
-                usable(p)
+                usable(cfg, gone, p)
                     && cfg
                         .prod(p)
                         .rhs
@@ -528,6 +648,61 @@ fn places(cfg: &Cfg, gone: &FixedBitSet, words: &[String]) -> Places {
             }
         }
     }
+    nullable
+}
+
+/// Per definition, the definitions its yield can start with and end with, itself included.
+fn edges(cfg: &Cfg, gone: &FixedBitSet) -> (Vec<FixedBitSet>, Vec<FixedBitSet>) {
+    let n = cfg.nts.len();
+    let empty = nullable(cfg, gone);
+    let mut first = vec![FixedBitSet::with_capacity(n); n];
+    let mut last = vec![FixedBitSet::with_capacity(n); n];
+    for x in 0..n {
+        first[x].insert(x);
+        last[x].insert(x);
+    }
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (x, nt) in cfg.nts.iter().enumerate() {
+            for &p in nt.prods.iter().filter(|&&p| usable(cfg, gone, p)) {
+                let rhs = &cfg.prod(p).rhs;
+                for (side, order) in [(&mut first, false), (&mut last, true)] {
+                    let syms: Vec<Sym> = if order {
+                        rhs.iter().rev().copied().collect()
+                    } else {
+                        rhs.clone()
+                    };
+                    for s in syms {
+                        let Sym::Nt(c) = s else { break };
+                        let c = c as usize;
+                        let add = side[c].clone();
+                        let before = side[x].count_ones(..);
+                        side[x].union_with(&add);
+                        changed |= side[x].count_ones(..) != before;
+                        if !empty.contains(c) {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    (first, last)
+}
+
+fn places(cfg: &Cfg, gone: &FixedBitSet, words: &[String]) -> Places {
+    let (n, k) = (cfg.nts.len(), words.len());
+    let usable = |p: u32| usable(cfg, gone, p);
+    let lit = |s: Sym, j: usize| match s {
+        Sym::Lit(l) => match &cfg.lits[l as usize] {
+            Lit::Kw(t) | Lit::Term(t) => t.eq_ignore_ascii_case(&words[j]),
+            Lit::Opaque(_) => false,
+        },
+        Sym::Nt(_) => false,
+    };
+    let nullable = nullable(cfg, gone);
+    let mut changed;
     // Per definition: ends with the first j words, starts with the words from i, is exactly
     // words i..j (neither end), holds them all.
     let mut ends = vec![BTreeSet::new(); n];
@@ -824,6 +999,7 @@ impl ClaimRules {
             cfg,
             reach,
             gone,
+            start,
             next: FIRST_FREE_FACT,
             rules: ClaimRules {
                 nodes: Vec::new(),
@@ -840,6 +1016,8 @@ impl ClaimRules {
                 pairs: BTreeMap::new(),
                 tokens: BTreeMap::new(),
                 parents: BTreeMap::new(),
+                juxta: Vec::new(),
+                flank: Vec::new(),
                 labels: Vec::new(),
                 ids: cfg
                     .nts
@@ -853,6 +1031,9 @@ impl ClaimRules {
         };
         b.rules.empty = b.fact("empty");
         for p in &patterns {
+            if b.order(p, false)? {
+                continue;
+            }
             match (&p.nt, &p.words) {
                 (None, Some(words)) if p.conds.is_empty() => {
                     b.phrase(words, None)?;
@@ -865,8 +1046,30 @@ impl ClaimRules {
                 _ => bail!("a pattern with neither a definition nor a phrase: {p:?}"),
             }
         }
+        // Forbidden rules of the shape "no X contains Q", nothing more, reject at the Q.
+        let tops: BTreeSet<usize> = b.rules.tops.values().flatten().copied().collect();
+        for h in &mut b.rules.hits {
+            let owner = &b.rules.nodes[h.owner];
+            let alt = &b.rules.nodes[h.alt];
+            let lone = matches!(
+                owner.conds.as_slice(),
+                [Compiled::Contains {
+                    negated: false,
+                    exactly_one: false,
+                    ..
+                }]
+            );
+            h.immediate = tops.contains(&h.owner)
+                && lone
+                && owner.words.is_none()
+                && alt.conds.is_empty()
+                && alt.words.is_none();
+        }
         b.rules.matched = b.fact("required");
         for p in required {
+            if b.order(p, true)? {
+                continue;
+            }
             match (&p.nt, &p.words) {
                 (None, Some(words)) if p.conds.is_empty() => {
                     let u = b.phrase(words, None)?;
@@ -965,6 +1168,7 @@ impl Builder<'_> {
                                 hit,
                                 hits2,
                                 reach,
+                                immediate: false,
                             });
                             self.rules.uses[alt_id].push(k);
                             hits.push(k);
@@ -1038,7 +1242,166 @@ impl Builder<'_> {
                     fact,
                 }
             }
+            Cond::Juxtaposed(_) | Cond::Unflanked(_) => {
+                bail!("<{nt}>: an order condition only stands alone in a rule")
+            }
         })
+    }
+
+    /// A rule that is only an order condition on one definition: compiled on its own, since
+    /// whether it holds is known only once the neighbours are. `false` for any other rule.
+    fn order(&mut self, p: &Pattern, required: bool) -> Result<bool> {
+        let (Some(nt), None) = (&p.nt, &p.words) else {
+            return Ok(false);
+        };
+        match p.conds.as_slice() {
+            [Cond::Juxtaposed(j)] => {
+                for name in [nt, &j.first, &j.then].into_iter().chain(&j.unless) {
+                    self.require(name)?;
+                }
+                let k = self.rules.juxta.len();
+                let scope = self.fact(format!("in<{nt}>j{k}"));
+                let ends = self.fact(format!("ends<{}>j{k}", j.first));
+                let starts = self.fact(format!("starts<{}>j{k}", j.then));
+                let clean = self.fact(format!("clean j{k}"));
+                let mut targets: Vec<&str> = vec![&j.first, &j.then];
+                targets.extend(j.unless.iter().map(String::as_str));
+                let reach = self.shallow(&targets)?;
+                self.rules.juxta.push(JuxtaUse {
+                    owner: nt.clone(),
+                    first: j.first.clone(),
+                    then: j.then.clone(),
+                    unless: j.unless.clone(),
+                    required,
+                    scope,
+                    ends,
+                    starts,
+                    clean,
+                    reach,
+                });
+                Ok(true)
+            }
+            [Cond::Unflanked(u)] => {
+                self.require(nt)?;
+                self.require(&u.by)?;
+                let k = self.rules.flank.len();
+                let facts = [
+                    self.fact(format!("starts<{nt}>f{k}")),
+                    self.fact(format!("ends<{nt}>f{k}")),
+                    self.fact(format!("starts<{}>f{k}", u.by)),
+                    self.fact(format!("ends<{}>f{k}", u.by)),
+                ];
+                let owner = self
+                    .flank_owner(nt, &u.by)?
+                    .map(|o| (o.clone(), self.fact(format!("in<{o}>f{k}"))));
+                let reach = self.shallow(&[nt, &u.by])?;
+                self.rules.flank.push(FlankUse {
+                    nt: nt.clone(),
+                    by: u.by.clone(),
+                    required,
+                    facts,
+                    owner,
+                    reach,
+                });
+                Ok(true)
+            }
+            conds
+                if conds
+                    .iter()
+                    .any(|c| matches!(c, Cond::Juxtaposed(_) | Cond::Unflanked(_))) =>
+            {
+                bail!("<{nt}>: an order condition only stands alone in a rule")
+            }
+            _ => Ok(false),
+        }
+    }
+
+    /// Definitions that are or can hold one of `targets` at the same depth of graph pattern
+    /// matching: never through a `<procedure body>` or a `<graph pattern>`.
+    fn shallow(&self, targets: &[&str]) -> Result<FixedBitSet> {
+        let mut deeper = self.gone.clone();
+        for d in ["procedure body", "graph pattern"] {
+            deeper.insert(self.require(d)? as usize);
+        }
+        let reach = closures(self.cfg, &deeper);
+        let ids: Vec<usize> = targets
+            .iter()
+            .map(|t| self.require(t).map(|i| i as usize))
+            .collect::<Result<_>>()?;
+        let mut out = FixedBitSet::with_capacity(self.cfg.nts.len());
+        for (x, r) in reach.iter().enumerate() {
+            if ids.iter().any(|&i| r.contains(i)) {
+                out.insert(x);
+            }
+        }
+        Ok(out)
+    }
+
+    /// The nearest definition every `nt` from the start is inside and whose yield the grammar
+    /// never puts next to a `by`'s: an `nt` at its edge has no `by` beside it, decided there.
+    fn flank_owner(&self, nt: &str, by: &str) -> Result<Option<String>> {
+        let (target, by) = (self.require(nt)? as usize, self.require(by)? as usize);
+        let (first, last) = edges(self.cfg, &self.gone);
+        let empty = nullable(self.cfg, &self.gone);
+        let dominates = |d: usize, x: usize| {
+            let mut avoid = self.gone.clone();
+            avoid.insert(d);
+            !reachable_avoiding(self.cfg, self.start, &avoid).contains(x)
+        };
+        // At the same depth: the target is reached from it without a nested procedure body or
+        // graph pattern on the way.
+        let mut deeper = self.gone.clone();
+        for name in ["procedure body", "graph pattern"] {
+            deeper.insert(self.require(name)? as usize);
+        }
+        let level = |d: usize| {
+            let mut cut = deeper.clone();
+            cut.set(d, false);
+            reachable_avoiding(self.cfg, d as NtId, &cut).contains(target)
+        };
+        let mut dominators: Vec<usize> = (0..self.cfg.nts.len())
+            .filter(|&d| d != target && !self.gone.contains(d))
+            .filter(|&d| dominates(d, target) && level(d))
+            .collect();
+        // Dominators form a chain: the nearest has the most of the others above it.
+        let above: Vec<usize> = dominators
+            .iter()
+            .map(|&d| {
+                dominators
+                    .iter()
+                    .filter(|&&e| e != d && dominates(e, d))
+                    .count()
+            })
+            .collect();
+        let mut order: Vec<usize> = (0..dominators.len()).collect();
+        order.sort_by_key(|&i| std::cmp::Reverse(above[i]));
+        dominators = order.into_iter().map(|i| dominators[i]).collect();
+        let beside = |d: usize| {
+            self.cfg.prods.iter().any(|prod| {
+                let rhs = &prod.rhs;
+                (0..rhs.len()).any(|i| {
+                    let Sym::Nt(a) = rhs[i] else { return false };
+                    // every later position up to the next one that cannot be empty
+                    for &s in &rhs[i + 1..] {
+                        let Sym::Nt(b) = s else { return false };
+                        let (a, b) = (a as usize, b as usize);
+                        if (last[a].contains(by) && first[b].contains(d))
+                            || (last[a].contains(d) && first[b].contains(by))
+                        {
+                            return true;
+                        }
+                        if !empty.contains(b) {
+                            return false;
+                        }
+                    }
+                    false
+                })
+            })
+        };
+        Ok(dominators
+            .into_iter()
+            .find(|&d| !beside(d))
+            .map(|d| self.cfg.nts[d].base.clone()))
     }
 
     fn phrase(&mut self, words: &[String], owner: Option<(String, How)>) -> Result<usize> {
@@ -1159,6 +1522,17 @@ impl View<'_> {
 }
 
 impl ClaimRules {
+    /// Where each order rule decides: "`<nt>` flanked by `<by>`, decided in `<owner>`".
+    pub fn order_scopes(&self) -> Vec<String> {
+        self.flank
+            .iter()
+            .map(|u| match &u.owner {
+                Some((o, _)) => format!("<{}> flanked by <{}>: decided in each <{o}>", u.nt, u.by),
+                None => format!("<{}> flanked by <{}>: decided at the start", u.nt, u.by),
+            })
+            .collect()
+    }
+
     /// How many definitions each flag and phrase search can travel through, widest first: what
     /// drives the size of the refined grammar.
     pub fn spread(&self) -> Vec<(String, usize)> {
@@ -1405,6 +1779,79 @@ impl ClaimRules {
     }
 }
 
+impl ClaimRules {
+    /// A juxtaposition's facts at one node, `(ends, starts, clean)`, and whether it is found
+    /// here.
+    fn juxtaposition(&self, u: &JuxtaUse, v: &View) -> (bool, bool, bool, bool) {
+        let node = v.node;
+        if !node.group && u.unless.iter().any(|x| x == node.def) {
+            return (false, false, false, false);
+        }
+        if !node.group && (node.def == u.first || node.def == u.then) {
+            return (node.def == u.first, node.def == u.then, false, false);
+        }
+        let (mut open, mut clean, mut starts, mut found) = (false, true, false, false);
+        for (i, &item) in node.items.iter().enumerate() {
+            let name = match item {
+                Item::Def(n) | Item::Group(n) => n,
+                Item::Token(_) | Item::Prose(_) => continue,
+            };
+            if v.is_empty(i) {
+                continue;
+            }
+            // A nested depth breaks; a child that cannot hold a `first`, `then` or `unless` at
+            // this depth was not searched and holds nothing that breaks.
+            let (c_ends, c_starts, c_clean) = if matches!(name, "procedure body" | "graph pattern")
+            {
+                (false, false, false)
+            } else if self.id(item).is_some_and(|c| !u.reach.contains(c as usize)) {
+                (false, false, true)
+            } else {
+                let c = &v.children[i];
+                (c.has(u.ends), c.has(u.starts), c.has(u.clean))
+            };
+            found |= open && c_starts;
+            starts |= clean && c_starts;
+            open = c_ends || (open && c_clean);
+            clean = clean && c_clean;
+        }
+        (open, starts, clean, found)
+    }
+
+    /// A flanking rule's facts at one node, `[starts nt, ends nt, starts by, ends by]`, and
+    /// whether an `nt` here lacks a `by` on either side.
+    fn flanking(&self, u: &FlankUse, v: &View) -> ([bool; 4], bool) {
+        let node = v.node;
+        if !node.group && node.def == u.by {
+            return ([false, false, true, true], false);
+        }
+        if !node.group && node.def == u.nt {
+            return ([true, true, false, false], false);
+        }
+        let sides: Vec<[bool; 4]> = node
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &item)| match item {
+                Item::Def(_) | Item::Group(_) if v.is_empty(i) => None,
+                Item::Def(_) | Item::Group(_) => Some(u.facts.map(|f| v.children[i].has(f))),
+                Item::Token(_) | Item::Prose(_) => Some([false; 4]),
+            })
+            .collect();
+        let mut lacking = sides
+            .windows(2)
+            .any(|w| (w[0][1] && !w[1][2]) || (w[1][0] && !w[0][3]));
+        let first = sides.first().copied().unwrap_or([false; 4]);
+        let last = sides.last().copied().unwrap_or([false; 4]);
+        let facts = [first[0], last[1], first[2], last[3]];
+        // Nothing comes before or after the start's yield.
+        if !node.group && node.def == self.start {
+            lacking |= facts[0] || facts[1];
+        }
+        (facts, lacking)
+    }
+}
+
 impl Rule for ClaimRules {
     fn name(&self) -> &str {
         "conformance rules of unclaimed features"
@@ -1416,6 +1863,19 @@ impl Rule for ClaimRules {
 
     fn labels(&self) -> Vec<(Fact, String)> {
         self.labels.clone()
+    }
+
+    /// Flags, hits and phrase facts only enforce the rules: a production is not in a new
+    /// context for carrying them.
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn rejects(&self, node: &Node, inh: &State) -> bool {
+        !node.group
+            && self.hits.iter().any(|h| {
+                h.immediate && inh.has(h.flag) && self.nodes[h.alt].nt.as_deref() == Some(node.def)
+            })
     }
 
     fn down(&self, node: &Node, inh: &State, pos: usize, out: &mut State) {
@@ -1442,9 +1902,38 @@ impl Rule for ClaimRules {
                 out.set(u.scope, true);
             }
         }
+        // A juxtaposition is looked for at its owner's depth of graph pattern matching: not
+        // inside a nested procedure body or graph pattern.
+        let deeper = matches!(
+            item,
+            Item::Def("procedure body") | Item::Def("graph pattern")
+        );
+        for u in &self.juxta {
+            let emit = !node.group && node.def == u.owner;
+            // A `first`, `then` or `unless` is decided whole, without looking inside.
+            let unit = !node.group
+                && (node.def == u.first
+                    || node.def == u.then
+                    || u.unless.iter().any(|x| x == node.def));
+            if (emit || inh.has(u.scope)) && !unit && !deeper && u.reach.contains(child) {
+                out.set(u.scope, true);
+            }
+        }
+        for u in &self.flank {
+            let Some((owner, scope)) = &u.owner else {
+                continue;
+            };
+            let emit = !node.group && node.def == owner;
+            if (emit || inh.has(*scope)) && !deeper && u.reach.contains(child) {
+                out.set(*scope, true);
+            }
+        }
     }
 
     fn step(&self, node: &Node, inh: &State, children: &[State], mut syn: State) -> Option<State> {
+        if self.rejects(node, inh) {
+            return None;
+        }
         let v = View {
             node,
             children,
@@ -1535,11 +2024,70 @@ impl Rule for ClaimRules {
         {
             return None;
         }
-        if !self.required.is_empty() || !self.required_phrases.is_empty() {
-            let here = self
-                .required
-                .iter()
-                .any(|&p| self.matches(p, inh, &v, &found))
+
+        // Order rules: forbidden ones reject where they are found, required ones count as a
+        // match there.
+        let mut ordered = false;
+        for u in &self.juxta {
+            let in_scope = inh.has(u.scope);
+            let owner = !node.group && node.def == u.owner;
+            let (ends, starts, clean, here) = if in_scope || owner {
+                self.juxtaposition(u, &v)
+            } else {
+                Default::default()
+            };
+            if here {
+                if !u.required {
+                    return None;
+                }
+                ordered = true;
+            }
+            syn.set(u.ends, in_scope && ends);
+            syn.set(u.starts, in_scope && starts);
+            syn.set(u.clean, in_scope && clean);
+        }
+        for u in &self.flank {
+            // With an owner, only inside one; the owner decides what is at its own edges.
+            let (looked, owner_here) = match &u.owner {
+                Some((owner, scope)) => {
+                    let here = !node.group && node.def == owner;
+                    (inh.has(*scope) || here, here)
+                }
+                None => (true, false),
+            };
+            let (facts, mut lacking) = if looked {
+                self.flanking(u, &v)
+            } else {
+                Default::default()
+            };
+            if owner_here {
+                lacking |= facts[0] || facts[1];
+            }
+            if lacking {
+                if !u.required {
+                    return None;
+                }
+                ordered = true;
+            }
+            let keep = match &u.owner {
+                Some((_, scope)) => inh.has(*scope),
+                None => true,
+            };
+            for (f, on) in u.facts.iter().zip(facts) {
+                syn.set(*f, keep && on);
+            }
+        }
+
+        let any_required = !self.required.is_empty()
+            || !self.required_phrases.is_empty()
+            || self.juxta.iter().any(|u| u.required)
+            || self.flank.iter().any(|u| u.required);
+        if any_required {
+            let here = ordered
+                || self
+                    .required
+                    .iter()
+                    .any(|&p| self.matches(p, inh, &v, &found))
                 || self.required_phrases.iter().any(|&u| found[u]);
             let has = here || children.iter().any(|c| c.has(self.matched));
             if !node.group && node.def == self.start && !has {

@@ -4,8 +4,8 @@ use gql_proof::MatchModeDefault;
 use gql_proof::cfg::Cfg;
 use gql_proof::coverage::{Criteria, Target, describe_target};
 use gql_proof::features::{
-    CONFORMANCE_JSON, Claim, ClaimRules, Conformance, Negative, Pattern, Statement, collapse,
-    negative, witness,
+    CONFORMANCE_JSON, Claim, ClaimRules, Conformance, Forbidden, Negative, Pattern, Statement,
+    collapse, negative, witness,
 };
 use gql_proof::leaf::StubProvider;
 use gql_proof::purdom::{Analysis, Config, Generator, Length, Reason, TargetReason};
@@ -14,7 +14,7 @@ use gql_proof::tokens::{Grammar, Report};
 use gql_proof::verify::Verifier;
 use gql_proof::{ISO_BNF_XML, bnf, describe};
 use rayon::prelude::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
 use std::path::PathBuf;
 
@@ -123,6 +123,10 @@ struct PurdomArgs {
     /// Let CDRC and k-paths look inside token-level definitions.
     #[arg(long)]
     k_lexical: bool,
+    /// No packing: only the shortest tree for each target not covered yet, so one construct
+    /// an engine cannot handle hides little else. Covers CDRC unless `--k` is given.
+    #[arg(long)]
+    short: bool,
     /// Show lexical rules (identifiers, literals, ...) down to single characters.
     #[arg(long)]
     expand_lexical: bool,
@@ -281,15 +285,17 @@ fn purdom(args: PurdomArgs) -> Result<()> {
     }
     // What the grammar allows under every claim, to tell productions the claim excludes from
     // ones nothing allows.
-    let claimable = if args.rules == Rules::All && claim != Claim::parse("all", &conformance)? {
+    let everything = if args.rules == Rules::All && claim != Claim::parse("all", &conformance)? {
         let mut all = all_rules(id086);
         let devices = conformance.forbidden(&Claim::parse("all", &conformance)?);
         all.push(Box::new(ClaimRules::new(&base, start, &devices, &[])?));
-        let refined = refine(&base, &all, start)?;
-        Some(reachable_copies(&refined.cfg, refined.start))
+        Some(refine(&base, &all, start)?)
     } else {
         None
     };
+    let claimable = everything
+        .as_ref()
+        .map(|r| reachable_copies(&r.cfg, r.start));
     let refined = refine(&base, &rules, start)?;
     let (cfg, start) = (refined.cfg, refined.start);
     let analysis = Analysis::new(&cfg, &StubProvider);
@@ -305,8 +311,12 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         k: args.k,
         lexical: args.k_lexical,
     };
-    let outcome =
-        Generator::new(&analysis, config, StubProvider).run_with(start, &base, criteria)?;
+    let generator = Generator::new(&analysis, config, StubProvider);
+    let outcome = if args.short {
+        generator.run_short(start, &base, criteria)?
+    } else {
+        generator.run_with(start, &base, criteria)?
+    };
 
     // Nothing is printed unless every tree passes the independent checker.
     let mut failed = 0;
@@ -426,9 +436,18 @@ fn purdom(args: PurdomArgs) -> Result<()> {
     if !rules.is_empty() {
         writeln!(
             out,
-            "in context: {} of {} (each production in each state the syntax rules tell apart)",
-            outcome.covered.count_ones(..),
-            cfg.prods.len()
+            "in context: {} of {} (each production in each state the rules tell apart, bookkeeping states not counted)",
+            outcome
+                .covered
+                .ones()
+                .map(|p| cfg.prods[p].context)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            cfg.prods
+                .iter()
+                .map(|p| p.context)
+                .collect::<BTreeSet<_>>()
+                .len()
         )?;
     }
 
@@ -438,6 +457,13 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         let u = cfg.prods[p as usize].unrefined as usize;
         if !iso_covered[u] && iso_reason[u].is_none() {
             iso_reason[u] = Some(reason);
+        }
+    }
+    // What the plain grammar cannot reach is unreachable, whatever the rules did to the copies
+    // refinement keeps of it.
+    for u in 0..total {
+        if !iso_covered[u] && !base_reach[base.prod(u as u32).lhs as usize] {
+            iso_reason[u] = Some(Reason::Unreachable);
         }
     }
     let mut by_reason: BTreeMap<&str, Vec<String>> = BTreeMap::new();
@@ -514,11 +540,45 @@ fn purdom(args: PurdomArgs) -> Result<()> {
             "{}: covered {} of {}, {} targeted trees{reference}",
             report.kind, report.covered, report.total, report.trees
         )?;
+        // Targets no tree under this claim holds: outside the claim when one under every claim
+        // does.
+        let never: Vec<Target> = report
+            .uncovered
+            .iter()
+            .filter(|(_, r)| *r == TargetReason::Never)
+            .map(|(t, _)| t.clone())
+            .collect();
+        let outside: BTreeSet<&Target> = match &everything {
+            Some(all) if !never.is_empty() => {
+                let analysis = Analysis::new(&all.cfg, &StubProvider);
+                let config = Config {
+                    seed: args.seed,
+                    max_depth,
+                    length: args.length,
+                };
+                let generator = Generator::new(&analysis, config, StubProvider);
+                never
+                    .iter()
+                    .zip(generator.realizable(all.start, &never))
+                    .filter(|(_, ok)| *ok)
+                    .map(|(t, _)| {
+                        report
+                            .uncovered
+                            .iter()
+                            .map(|(u, _)| u)
+                            .find(|u| *u == t)
+                            .unwrap()
+                    })
+                    .collect()
+            }
+            _ => BTreeSet::new(),
+        };
         let mut by_reason: BTreeMap<String, Vec<&Target>> = BTreeMap::new();
         for (t, reason) in &report.uncovered {
             let key = match reason {
                 TargetReason::NeedsDepth => "needs a deeper tree".to_string(),
                 TargetReason::NeedsLength(_) => "needs a longer sentence".to_string(),
+                TargetReason::Never if outside.contains(t) => "outside the claim".to_string(),
                 TargetReason::Never => "in no tree the grammar and its rules allow".to_string(),
                 TargetReason::FixedToken => "inside a token the leaf provider fixes".to_string(),
             };
@@ -553,9 +613,40 @@ fn purdom(args: PurdomArgs) -> Result<()> {
             forbidden.len(),
             unenforced.len()
         )?;
+        write_claim_notes(&mut out, &forbidden)?;
     }
     writeln!(out)?;
     write_report(&mut out, &report)?;
+    Ok(())
+}
+
+/// The deviations a claim states and the readings its rules in force rely on.
+fn write_claim_notes(out: &mut impl Write, forbidden: &[Forbidden]) -> io::Result<()> {
+    let deviations: Vec<&str> = forbidden
+        .iter()
+        .filter_map(|f| f.label.strip_prefix("deviation "))
+        .collect();
+    if !deviations.is_empty() {
+        writeln!(
+            out,
+            "deviations, mandatory syntax left out: {}",
+            deviations.join(", ")
+        )?;
+    }
+    let readings: Vec<String> = forbidden
+        .iter()
+        .flat_map(|f| f.readings.iter().map(move |r| format!("{}: {r}", f.label)))
+        .collect();
+    if !readings.is_empty() {
+        writeln!(
+            out,
+            "rules in force read through single-item rules: {}",
+            readings.len()
+        )?;
+        for r in readings {
+            writeln!(out, "  {r}")?;
+        }
+    }
     Ok(())
 }
 
@@ -669,6 +760,7 @@ fn negatives(args: NegativesArgs) -> Result<()> {
             "claim: {} features, negatives: {made} for {tried} patterns of unclaimed features",
             claim.features.len()
         )?;
+        write_claim_notes(&mut out, &conformance.forbidden(&claim))?;
         if !without.is_empty() {
             writeln!(
                 out,
@@ -710,7 +802,10 @@ fn features(args: FeaturesArgs) -> Result<()> {
     let patterns: Vec<Pattern> = forbidden.iter().flat_map(|f| f.patterns.clone()).collect();
     let (_, notes) = collapse(&base, start, &patterns)?;
     // Compiling checks every name against the grammar.
-    ClaimRules::new(&base, start, &forbidden, &[])?;
+    let compiled = ClaimRules::new(&base, start, &forbidden, &[])?;
+    for s in compiled.order_scopes() {
+        writeln!(out, "order rule {s}")?;
+    }
     writeln!(
         out,
         "claim {}: {} features after table 10, {} rules in force, all names resolve in the grammar",
@@ -722,6 +817,28 @@ fn features(args: FeaturesArgs) -> Result<()> {
         writeln!(out, "rules that forbid a whole definition: {}", notes.len())?;
         for n in &notes {
             writeln!(out, "  {n}")?;
+        }
+    }
+    // Readings: "immediately contains" that can match nothing as written, read through
+    // single-item rules, for every claim.
+    let read: Vec<&Statement> = conformance
+        .statements
+        .iter()
+        .filter(|s| !s.readings.is_empty() || !s.vacuous.is_empty())
+        .collect();
+    if !read.is_empty() {
+        writeln!(
+            out,
+            "rules read through single-item rules, since as written they match nothing: {}",
+            read.len()
+        )?;
+        for s in read {
+            for r in &s.readings {
+                writeln!(out, "  {}: {r}", s.cite())?;
+            }
+            for v in &s.vacuous {
+                writeln!(out, "  {}: left as written, {v}", s.cite())?;
+            }
         }
     }
     // Every pattern should match some tree; one that cannot is a rule no query breaks as

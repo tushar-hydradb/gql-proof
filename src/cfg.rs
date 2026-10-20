@@ -65,6 +65,10 @@ pub struct Production {
     pub occ: Vec<OccId>,
     /// The unrefined production this one specializes; itself unless refined.
     pub unrefined: ProdId,
+    /// Productions with one context are one production in one state the rules tell apart,
+    /// and count once for coverage; refinement for bookkeeping alone does not split them.
+    /// Its own id unless refined.
+    pub context: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -204,6 +208,7 @@ impl Cfg {
             rhs,
             occ,
             unrefined: id,
+            context: id,
         });
         self.nts[lhs as usize].prods.push(id);
     }
