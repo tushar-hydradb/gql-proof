@@ -1,5 +1,7 @@
 //! Fills definitions the standard gives only in prose ("!! See the Syntax Rules"). This is the
 //! seam the context provider will plug into later; for now it hands out fixed stubs.
+//!
+//! Nothing here is trusted: `verify` checks every leaf against its Syntax Rule.
 
 use rand_chacha::ChaCha8Rng;
 
@@ -8,11 +10,19 @@ pub trait LeafProvider {
     /// fill are excluded from generation and reported, instead of printing a placeholder.
     fn supports(&self, name: &str) -> bool;
 
-    fn leaf(&mut self, name: &str, rng: &mut ChaCha8Rng) -> String;
+    /// Text for the prose leaf `name`. `ctx` holds the ISO definitions above it, innermost
+    /// last.
+    fn leaf(&mut self, name: &str, ctx: &[&str], rng: &mut ChaCha8Rng) -> String;
+
+    /// A fixed token for definition `name`, for tokens whose contents the Syntax Rules
+    /// constrain beyond the BNF. The generator derives that exact text instead of choosing.
+    fn token(&self, _name: &str) -> Option<&str> {
+        None
+    }
 }
 
-/// One fixed stub per prose definition, each checked against the Syntax Rule that defines it
-/// (ISO/IEC 39075:2024, clause and rule noted per entry).
+/// One fixed stub per prose definition, each citing the Syntax Rule that defines it
+/// (ISO/IEC 39075:2024).
 #[derive(Debug, Default)]
 pub struct StubProvider;
 
@@ -47,7 +57,6 @@ impl StubProvider {
             "external object reference" => "urn:example:graph",
             // 8.2 SR 3: Format and Syntax Rules are implementation-defined (IE002), so there is
             // nothing portable to generate.
-            "implementation-defined access mode" => return None,
             _ => return None,
         })
     }
@@ -58,9 +67,27 @@ impl LeafProvider for StubProvider {
         Self::stub(name).is_some()
     }
 
-    fn leaf(&mut self, name: &str, _rng: &mut ChaCha8Rng) -> String {
+    fn leaf(&mut self, name: &str, ctx: &[&str], _rng: &mut ChaCha8Rng) -> String {
+        // 21.2 SR 57: a separator inside a byte string literal contains a newline. Every
+        // separator element then does: simple comments end in one, the rest are these.
+        let in_byte_string = ctx.contains(&"byte string literal");
+        if in_byte_string && matches!(name, "whitespace" | "bracketed comment contents") {
+            return "\n".to_string();
+        }
         Self::stub(name)
             .unwrap_or_else(|| panic!("no stub for <{name}>"))
             .to_string()
+    }
+
+    fn token(&self, name: &str) -> Option<&str> {
+        // 21.2 SR 59, 61, 62, 64, 68: these strings hold iso 8601 values.
+        Some(match name {
+            "date string" => "'2024-01-01'",
+            "time string" => "'12:00:00'",
+            "datetime string" => "'2024-01-01T12:00:00'",
+            "time zone string" => "'+00:00'",
+            "duration string" => "'P1Y2M'",
+            _ => return None,
+        })
     }
 }

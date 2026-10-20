@@ -1,6 +1,7 @@
 //! Derivation trees and their printers.
 
 use crate::cfg::{Cfg, Lit, ProdId, Sym};
+use crate::verify::Plain;
 
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -13,6 +14,28 @@ pub struct Node {
 }
 
 impl Node {
+    /// The tree as names and text, for the independent checker in `verify`.
+    pub fn export(&self, cfg: &Cfg) -> Plain {
+        match self.sym {
+            Sym::Nt(nt) => Plain::Def {
+                name: cfg.name(nt).to_string(),
+                synthetic: cfg.nts[nt as usize].synthetic,
+                children: self.children.iter().map(|c| c.export(cfg)).collect(),
+            },
+            Sym::Lit(l) => {
+                let text = self.text.clone().unwrap_or_default();
+                match &cfg.lits[l as usize] {
+                    Lit::Kw(_) => Plain::Kw(text),
+                    Lit::Term(_) => Plain::Term(text),
+                    Lit::Opaque(def) => Plain::Leaf {
+                        def: def.clone(),
+                        text,
+                    },
+                }
+            }
+        }
+    }
+
     /// Leaves have height 0, a nonterminal is one above its tallest child.
     pub fn height(&self) -> u32 {
         match self.sym {

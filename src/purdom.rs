@@ -78,6 +78,13 @@ pub struct Generator<'g, L> {
     memo: Vec<(u32, Option<u32>)>,
     generation: u32,
     budget: usize,
+    /// Fixed subtrees for definitions whose token the provider fixes, with the productions
+    /// each uses.
+    templates: Vec<Option<(Node, Vec<ProdId>)>>,
+    fixed_height: Vec<Option<u32>>,
+    template_errors: Vec<String>,
+    /// The ISO definitions above the node being expanded, for leaf context.
+    ctx: Vec<NtId>,
 }
 
 impl<'g, L: LeafProvider> Generator<'g, L> {
@@ -97,8 +104,49 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
                 })
             })
             .collect();
-        let (nt_height, prod_height) = min_heights(cfg, &fillable);
-        let (nt_len, prod_len) = min_lens(cfg, &fillable);
+        // Tokens the provider fixes are derived once, through the grammar, so the result is an
+        // ordinary derivation tree the verifier can check.
+        let mut templates = vec![None; cfg.nts.len()];
+        let mut template_errors = Vec::new();
+        for (nt, info) in cfg.nts.iter().enumerate() {
+            let Some(text) = leaf.token(&info.name).filter(|_| !info.synthetic) else {
+                continue;
+            };
+            let chars: Vec<char> = text.chars().collect();
+            let whole = derive(cfg, &fillable, nt as NtId, &chars, 0, 0)
+                .into_iter()
+                .find(|(_, end)| *end == chars.len());
+            match whole {
+                Some((node, _)) => {
+                    let mut prods = Vec::new();
+                    node.prods(&mut prods);
+                    templates[nt] = Some((node, prods));
+                }
+                None => {
+                    template_errors.push(format!("{text:?} does not derive from <{}>", info.name))
+                }
+            }
+        }
+        let fixed_height: Vec<Option<u32>> = templates
+            .iter()
+            .map(|t| t.as_ref().map(|(node, _)| node.height()))
+            .collect();
+        let fixed_len: Vec<Option<u32>> = templates
+            .iter()
+            .map(|t| t.as_ref().map(|(node, _)| leaves(node)))
+            .collect();
+        let (nt_height, mut prod_height) = min_heights(cfg, &fillable, &fixed_height);
+        let (nt_len, mut prod_len) = min_lens(cfg, &fillable, &fixed_len);
+        // A fixed token is only ever its template: its root production costs what the
+        // template costs, and its other productions are never chosen.
+        for (nt, template) in templates.iter().enumerate() {
+            let Some((node, _)) = template else { continue };
+            for &p in &cfg.nts[nt].prods {
+                let used = node.prod == Some(p);
+                prod_height[p as usize] = if used { node.height() } else { INF };
+                prod_len[p as usize] = if used { leaves(node) } else { INF };
+            }
+        }
         let mut unused = FixedBitSet::with_capacity(cfg.prods.len());
         unused.insert_range(..);
         let slots = cfg.nts.len() * (config.max_depth as usize + 1);
@@ -115,6 +163,10 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
             memo: vec![(0, None); slots],
             generation: 1,
             budget: 0,
+            templates,
+            fixed_height,
+            template_errors,
+            ctx: Vec::new(),
         }
     }
 
@@ -123,6 +175,9 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
     }
 
     pub fn run(mut self, start: NtId) -> Result<Outcome> {
+        if !self.template_errors.is_empty() {
+            bail!("fixed tokens: {}", self.template_errors.join(", "));
+        }
         let need = self.nt_height[start as usize];
         if need > self.config.max_depth {
             bail!(
@@ -158,6 +213,11 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
         if r == 0 {
             return None;
         }
+        if let Some((node, prods)) = &self.templates[nt as usize] {
+            let fits = node.height() <= r;
+            let new = prods.iter().any(|&p| self.unused.contains(p as usize));
+            return (fits && new).then_some(self.nt_len[nt as usize]);
+        }
         let slot = nt as usize * (self.config.max_depth as usize + 1) + r as usize;
         if self.memo[slot].0 == self.generation {
             return self.memo[slot].1;
@@ -192,6 +252,34 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
     }
 
     fn expand(&mut self, nt: NtId, r: u32) -> Node {
+        if let Some((node, prods)) = &self.templates[nt as usize] {
+            let node = node.clone();
+            for p in prods.clone() {
+                self.mark_used(p);
+            }
+            return node;
+        }
+        let real = !self.cfg.nts[nt as usize].synthetic;
+        if real {
+            self.ctx.push(nt);
+        }
+        let node = self.expand_free(nt, r);
+        if real {
+            self.ctx.pop();
+        }
+        node
+    }
+
+    fn mark_used(&mut self, p: ProdId) {
+        if self.unused.contains(p as usize) {
+            self.unused.set(p as usize, false);
+            self.generation += 1;
+            // Fallback expansions can also use something new; that still counts.
+            self.budget = self.budget.saturating_sub(1);
+        }
+    }
+
+    fn expand_free(&mut self, nt: NtId, r: u32) -> Node {
         let cfg = self.cfg;
         let fitting: Vec<ProdId> = cfg.nts[nt as usize]
             .prods
@@ -218,12 +306,7 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
                     .expect("caller checked a production fits")
             }
         };
-        if self.unused.contains(p as usize) {
-            self.unused.set(p as usize, false);
-            self.generation += 1;
-            // Fallback expansions can also use something new; that still counts.
-            self.budget = self.budget.saturating_sub(1);
-        }
+        self.mark_used(p);
         let children = cfg.prods[p as usize]
             .rhs
             .iter()
@@ -255,7 +338,10 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
         let text = match &self.cfg.lits[l as usize] {
             Lit::Kw(k) => k.clone(),
             Lit::Term(t) => t.clone(),
-            Lit::Opaque(name) => self.leaf.leaf(name, &mut self.rng),
+            Lit::Opaque(name) => {
+                let ctx: Vec<&str> = self.ctx.iter().map(|&nt| self.cfg.name(nt)).collect();
+                self.leaf.leaf(name, &ctx, &mut self.rng)
+            }
         };
         Node {
             sym: Sym::Lit(l),
@@ -270,7 +356,8 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
         for nt in self.cfg.reachable(start) {
             reachable[nt as usize] = true;
         }
-        let (_, unrestricted) = min_heights(self.cfg, &vec![true; self.cfg.prods.len()]);
+        let all = vec![true; self.cfg.prods.len()];
+        let (_, unrestricted) = min_heights(self.cfg, &all, &self.fixed_height);
         self.unused
             .ones()
             .map(|p| {
@@ -298,6 +385,11 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
         while changed {
             changed = false;
             for prod in &cfg.prods {
+                // A templated definition only ever yields its template, never a path to
+                // anything else.
+                if self.templates[prod.lhs as usize].is_some() {
+                    continue;
+                }
                 for (i, sym) in prod.rhs.iter().enumerate() {
                     let Sym::Nt(child) = *sym else { continue };
                     let via = best[child as usize];
@@ -332,8 +424,8 @@ fn min_opt(a: Option<u32>, b: Option<u32>) -> Option<u32> {
 
 /// Minimum derivation height per nonterminal and per production. A literal is 0, a
 /// production is one above its tallest child, so an empty rhs is 1.
-fn min_heights(cfg: &Cfg, fillable: &[bool]) -> (Vec<u32>, Vec<u32>) {
-    fixpoint(cfg, fillable, |rhs, nt| {
+fn min_heights(cfg: &Cfg, fillable: &[bool], fixed: &[Option<u32>]) -> (Vec<u32>, Vec<u32>) {
+    fixpoint(cfg, fillable, fixed, |rhs, nt| {
         rhs.iter()
             .map(|sym| match *sym {
                 Sym::Lit(_) => 0,
@@ -346,8 +438,8 @@ fn min_heights(cfg: &Cfg, fillable: &[bool]) -> (Vec<u32>, Vec<u32>) {
 }
 
 /// Shortest yield length per nonterminal and per production, counting each literal as 1.
-fn min_lens(cfg: &Cfg, fillable: &[bool]) -> (Vec<u32>, Vec<u32>) {
-    fixpoint(cfg, fillable, |rhs, nt| {
+fn min_lens(cfg: &Cfg, fillable: &[bool], fixed: &[Option<u32>]) -> (Vec<u32>, Vec<u32>) {
+    fixpoint(cfg, fillable, fixed, |rhs, nt| {
         rhs.iter()
             .map(|sym| match *sym {
                 Sym::Lit(_) => 1,
@@ -358,13 +450,15 @@ fn min_lens(cfg: &Cfg, fillable: &[bool]) -> (Vec<u32>, Vec<u32>) {
 }
 
 /// Least fixed point of `measure` over all productions, with a nonterminal taking the best
-/// of its productions. `INF` marks "no finite derivation yet" and must stay absorbing.
+/// of its productions, or its `fixed` value when it has one. `INF` marks "no finite
+/// derivation yet" and must stay absorbing.
 fn fixpoint(
     cfg: &Cfg,
     fillable: &[bool],
+    fixed: &[Option<u32>],
     measure: impl Fn(&[Sym], &[u32]) -> u32,
 ) -> (Vec<u32>, Vec<u32>) {
-    let mut nt = vec![INF; cfg.nts.len()];
+    let mut nt: Vec<u32> = fixed.iter().map(|f| f.unwrap_or(INF)).collect();
     let mut prod = vec![INF; cfg.prods.len()];
     let mut changed = true;
     while changed {
@@ -377,10 +471,99 @@ fn fixpoint(
             if value < prod[p] {
                 prod[p] = value;
                 let lhs = production.lhs as usize;
-                nt[lhs] = nt[lhs].min(value);
+                if fixed[lhs].is_none() {
+                    nt[lhs] = nt[lhs].min(value);
+                }
                 changed = true;
             }
         }
     }
     (nt, prod)
+}
+
+fn leaves(node: &Node) -> u32 {
+    match node.sym {
+        Sym::Lit(_) => 1,
+        Sym::Nt(_) => node.children.iter().map(leaves).sum(),
+    }
+}
+
+/// Every derivation of `nt` matching a prefix of `text[i..]`, with where each ends. Keywords
+/// and terminals match their text, a prose leaf takes one character (the verifier checks it
+/// against its rule). Used only for the short, fixed tokens a `LeafProvider` asks for.
+fn derive(
+    cfg: &Cfg,
+    fillable: &[bool],
+    nt: NtId,
+    text: &[char],
+    i: usize,
+    depth: u32,
+) -> Vec<(Node, usize)> {
+    if depth > 4 * text.len() as u32 + 16 {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for &p in &cfg.nts[nt as usize].prods {
+        if !fillable[p as usize] {
+            continue;
+        }
+        for (children, end) in derive_seq(cfg, fillable, &cfg.prods[p as usize].rhs, text, i, depth)
+        {
+            out.push((
+                Node {
+                    sym: Sym::Nt(nt),
+                    prod: Some(p),
+                    text: None,
+                    children,
+                },
+                end,
+            ));
+        }
+    }
+    out
+}
+
+fn derive_seq(
+    cfg: &Cfg,
+    fillable: &[bool],
+    rhs: &[Sym],
+    text: &[char],
+    i: usize,
+    depth: u32,
+) -> Vec<(Vec<Node>, usize)> {
+    let Some((&head, tail)) = rhs.split_first() else {
+        return vec![(Vec::new(), i)];
+    };
+    let firsts: Vec<(Node, usize)> = match head {
+        Sym::Nt(child) => derive(cfg, fillable, child, text, i, depth + 1),
+        Sym::Lit(l) => {
+            let want: Option<String> = match &cfg.lits[l as usize] {
+                Lit::Kw(t) | Lit::Term(t) => Some(t.clone()),
+                Lit::Opaque(_) => text.get(i).map(|c| c.to_string()),
+            };
+            match want {
+                Some(t) if text[i..].starts_with(&t.chars().collect::<Vec<_>>()) => {
+                    let end = i + t.chars().count();
+                    vec![(
+                        Node {
+                            sym: head,
+                            prod: None,
+                            text: Some(t),
+                            children: Vec::new(),
+                        },
+                        end,
+                    )]
+                }
+                _ => Vec::new(),
+            }
+        }
+    };
+    let mut out = Vec::new();
+    for (first, mid) in firsts {
+        for (mut rest, end) in derive_seq(cfg, fillable, tail, text, mid, depth) {
+            rest.insert(0, first.clone());
+            out.push((rest, end));
+        }
+    }
+    out
 }

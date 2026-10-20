@@ -2,11 +2,14 @@ use gql_proof::bnf::{self, Ebnf};
 use gql_proof::cfg::Cfg;
 use gql_proof::leaf::StubProvider;
 use gql_proof::purdom::{Config, Generator, Outcome, Reason};
+use gql_proof::tokens::Grammar;
+use gql_proof::verify::Verifier;
 use gql_proof::{ISO_BNF_XML, describe};
 use proptest::prelude::*;
 use std::sync::LazyLock;
 
-static ISO: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&bnf::parse(ISO_BNF_XML).unwrap()));
+static ISO_BNF: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
+static ISO: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO_BNF));
 
 fn run(cfg: &Cfg, start: &str, seed: u64, max_depth: u32, max_new: Option<usize>) -> Outcome {
     let config = Config {
@@ -166,9 +169,12 @@ proptest! {
         max_new in proptest::option::of(1usize..50),
     ) {
         let cfg = &*ISO;
+        let verifier = Verifier::new(Grammar::new(&ISO_BNF));
         let outcome = run(cfg, "GQL-program", seed, max_depth, max_new);
         for t in &outcome.trees {
             prop_assert!(t.root.validate(cfg).is_ok());
+            let violations = verifier.verify(&t.root.export(cfg), &t.root.render(cfg));
+            prop_assert!(violations.is_empty(), "{:?}", violations);
             prop_assert!(t.root.height() <= max_depth);
             prop_assert!(t.new > 0);
         }
