@@ -2,25 +2,26 @@
 //!
 //! Some Syntax Rules are not about binding or typing at all: they forbid combinations a
 //! context-free grammar could rule out but ISO chose to state in prose. Each one here is a
-//! deterministic bottom-up tree automaton over derivation trees: a node's state is computed
-//! from its children's, and a rule may reject a node outright. The derivation trees of a
-//! context-free grammar intersected with a tree automaton are again the derivation trees of a
-//! context-free grammar, so `refine` builds that grammar: one copy of each nonterminal per
-//! reachable state, one production per combination of child states the rules accept. The
-//! generator runs on it unchanged and every query it builds satisfies the rules by
-//! construction.
+//! deterministic tree automaton over derivation trees with two passes: an inherited state
+//! flows from a node to its children, and a synthesized state from its children to it. A rule
+//! may reject a node outright. The derivation trees of a context-free grammar intersected with
+//! such an automaton are again the derivation trees of a context-free grammar, so `refine`
+//! builds that grammar: one copy of each nonterminal per reachable pair of states, one
+//! production per combination of child states the rules accept. The generator runs on it
+//! unchanged and every query it builds satisfies the rules by construction.
 //!
 //! Nothing here is trusted. `verify` checks each rule again, directly from its text, and a
 //! test makes the two agree.
 //!
-//! States are bitsets. Each rule owns some bits: producer nodes set them, consumer nodes read
-//! and clear them, so nothing leaks past the construct it belongs to. A grouping node from
-//! desugaring has the union of its children's state.
+//! A state is a set of facts. Each rule owns some facts: producer nodes add them, consumer
+//! nodes read and remove them, so nothing leaks past the construct it belongs to. A grouping
+//! node from desugaring is stepped too, with `Node::group` set; rules that do not care about
+//! groups pass its children's union through.
 //!
 //! Reading: 16.4 SR 6 and 14 say "contain", which in ISO is transitive and would let an outer
 //! graph pattern's rules reach into subqueries nested in it. We read them per depth of graph
 //! pattern matching (the notion 16.4 SR 2 introduces), so each `<graph pattern>` checks and
-//! clears its own bits. 13.1 SR 5 is read along the statement sequence, see
+//! clears its own facts. 13.1 SR 5 is read along the statement sequence, see
 //! `DataModifyingModifies`.
 
 use crate::MatchModeDefault;
@@ -29,20 +30,92 @@ use crate::verify::Plain;
 use anyhow::{Result, bail};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub type State = u32;
+/// A fact a rule tracks about a subtree or its context.
+pub type Fact = u32;
 
-pub trait Rule {
-    fn name(&self) -> &'static str;
-    fn cite(&self) -> &'static str;
-    /// The bits this rule owns, with a label for naming refined nonterminals.
-    fn bits(&self) -> &'static [(State, &'static str)];
-    /// The state of a node of ISO definition `def` whose production's right hand side reads
-    /// `rhs` (definitions by name, keywords and terminals by text) and whose children's states
-    /// union to `state`. `None` rejects the node.
-    fn step(&self, def: &str, rhs: &[&str], state: State) -> Option<State>;
+/// A set of facts.
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct State(BTreeSet<Fact>);
+
+impl State {
+    pub fn has(&self, f: Fact) -> bool {
+        self.0.contains(&f)
+    }
+
+    pub fn with(mut self, f: Fact) -> State {
+        self.0.insert(f);
+        self
+    }
+
+    pub fn without(mut self, f: Fact) -> State {
+        self.0.remove(&f);
+        self
+    }
+
+    pub fn without_all(mut self, fs: &[Fact]) -> State {
+        for f in fs {
+            self.0.remove(f);
+        }
+        self
+    }
+
+    pub fn set(&mut self, f: Fact, on: bool) {
+        if on {
+            self.0.insert(f);
+        } else {
+            self.0.remove(&f);
+        }
+    }
+
+    pub fn union(&self, other: &State) -> State {
+        State(self.0.union(&other.0).copied().collect())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn facts(&self) -> impl Iterator<Item = Fact> + '_ {
+        self.0.iter().copied()
+    }
 }
 
-/// Every rule, in the order they apply.
+/// One right hand side position, as the rules see it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Item<'a> {
+    /// A reference to an ISO definition, by name.
+    Def(&'a str),
+    /// A desugaring group, by its synthetic name.
+    Group(&'a str),
+    /// A keyword or terminal, by its text.
+    Token(&'a str),
+    /// A prose leaf of the named definition.
+    Prose(&'a str),
+}
+
+/// The node a rule is asked about: an ISO definition or a desugaring group, and its right
+/// hand side.
+#[derive(Debug, Clone, Copy)]
+pub struct Node<'a> {
+    pub def: &'a str,
+    pub group: bool,
+    pub items: &'a [Item<'a>],
+}
+
+pub trait Rule {
+    fn name(&self) -> &str;
+    fn cite(&self) -> &str;
+    /// The facts this rule owns, with a label for naming refined nonterminals.
+    fn labels(&self) -> Vec<(Fact, String)>;
+    /// Adds to `out` the inherited facts of the child at `pos`, given this node's.
+    fn down(&self, _node: &Node, _inh: &State, _pos: usize, _out: &mut State) {}
+    /// The synthesized state of `node`, from its inherited state, each position's synthesized
+    /// state (empty for tokens) and `syn`: the union of those, as earlier rules left it.
+    /// `None` rejects the node.
+    fn step(&self, node: &Node, inh: &State, children: &[State], syn: State) -> Option<State>;
+}
+
+/// Every syntax rule, in the order they apply.
 pub fn all_rules(id086: MatchModeDefault) -> Vec<Box<dyn Rule>> {
     vec![
         Box::new(UnboundedNeedsGuard { id086 }),
@@ -51,32 +124,48 @@ pub fn all_rules(id086: MatchModeDefault) -> Vec<Box<dyn Rule>> {
     ]
 }
 
+/// Facts at or above this are free for rules built at run time, such as feature claims.
+pub const FIRST_FREE_FACT: Fact = 12;
+
 /// 16.4 SR 14: every unbounded quantifier needs a guard.
 pub struct UnboundedNeedsGuard {
     pub id086: MatchModeDefault,
 }
 
-const UNGUARDED: State = 1 << 0;
-const UPPER: State = 1 << 1;
-const RESTRICTIVE: State = 1 << 2;
-const SELECTIVE: State = 1 << 3;
-const PREFIX_GUARDS: State = 1 << 4;
-const KEEP_GUARDS: State = 1 << 5;
-const DIFFERENT: State = 1 << 6;
-const MATCH_MODE: State = 1 << 7;
-const SR14: State = (1 << 8) - 1;
+const UNGUARDED: Fact = 0;
+const UPPER: Fact = 1;
+const RESTRICTIVE: Fact = 2;
+const SELECTIVE: Fact = 3;
+const PREFIX_GUARDS: Fact = 4;
+const KEEP_GUARDS: Fact = 5;
+const DIFFERENT: Fact = 6;
+const MATCH_MODE: Fact = 7;
+const SR14: [Fact; 8] = [
+    UNGUARDED,
+    UPPER,
+    RESTRICTIVE,
+    SELECTIVE,
+    PREFIX_GUARDS,
+    KEEP_GUARDS,
+    DIFFERENT,
+    MATCH_MODE,
+];
+
+fn labels(facts: &[(Fact, &str)]) -> Vec<(Fact, String)> {
+    facts.iter().map(|&(f, l)| (f, l.to_string())).collect()
+}
 
 impl Rule for UnboundedNeedsGuard {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "unbounded quantifier needs a guard"
     }
 
-    fn cite(&self) -> &'static str {
+    fn cite(&self) -> &str {
         "16.4 SR 14: an unbounded quantifier is bounded, inside a restrictive path mode, inside a selective path pattern, or under DIFFERENT EDGES"
     }
 
-    fn bits(&self) -> &'static [(State, &'static str)] {
-        &[
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[
             (UNGUARDED, "unguarded"),
             (UPPER, "upper"),
             (RESTRICTIVE, "restrictive"),
@@ -85,48 +174,61 @@ impl Rule for UnboundedNeedsGuard {
             (KEEP_GUARDS, "keep-guards"),
             (DIFFERENT, "different"),
             (MATCH_MODE, "match-mode"),
-        ]
+        ])
     }
 
-    fn step(&self, def: &str, rhs: &[&str], s: State) -> Option<State> {
-        Some(match def {
-            "upper bound" => s | UPPER,
-            "general quantifier" if s & UPPER == 0 => s | UNGUARDED,
-            "general quantifier" => s & !UPPER,
-            "graph pattern quantifier" if matches!(rhs, ["asterisk"] | ["plus sign"]) => {
-                s | UNGUARDED
+    fn step(&self, node: &Node, _inh: &State, _children: &[State], s: State) -> Option<State> {
+        if node.group {
+            return Some(s);
+        }
+        let rhs = node.items;
+        Some(match node.def {
+            "upper bound" => s.with(UPPER),
+            "general quantifier" if !s.has(UPPER) => s.with(UNGUARDED),
+            "general quantifier" => s.without(UPPER),
+            "graph pattern quantifier"
+                if matches!(rhs, [Item::Def("asterisk")] | [Item::Def("plus sign")]) =>
+            {
+                s.with(UNGUARDED)
             }
-            "path mode" if matches!(rhs, ["TRAIL"] | ["SIMPLE"] | ["ACYCLIC"]) => s | RESTRICTIVE,
+            "path mode"
+                if matches!(
+                    rhs,
+                    [Item::Token("TRAIL")] | [Item::Token("SIMPLE")] | [Item::Token("ACYCLIC")]
+                ) =>
+            {
+                s.with(RESTRICTIVE)
+            }
             "path search prefix" => {
-                let selective = if rhs == ["all path search"] {
-                    0
+                let s = if rhs == [Item::Def("all path search")] {
+                    s
                 } else {
-                    SELECTIVE
+                    s.with(SELECTIVE)
                 };
-                guards(s | selective)
+                guards(s)
             }
             "path mode prefix" => guards(s),
             // SR 7 puts every prefix's path mode in parentheses around its expression, so a
             // guarding prefix guards everything under it.
             "parenthesized path pattern expression" | "path pattern" => {
-                let s = if s & PREFIX_GUARDS != 0 {
-                    s & !UNGUARDED
+                let s = if s.has(PREFIX_GUARDS) {
+                    s.without(UNGUARDED)
                 } else {
                     s
                 };
-                s & !PREFIX_GUARDS
+                s.without(PREFIX_GUARDS)
             }
             // SR 6 applies the KEEP prefix to every path pattern of this graph pattern.
-            "keep clause" if s & PREFIX_GUARDS != 0 => (s & !PREFIX_GUARDS) | KEEP_GUARDS,
-            "different edges match mode" => s | DIFFERENT,
-            "match mode" => s | MATCH_MODE,
+            "keep clause" if s.has(PREFIX_GUARDS) => s.without(PREFIX_GUARDS).with(KEEP_GUARDS),
+            "different edges match mode" => s.with(DIFFERENT),
+            "match mode" => s.with(MATCH_MODE),
             "graph pattern" => {
-                let default = s & MATCH_MODE == 0 && self.id086 == MatchModeDefault::DifferentEdges;
-                let guarded = s & (DIFFERENT | KEEP_GUARDS) != 0 || default;
-                if s & UNGUARDED != 0 && !guarded {
+                let default = !s.has(MATCH_MODE) && self.id086 == MatchModeDefault::DifferentEdges;
+                let guarded = s.has(DIFFERENT) || s.has(KEEP_GUARDS) || default;
+                if s.has(UNGUARDED) && !guarded {
                     return None;
                 }
-                s & !SR14
+                s.without_all(&SR14)
             }
             _ => s,
         })
@@ -135,50 +237,51 @@ impl Rule for UnboundedNeedsGuard {
 
 /// A path mode or search prefix that guards: restrictive or selective.
 fn guards(s: State) -> State {
-    let guard = if s & (RESTRICTIVE | SELECTIVE) != 0 {
-        PREFIX_GUARDS
-    } else {
-        0
-    };
-    (s & !(RESTRICTIVE | SELECTIVE)) | guard
+    let guard = s.has(RESTRICTIVE) || s.has(SELECTIVE);
+    let mut s = s.without(RESTRICTIVE).without(SELECTIVE);
+    s.set(PREFIX_GUARDS, guard);
+    s
 }
 
 /// 16.4 SR 6: with a KEEP clause, no path pattern has its own path search prefix.
 pub struct KeepWithoutSearch;
 
-const SEARCH_HERE: State = 1 << 8;
-const PATTERN_SEARCH: State = 1 << 9;
-const KEEP: State = 1 << 10;
-const SR6: State = SEARCH_HERE | PATTERN_SEARCH | KEEP;
+const SEARCH_HERE: Fact = 8;
+const PATTERN_SEARCH: Fact = 9;
+const KEEP: Fact = 10;
+const SR6: [Fact; 3] = [SEARCH_HERE, PATTERN_SEARCH, KEEP];
 
 impl Rule for KeepWithoutSearch {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "no search prefix under KEEP"
     }
 
-    fn cite(&self) -> &'static str {
+    fn cite(&self) -> &str {
         "16.4 SR 6: with a <keep clause>, no <path pattern> contains a <path search prefix>"
     }
 
-    fn bits(&self) -> &'static [(State, &'static str)] {
-        &[
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[
             (SEARCH_HERE, "search-here"),
             (PATTERN_SEARCH, "pattern-search"),
             (KEEP, "keep"),
-        ]
+        ])
     }
 
-    fn step(&self, def: &str, _rhs: &[&str], s: State) -> Option<State> {
-        Some(match def {
-            "path search prefix" => s | SEARCH_HERE,
-            "path pattern" if s & SEARCH_HERE != 0 => (s & !SEARCH_HERE) | PATTERN_SEARCH,
+    fn step(&self, node: &Node, _inh: &State, _children: &[State], s: State) -> Option<State> {
+        if node.group {
+            return Some(s);
+        }
+        Some(match node.def {
+            "path search prefix" => s.with(SEARCH_HERE),
+            "path pattern" if s.has(SEARCH_HERE) => s.without(SEARCH_HERE).with(PATTERN_SEARCH),
             // The KEEP clause's own prefix is the one allowed search prefix.
-            "keep clause" => (s & !SEARCH_HERE) | KEEP,
+            "keep clause" => s.without(SEARCH_HERE).with(KEEP),
             "graph pattern" => {
-                if s & KEEP != 0 && s & PATTERN_SEARCH != 0 {
+                if s.has(KEEP) && s.has(PATTERN_SEARCH) {
                     return None;
                 }
-                s & !SR6
+                s.without_all(&SR6)
             }
             _ => s,
         })
@@ -190,7 +293,7 @@ impl Rule for KeepWithoutSearch {
 /// Reading: the statement sequence has an element that is a simple data-modifying statement,
 /// or is a nested `{ ... }` data-modifying procedure that satisfies this itself (13.1's
 /// Function: "a linear composition of at least one <simple data-modifying statement>").
-/// A data-modifying statement buried in a subquery somewhere else does not count, so the bit
+/// A data-modifying statement buried in a subquery somewhere else does not count, so the fact
 /// only travels up this statement spine and is cleared everywhere else.
 pub struct DataModifyingModifies;
 
@@ -210,35 +313,54 @@ const SPINE: &[&str] = &[
     "statement",
 ];
 
-const MODIFIES: State = 1 << 11;
+const MODIFIES: Fact = 11;
 
 impl Rule for DataModifyingModifies {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "data-modifying statement modifies"
     }
 
-    fn cite(&self) -> &'static str {
+    fn cite(&self) -> &str {
         "13.1 SR 5: a <linear data-modifying statement> contains a <simple data-modifying statement>"
     }
 
-    fn bits(&self) -> &'static [(State, &'static str)] {
-        &[(MODIFIES, "modifies")]
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(MODIFIES, "modifies")])
     }
 
-    fn step(&self, def: &str, _rhs: &[&str], s: State) -> Option<State> {
-        match def {
-            "simple data-modifying statement" => Some(s | MODIFIES),
-            "linear data-modifying statement" if s & MODIFIES == 0 => None,
+    fn step(&self, node: &Node, _inh: &State, _children: &[State], s: State) -> Option<State> {
+        if node.group {
+            return Some(s);
+        }
+        match node.def {
+            "simple data-modifying statement" => Some(s.with(MODIFIES)),
+            "linear data-modifying statement" if !s.has(MODIFIES) => None,
             // Passed on so an enclosing statement whose element is a nested procedure sees it.
             "linear data-modifying statement" => Some(s),
             d if SPINE.contains(&d) => Some(s),
-            _ => Some(s & !MODIFIES),
+            _ => Some(s.without(MODIFIES)),
         }
     }
 }
 
-fn step_all(rules: &[Box<dyn Rule>], def: &str, rhs: &[&str], s: State) -> Option<State> {
-    rules.iter().try_fold(s, |s, r| r.step(def, rhs, s))
+fn down_all(rules: &[Box<dyn Rule>], node: &Node, inh: &State, pos: usize) -> State {
+    let mut out = State::default();
+    for r in rules {
+        r.down(node, inh, pos, &mut out);
+    }
+    out
+}
+
+fn step_all(
+    rules: &[Box<dyn Rule>],
+    node: &Node,
+    inh: &State,
+    children: &[State],
+) -> Option<State> {
+    let union = children.iter().fold(State::default(), |a, c| a.union(c));
+    rules
+        .iter()
+        .try_fold(union, |s, r| r.step(node, inh, children, s))
 }
 
 /// Above this many child-state combinations for one production, refinement gives up rather
@@ -251,56 +373,135 @@ pub struct Refined {
     pub start: NtId,
 }
 
+/// A nonterminal of the grammar being refined, in one inherited context.
+type Ctx = (NtId, State);
+
 /// The grammar whose derivation trees are exactly `cfg`'s that every rule accepts.
 pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined> {
-    let rhs_names: Vec<Vec<&str>> = cfg
-        .prods
-        .iter()
-        .map(|p| p.rhs.iter().map(|&s| sym_name(cfg, s)).collect())
-        .collect();
-    // The start symbol's state is never consumed, so it is forgotten, which keeps one start.
+    let items: Vec<Vec<Item>> = cfg.prods.iter().map(|p| items_of(cfg, p)).collect();
+    let node = |p: ProdId| {
+        let lhs = &cfg.nts[cfg.prods[p as usize].lhs as usize];
+        Node {
+            def: &lhs.base,
+            group: lhs.synthetic,
+            items: &items[p as usize],
+        }
+    };
+    // Inherited contexts, top-down. Every nonterminal is a root with nothing inherited, so
+    // the parts of the grammar the start does not reach keep a copy, as without rules. Each
+    // context's productions, with the context of every nonterminal position.
+    let root: Ctx = (start, State::default());
+    let mut index: BTreeMap<Ctx, usize> = BTreeMap::new();
+    let mut contexts: Vec<Ctx> = Vec::new();
+    let mut expansions: Vec<Vec<(ProdId, Vec<Option<usize>>)>> = Vec::new();
+    let mut intern = |ctx: Ctx, contexts: &mut Vec<Ctx>| -> usize {
+        *index.entry(ctx.clone()).or_insert_with(|| {
+            contexts.push(ctx);
+            contexts.len() - 1
+        })
+    };
+    for nt in 0..cfg.nts.len() as NtId {
+        intern((nt, State::default()), &mut contexts);
+    }
+    let mut next = 0;
+    while next < contexts.len() {
+        let (nt, inh) = contexts[next].clone();
+        let mut prods = Vec::new();
+        for &p in &cfg.nts[nt as usize].prods {
+            let here = node(p);
+            let kids = cfg.prods[p as usize]
+                .rhs
+                .iter()
+                .enumerate()
+                .map(|(pos, &sym)| match sym {
+                    Sym::Nt(c) => Some(intern(
+                        (c, down_all(rules, &here, &inh, pos)),
+                        &mut contexts,
+                    )),
+                    Sym::Lit(_) => None,
+                })
+                .collect();
+            prods.push((p, kids));
+        }
+        expansions.push(prods);
+        next += 1;
+    }
+    let mut users: Vec<Vec<(usize, usize)>> = vec![Vec::new(); contexts.len()];
+    for (x, prods) in expansions.iter().enumerate() {
+        for (slot, (_, kids)) in prods.iter().enumerate() {
+            for &k in kids.iter().flatten() {
+                users[k].push((x, slot));
+            }
+        }
+    }
+
+    // The start symbol's synthesized state is never consumed, so it is forgotten, which keeps
+    // one start.
     let forget_at_start = !cfg.prods.iter().any(|p| p.rhs.contains(&Sym::Nt(start)));
-    let state_of = |p: ProdId, union: State| -> Option<State> {
+    let state_of = |p: ProdId, inh: &State, children: &[State]| -> Option<State> {
+        let s = step_all(rules, &node(p), inh, children)?;
         let lhs = cfg.prods[p as usize].lhs;
-        let nt = &cfg.nts[lhs as usize];
-        let s = match nt.synthetic {
-            true => union,
-            false => step_all(rules, &nt.base, &rhs_names[p as usize], union)?,
-        };
         Some(if forget_at_start && lhs == start {
-            0
+            State::default()
         } else {
             s
         })
     };
+    let empty: BTreeSet<State> = BTreeSet::from([State::default()]);
+    let options = |kids: &[Option<usize>], states: &[BTreeSet<State>]| -> Vec<Vec<State>> {
+        kids.iter()
+            .map(|k| match k {
+                Some(k) => states[*k].iter().cloned().collect(),
+                None => empty.iter().cloned().collect(),
+            })
+            .collect()
+    };
 
-    // Reachable states per nonterminal: a least fixed point, bottom-up.
-    let mut states: Vec<BTreeSet<State>> = vec![BTreeSet::new(); cfg.nts.len()];
-    let mut changed = true;
-    while changed {
-        changed = false;
-        for (p, prod) in cfg.prods.iter().enumerate() {
-            let options = child_options(cfg, prod, &states);
-            for_each_tuple(&options, &mut |tuple| {
-                let union = tuple.iter().fold(0, |a, &s| a | s);
-                if let Some(s) = state_of(p as ProdId, union) {
-                    changed |= states[prod.lhs as usize].insert(s);
+    // Synthesized states per context: a least fixed point, bottom-up, revisiting a production
+    // only when one of its children gained a state.
+    let mut states: Vec<BTreeSet<State>> = vec![BTreeSet::new(); contexts.len()];
+    let mut queued: BTreeSet<(usize, usize)> = BTreeSet::new();
+    let mut work: Vec<(usize, usize)> = Vec::new();
+    for (x, prods) in expansions.iter().enumerate() {
+        for slot in 0..prods.len() {
+            queued.insert((x, slot));
+            work.push((x, slot));
+        }
+    }
+    while let Some((x, slot)) = work.pop() {
+        queued.remove(&(x, slot));
+        let (p, kids) = &expansions[x][slot];
+        let inh = &contexts[x].1;
+        let opts = options(kids, &states);
+        let mut found = Vec::new();
+        for_each_tuple(&opts, &mut |tuple| {
+            let children: Vec<State> = tuple.iter().map(|s| (*s).clone()).collect();
+            if let Some(s) = state_of(*p, inh, &children) {
+                found.push(s);
+            }
+        })?;
+        let mut grew = false;
+        for s in found {
+            grew |= states[x].insert(s);
+        }
+        if grew {
+            for &u in &users[x] {
+                if queued.insert(u) {
+                    work.push(u);
                 }
-            })?;
+            }
         }
     }
 
-    let labels: Vec<(State, &str)> = rules
-        .iter()
-        .flat_map(|r| r.bits().iter().copied())
-        .collect();
-    let mut ids: BTreeMap<(NtId, State), NtId> = BTreeMap::new();
+    let labels: BTreeMap<Fact, String> = rules.iter().flat_map(|r| r.labels()).collect();
+    let mut ids: BTreeMap<(usize, State), NtId> = BTreeMap::new();
     let mut nts = Vec::new();
-    for (x, nt) in cfg.nts.iter().enumerate() {
-        for &s in &states[x] {
-            ids.insert((x as NtId, s), nts.len() as NtId);
+    for (x, (nt, inh)) in contexts.iter().enumerate() {
+        let nt = &cfg.nts[*nt as usize];
+        for syn in &states[x] {
+            ids.insert((x, syn.clone()), nts.len() as NtId);
             nts.push(Nonterminal {
-                name: copy_name(&nt.name, s, &labels),
+                name: copy_name(&nt.name, inh, syn, &labels),
                 base: nt.base.clone(),
                 synthetic: nt.synthetic,
                 lexical: nt.lexical,
@@ -310,83 +511,80 @@ pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined
         }
     }
     let mut prods = Vec::new();
-    for (p, prod) in cfg.prods.iter().enumerate() {
-        let options = child_options(cfg, prod, &states);
-        for_each_tuple(&options, &mut |tuple| {
-            let union = tuple.iter().fold(0, |a, &s| a | s);
-            let Some(s) = state_of(p as ProdId, union) else {
-                return;
-            };
-            let lhs = ids[&(prod.lhs, s)];
-            let rhs = prod
-                .rhs
-                .iter()
-                .zip(tuple)
-                .map(|(&sym, &cs)| match sym {
-                    Sym::Nt(c) => Sym::Nt(ids[&(c, cs)]),
-                    lit => lit,
-                })
-                .collect();
-            nts[lhs as usize].prods.push(prods.len() as ProdId);
-            prods.push(Production {
-                lhs,
-                rhs,
-                occ: prod.occ.clone(),
-                unrefined: prod.unrefined,
-            });
-        })?;
+    for (x, expansion) in expansions.iter().enumerate() {
+        let inh = &contexts[x].1;
+        for (p, kids) in expansion {
+            let prod = &cfg.prods[*p as usize];
+            let opts = options(kids, &states);
+            for_each_tuple(&opts, &mut |tuple| {
+                let children: Vec<State> = tuple.iter().map(|s| (*s).clone()).collect();
+                let Some(s) = state_of(*p, inh, &children) else {
+                    return;
+                };
+                let lhs = ids[&(x, s)];
+                let rhs = prod
+                    .rhs
+                    .iter()
+                    .zip(kids)
+                    .zip(&children)
+                    .map(|((&sym, k), cs)| match k {
+                        Some(k) => Sym::Nt(ids[&(*k, cs.clone())]),
+                        None => sym,
+                    })
+                    .collect();
+                nts[lhs as usize].prods.push(prods.len() as ProdId);
+                prods.push(Production {
+                    lhs,
+                    rhs,
+                    occ: prod.occ.clone(),
+                    unrefined: prod.unrefined,
+                });
+            })?;
+        }
     }
-    let Some(&start) = states[start as usize]
+    let r = contexts
         .iter()
-        .next()
-        .map(|s| &ids[&(start, *s)])
-    else {
+        .position(|c| *c == root)
+        .expect("every nonterminal has a root context");
+    let Some(first) = states[r].iter().next() else {
         bail!("the rules reject every tree from <{}>", cfg.name(start));
     };
-    if !forget_at_start && states[start as usize].len() > 1 {
+    if states[r].len() > 1 {
         bail!(
             "<{}> is recursive and ends in several states",
             cfg.name(start)
         );
     }
     Ok(Refined {
+        start: ids[&(r, first.clone())],
         cfg: Cfg::from_parts(nts, prods, cfg.lits.clone(), cfg.occs.clone()),
-        start,
     })
 }
 
-fn sym_name(cfg: &Cfg, sym: Sym) -> &str {
-    match sym {
-        Sym::Nt(nt) => cfg.base(nt),
-        Sym::Lit(l) => match &cfg.lits[l as usize] {
-            Lit::Kw(t) | Lit::Term(t) | Lit::Opaque(t) => t,
-        },
-    }
-}
-
-/// The states each right hand side position can be in: a literal is always 0.
-fn child_options(cfg: &Cfg, prod: &Production, states: &[BTreeSet<State>]) -> Vec<Vec<State>> {
-    let _ = cfg;
-    prod.rhs
+fn items_of<'c>(cfg: &'c Cfg, p: &Production) -> Vec<Item<'c>> {
+    p.rhs
         .iter()
         .map(|&sym| match sym {
-            Sym::Nt(c) => states[c as usize].iter().copied().collect(),
-            Sym::Lit(_) => vec![0],
+            Sym::Nt(c) if cfg.nts[c as usize].synthetic => Item::Group(cfg.base(c)),
+            Sym::Nt(c) => Item::Def(cfg.base(c)),
+            Sym::Lit(l) => match &cfg.lits[l as usize] {
+                Lit::Kw(t) | Lit::Term(t) => Item::Token(t),
+                Lit::Opaque(d) => Item::Prose(d),
+            },
         })
         .collect()
 }
 
-fn for_each_tuple(options: &[Vec<State>], f: &mut dyn FnMut(&[State])) -> Result<()> {
+fn for_each_tuple<T>(options: &[Vec<T>], f: &mut dyn FnMut(&[&T])) -> Result<()> {
     let total = options.iter().map(Vec::len).product::<usize>();
     if total > MAX_TUPLES {
         bail!("refinement would need {total} child-state combinations for one production");
     }
-    let mut tuple = vec![0; options.len()];
     let mut index = vec![0; options.len()];
+    let mut tuple: Vec<&T> = Vec::with_capacity(options.len());
     for _ in 0..total {
-        for (i, choice) in index.iter().enumerate() {
-            tuple[i] = options[i][*choice];
-        }
+        tuple.clear();
+        tuple.extend(index.iter().enumerate().map(|(i, &c)| &options[i][c]));
         f(&tuple);
         for (i, choice) in index.iter_mut().enumerate() {
             *choice += 1;
@@ -399,51 +597,62 @@ fn for_each_tuple(options: &[Vec<State>], f: &mut dyn FnMut(&[State])) -> Result
     Ok(())
 }
 
-fn copy_name(name: &str, s: State, labels: &[(State, &str)]) -> String {
-    if s == 0 {
-        return name.to_string();
+fn copy_name(name: &str, inh: &State, syn: &State, labels: &BTreeMap<Fact, String>) -> String {
+    let set = |s: &State| -> Vec<&str> {
+        s.facts()
+            .map(|f| labels.get(&f).map_or("?", String::as_str))
+            .collect()
+    };
+    let mut out = name.to_string();
+    if !syn.is_empty() {
+        out = format!("{out}@{}", set(syn).join("+"));
     }
-    let set: Vec<&str> = labels
-        .iter()
-        .filter(|(b, _)| s & b != 0)
-        .map(|(_, l)| *l)
-        .collect();
-    format!("{name}@{}", set.join("+"))
+    if !inh.is_empty() {
+        out = format!("{out}^{}", set(inh).join("+"));
+    }
+    out
 }
 
 /// Runs the rules over one tree: the first rule to reject a node, if any.
 pub fn accepts(rules: &[Box<dyn Rule>], tree: &Plain) -> Result<(), String> {
-    run(rules, tree).map(|_| ())
+    run(rules, tree, &State::default()).map(|_| ())
 }
 
-fn run(rules: &[Box<dyn Rule>], node: &Plain) -> Result<State, String> {
+fn run(rules: &[Box<dyn Rule>], node: &Plain, inh: &State) -> Result<State, String> {
     let Plain::Def {
         name,
         synthetic,
         children,
     } = node
     else {
-        return Ok(0);
+        return Ok(State::default());
     };
-    let mut union = 0;
-    for child in children {
-        union |= run(rules, child)?;
-    }
-    if *synthetic {
-        return Ok(union);
-    }
-    let rhs: Vec<&str> = children
+    let items: Vec<Item> = children
         .iter()
         .map(|c| match c {
-            Plain::Def { name, .. } => name.as_str(),
-            Plain::Kw(t) | Plain::Term(t) => t.as_str(),
-            Plain::Leaf { def, .. } => def.as_str(),
+            Plain::Def {
+                name,
+                synthetic: true,
+                ..
+            } => Item::Group(name),
+            Plain::Def { name, .. } => Item::Def(name),
+            Plain::Kw(t) | Plain::Term(t) => Item::Token(t),
+            Plain::Leaf { def, .. } => Item::Prose(def),
         })
         .collect();
-    let mut s = union;
+    let here = Node {
+        def: name,
+        group: *synthetic,
+        items: &items,
+    };
+    let mut states = Vec::with_capacity(children.len());
+    for (pos, child) in children.iter().enumerate() {
+        states.push(run(rules, child, &down_all(rules, &here, inh, pos))?);
+    }
+    let mut s = states.iter().fold(State::default(), |a, c| a.union(c));
     for rule in rules {
         s = rule
-            .step(name, &rhs, s)
+            .step(&here, inh, &states, s)
             .ok_or_else(|| format!("{} at <{name}>", rule.name()))?;
     }
     Ok(s)

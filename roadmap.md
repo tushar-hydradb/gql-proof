@@ -6,19 +6,20 @@ prior art for everything below is in `research/prior-art-2026-10-20.md`. the nea
 
 ## done
 
-- iso bnf vendored, parsed, desugared; purdom covering trees with node-count length, reference height and zheng & wu reference length
+- iso bnf fetched (`just fetch`, nothing iso-owned in the repo), parsed, desugared; purdom covering trees with node-count length, reference height and zheng & wu reference length
 - `check-grammar`: proof once for the grammar that tokens joined by a space are gql source text (21.3 SR 13, 14), with 3 stated assumptions
 - `verify.rs`: every printed tree checked against the iso ebnf, prose leaves, token-internal rules and rendering, independent of the generator
 - structural syntax rules compiled into the grammar as tree automata (16.4 SR 6, 16.4 SR 14, 13.1 SR 5), checked again by the verifier, the two kept in agreement by a differential test. ID086 as a parameter
 - cdrc and k-path coverage (`--cdrc`, `--k N`) on the refined grammar: targeted shortest trees, havrikov's algorithm 1. k = 5 runs in about a second. open: a reference height for paths, since a few deep simplified path pattern chains need more height than the production-based one
+- feature claims: every conformance rule extracted from the pdf by `tools/conformance.py` and checked against annex a, `features.xml` and table 10; claims closed under table 10 and checked against 24.2 and 24.3; the rules of unclaimed features compiled into the grammar as automata with inherited and synthesized state, read again by the verifier, the two kept in agreement by tests; a negative per unclaimed rule (`negatives`), its expected status declared like ID086. found 6 rules whose prose is one bnf level off, so no query breaks them as written
 
 ## pieces left, in the order they block the claim
 
-1. **feature tagging and negatives.** every subclause has conformance rules ("without feature GL01, conforming gql language shall not contain `<unsigned hexadecimal integer>`"). extract them mechanically into a map from productions to feature ids, checked against `features.xml`. tags only go on optional elements and alternatives (cide's discipline), so restricting to the claimed features is one more refinement that deletes exactly those and never leaves broken syntax. negatives come in the same step:
+1. **the rest of the negatives.** feature-level negatives are done. still to come:
    - parse-level: raselimo, taljaard and fischer's poisoned pairs and rule mutation, which already sit on top of purdom
-   - feature-level: one unclaimed-feature subtree per tree, the engine must say "not supported"
-   - syntax-rule level: negate one compiled automaton at a time, and have the verifier confirm exactly that rule fails. eris (pldi 2026) shows why: a deliberate error can land in another valid derivation
-   - every negative labelled test262 / wasm style: `{phase: parse | syntax-rule | feature | runtime, status: <class>}`
+   - syntax-rule level: negate one compiled automaton at a time (the `required` mode feature negatives use), and have the verifier confirm exactly that rule fails. eris (pldi 2026) shows why: a deliberate error can land in another valid derivation
+   - every negative labelled test262 / wasm style: `{phase: parse | syntax-rule | feature | runtime, status: <class>}`. feature negatives already carry `phase: feature`
+   - left from feature tagging: two more pattern forms for the 4 structural rules (fixed length path patterns, node and edge adjacency); cdrc and k-path targets only the claim excludes are still reported with the ones nothing allows; copies made only for bookkeeping (phrase searches, emptiness) inflate in-context coverage; the 6 rules no query breaks as written need a reading, escalated
 2. **context provider (static semantics).** the biggest piece. scoping and binding (`MATCH`, `LET`, `FOR`, `YIELD`, `NEXT`, `CALL (x) {}`), the type each expression slot expects, a catalog (graphs, graph types, labels, properties, procedures), parameters. bound names are unbounded, but a finite abstraction of the environment is not: typed variable slots up to a bound and the expected type of each slot. that goes into the same product construction as the syntax rules, so purdom, cdrc and k-paths keep working unchanged, and targets no well-typed query reaches are reported as infeasible (no prior work does this, they count over invalid trees or drop what they cannot finish). on top:
    - concrete names assigned late, with xsmith's lifting (create the missing declaration upstream) instead of discarding the tree
    - dinkel's split between scoped query state and the persistent schema, one rule per gql clause
@@ -53,7 +54,7 @@ prior art for everything below is in `research/prior-art-2026-10-20.md`. the nea
 
 ## order
 
-1. feature tagging, the claimed-feature refinement, and the three kinds of negatives
+1. parse-level and syntax-rule negatives, labelled
 2. context provider phase 1: the finite environment abstraction in the product grammar, scoping, binding and a small type system for the read-only core (`MATCH`, `RETURN`, `WHERE`, expressions), and the obligations record. cdrc and k-paths on the typed grammar with infeasible targets reported
 3. solver-built graphs from the obligations record with witnesses as the first oracle, then mgql and gpml-conformance for that core and exception condition tables for it
 4. the claim for that core in bernot's terms: features F, bound k, hypotheses H1 to H5 and what discharges each

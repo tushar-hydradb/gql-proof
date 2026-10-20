@@ -3,6 +3,7 @@
 pub mod bnf;
 pub mod cfg;
 pub mod coverage;
+pub mod features;
 pub mod leaf;
 pub mod purdom;
 pub mod refine;
@@ -10,7 +11,8 @@ pub mod tokens;
 pub mod tree;
 pub mod verify;
 
-/// The ISO grammar, vendored unmodified from https://standards.iso.org/iso-iec/39075/ed-1/en/.
+/// The ISO grammar, as `just fetch` downloads it unmodified from
+/// https://standards.iso.org/iso-iec/39075/ed-1/en/.
 pub const ISO_BNF_XML: &str = include_str!("../grammar/ISO_IEC_39075(en).bnf.xml");
 
 use cfg::{Cfg, Lit, ProdId, Sym};

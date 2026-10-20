@@ -324,6 +324,12 @@ impl<'t, 'g> Tables<'t, 'g> {
 }
 
 impl<L: LeafProvider> Generator<'_, '_, L> {
+    /// The shortest tree from `start` within the height cap, if there is one.
+    pub fn shortest(mut self, start: NtId) -> Option<Node> {
+        let r = self.config.max_depth;
+        (self.lengths.nt(start, r) != INF).then(|| self.materialize(start, r, &Plan::Shortest))
+    }
+
     /// The length of the shortest tree from `start` within the height cap containing `t`.
     pub fn shortest_containing(&self, start: NtId, t: &Target) -> Option<u32> {
         let ctx = contexts(self.a, &self.lengths, start);

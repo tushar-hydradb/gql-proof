@@ -1,0 +1,94 @@
+// The sentences of ISO/IEC 39075's conformance rules, after "Without Feature nnn, “name”,".
+//
+// Pattern sentences use the containment vocabulary of 5.3.2.1. Everything else is a named
+// shape the generator cannot enforce yet, kept with the part of the system that will own it.
+// A sentence that matches nothing fails the extraction, so a new edition cannot slip through.
+
+?start: forbid
+      | require
+      | require_subject
+      | contained_be
+      | contained_not
+      | typed
+      | context
+      | structural
+      | lexical
+      | semantic
+
+// "conforming GQL language shall not contain P"
+forbid: "conforming" "GQL" ("language" | "Language") "shall" "not" ("contain" | "specify") items
+      | "in" "conforming" "GQL" "language" "," head "shall" "not" HOW? "contain" items
+
+// "in conforming GQL language, X shall contain P"
+require: "in" "conforming" "GQL" "language" "," head "shall" HOW? "contain" items
+// "conforming GQL language shall contain P": its subject is the subclause's own definition
+require_subject: "conforming" "GQL" "language" "shall" "contain" items
+
+// "the V immediately contained in a S shall be P"
+contained_be: "in" "conforming" "GQL" "language" "," "the" NT "immediately" "contained" "in" ART NT "shall" "be" items
+// "the V immediately contained in a S shall not simply contain P"
+contained_not: "in" "conforming" "GQL" "language" "," "the" NT "immediately" "contained" "in" ART NT "shall" "not" HOW? "contain" items
+
+// declared types: the context provider's
+typed: "in" "conforming" "GQL" "language" "," "the" "declared" ("type" | "types") REST
+
+// which variable or alias is referenced, and conformance of an expression to another
+// definition: the context provider's
+context: "in" "conforming" "GQL" "language" "," REFERENCE_SHAPE REST
+       | "conforming" "GQL" "language" "shall" "not" "contain" ART NT "that" HOW "contains" ART NT "that" "does" "not" "conform" REST
+       | "in" "conforming" "GQL" "language" "," "the" NT "immediately" "contained" "in" ART NT "shall" "not" HOW "contain" ("a" | "any") NT "that" "is" "not" ART NT "in" "the" "preceding" REST
+
+// syntax, but needing pattern forms not compiled yet: a defined term (fixed length path
+// pattern) and order between siblings
+structural: "in" "conforming" "GQL" "language" "," ART "operand" "of" ART NT "shall" "be" "a" "fixed" "length" "path" "pattern"
+          | "in" "conforming" "GQL" "language" "," "between" REST
+          | "in" "conforming" "GQL" "language" "," ART NT "shall" "be" "immediately" "preceded" REST
+
+// inside a token, where the leaf provider decides
+lexical: "conforming" "GQL" "language" "shall" "not" "contain" ART NT "that" "specifies" "a" "time" "zone" "displacement"
+       | "in" "conforming" "GQL" "language" "," "the" "maximum" "length" REST
+
+// properties of graph types, transactions, status objects and value types: the oracle's and
+// the claim's
+semantic: SEMANTIC_SHAPE REST
+        | "in" "conforming" "GQL" "language" "," SEMANTIC_IN_LANGUAGE REST
+
+REFERENCE_SHAPE.2: /(the <order by clause>|the <element pattern where clause>|a <parenthesized path pattern where clause>|EXP shall be|a <graph expression> GE|a <binding table expression> BTE)/
+SEMANTIC_SHAPE.2: /(a GQL-transaction|a GQL-status object|executing|combinations of|only static|Subclause \d|the edge type key label set dictionary|<binding table expression> is limited|<graph expression> is limited)/
+SEMANTIC_IN_LANGUAGE.2: /(for every two|a <graph type specification body> shall not (simply )?contain (a|two) <(node|edge) type specification>s? (or an <edge type specification> )?whose)/
+REST: /.+/s
+
+// P: one item, or several joined by commas and "or"
+items: item ("," item)* ","? (("or" | "and") item)?
+     | "either" item "or" item
+?item: ART? node
+     | words
+     | QUOTED ("or" QUOTED)* -> quoted
+
+// a definition, possibly with keywords right after it and qualifiers
+node: NT PLURAL? words? qual*
+?head: ART NT qual*  -> node
+
+qual: "that" "is" ("that" "is")? items                  -> is_
+    | "that" "is" "not" items                           -> is_not
+    | "that" "is" ART NT "followed" "by" ART NT ("or" ART NT "followed" "by" ART NT)* -> followed_by
+    | "that" HOW? CONTAINS items                         -> contains
+    | "that" "simply" "contains" "exactly" "one" NT      -> exactly_one
+    | "that" "does" "not" HOW? "contain" items           -> not_contains
+    | "containing" items                                 -> contains
+    | "not" "containing" items                           -> not_contains
+    | "not" "immediately" "contained" "in" ART NT        -> not_in
+
+words: KEYWORD+
+
+CONTAINS: "contains" | "includes" | "specifies"
+HOW: "simply" | "immediately" | "directly"
+ART: "a" | "an"
+PLURAL: "s"
+NT: /<[^<>]+>/
+KEYWORD: /(?!GQL\b)[A-Z][A-Z0-9_]+\b/
+QUOTED: /“[^”]+”/
+
+%import common.WS
+%ignore WS
+%ignore "."

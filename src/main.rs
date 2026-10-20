@@ -3,12 +3,17 @@ use clap::{Parser, Subcommand, ValueEnum};
 use gql_proof::MatchModeDefault;
 use gql_proof::cfg::Cfg;
 use gql_proof::coverage::{Criteria, Target, describe_target};
+use gql_proof::features::{
+    CONFORMANCE_JSON, Claim, ClaimRules, Conformance, Negative, Pattern, Statement, collapse,
+    negative, witness,
+};
 use gql_proof::leaf::StubProvider;
 use gql_proof::purdom::{Analysis, Config, Generator, Length, Reason, TargetReason};
 use gql_proof::refine::{all_rules, refine};
 use gql_proof::tokens::{Grammar, Report};
 use gql_proof::verify::Verifier;
 use gql_proof::{ISO_BNF_XML, bnf, describe};
+use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -27,6 +32,39 @@ enum Cmd {
     /// Check, once for the whole grammar, that rendering tokens joined by spaces is valid
     /// GQL source text (ISO/IEC 39075 21.3 SR 13, 14), and list what is assumed.
     CheckGrammar(CheckArgs),
+    /// For every conformance rule of an unclaimed feature, the shortest query that breaks it
+    /// and uses no other unclaimed feature: a query the engine must reject.
+    Negatives(NegativesArgs),
+    /// The conformance map from `just features`, and what a claim leaves in force.
+    Features(FeaturesArgs),
+}
+
+#[derive(Parser)]
+struct NegativesArgs {
+    /// The optional features claimed, as for `purdom`.
+    #[arg(long, default_value = "none")]
+    claim: String,
+    /// Only this feature's rules.
+    #[arg(long)]
+    feature: Option<String>,
+    /// The status an engine reports for language outside its claim. ISO leaves nonconforming
+    /// language to the implementation (IE005), so this is declared, like ID086.
+    #[arg(long, default_value = "42000")]
+    unsupported_status: String,
+    #[arg(long, value_enum, default_value_t = Id086::Portable)]
+    match_mode_default: Id086,
+    #[arg(long, default_value_t = 0)]
+    seed: u64,
+    /// `sentence` or `jsonl`.
+    #[arg(long, value_enum, default_value_t = Format::Sentence)]
+    format: Format,
+}
+
+#[derive(Parser)]
+struct FeaturesArgs {
+    /// Show what this claim leaves in force.
+    #[arg(long, default_value = "all")]
+    claim: String,
 }
 
 #[derive(Parser)]
@@ -34,7 +72,7 @@ struct CheckArgs {
     /// Start symbol.
     #[arg(long, default_value = "GQL-program")]
     start: String,
-    /// Grammar XML. Defaults to the vendored ISO file.
+    /// Grammar XML. Defaults to the ISO file `just fetch` downloads.
     #[arg(long)]
     grammar: Option<PathBuf>,
 }
@@ -49,6 +87,11 @@ struct PurdomArgs {
     /// so queries are valid on any engine.
     #[arg(long, value_enum, default_value_t = Id086::Portable)]
     match_mode_default: Id086,
+    /// The optional features claimed: `all`, `none` (only what 24.2 requires), or a file of
+    /// feature codes. The conformance rules of every other feature are compiled into the
+    /// grammar. Needs `grammar/conformance.json` (`just features`).
+    #[arg(long, default_value = "all")]
+    claim: String,
     /// Breaks ties between equally cheap choices. Same seed, same trees.
     #[arg(long, default_value_t = 0)]
     seed: u64,
@@ -86,7 +129,7 @@ struct PurdomArgs {
     /// Print the coverage summary after the trees.
     #[arg(long)]
     summary: bool,
-    /// Grammar XML. Defaults to the vendored ISO file.
+    /// Grammar XML. Defaults to the ISO file `just fetch` downloads.
     #[arg(long)]
     grammar: Option<PathBuf>,
 }
@@ -141,6 +184,8 @@ fn main() -> Result<()> {
     let result = match Cli::parse().cmd {
         Cmd::Purdom(args) => purdom(args),
         Cmd::CheckGrammar(args) => check_grammar(args),
+        Cmd::Negatives(args) => negatives(args),
+        Cmd::Features(args) => features(args),
     };
     // A closed pipe (`| head`) is the reader being done, not an error.
     match result {
@@ -217,16 +262,35 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         bail!("the grammar fails the token boundary check, refusing to generate");
     }
     let id086 = MatchModeDefault::from(args.match_mode_default);
-    let rules = match args.rules {
+    let base = Cfg::from_bnf(&bnf);
+    let conformance = Conformance::load(CONFORMANCE_JSON)?;
+    let claim = Claim::parse(&args.claim, &conformance)?;
+    let forbidden = conformance.forbidden(&claim);
+    let mut rules = match args.rules {
         Rules::All => all_rules(id086),
         Rules::None => Vec::new(),
     };
-    let verifier = match args.rules {
+    let mut verifier = match args.rules {
         Rules::All => Verifier::new(grammar).with_syntax_rules(id086),
         Rules::None => Verifier::new(grammar),
     };
-    let base = Cfg::from_bnf(&bnf);
-    let refined = refine(&base, &rules, base.require(&args.start)?)?;
+    let start = base.require(&args.start)?;
+    if args.rules == Rules::All {
+        rules.push(Box::new(ClaimRules::new(&base, start, &forbidden, &[])?));
+        verifier = verifier.with_conformance(forbidden.clone());
+    }
+    // What the grammar allows under every claim, to tell productions the claim excludes from
+    // ones nothing allows.
+    let claimable = if args.rules == Rules::All && claim != Claim::parse("all", &conformance)? {
+        let mut all = all_rules(id086);
+        let devices = conformance.forbidden(&Claim::parse("all", &conformance)?);
+        all.push(Box::new(ClaimRules::new(&base, start, &devices, &[])?));
+        let refined = refine(&base, &all, start)?;
+        Some(reachable_copies(&refined.cfg, refined.start))
+    } else {
+        None
+    };
+    let refined = refine(&base, &rules, start)?;
     let (cfg, start) = (refined.cfg, refined.start);
     let analysis = Analysis::new(&cfg, &StubProvider);
     let reference_height = analysis.reference_height(start);
@@ -311,9 +375,12 @@ fn purdom(args: PurdomArgs) -> Result<()> {
     }
     // Coverage of the ISO productions: covered when any refined copy is.
     let mut iso_covered = vec![false; base.prods.len()];
-    let mut has_copy = vec![false; base.prods.len()];
-    for prod in &cfg.prods {
-        has_copy[prod.unrefined as usize] = true;
+    // A copy counts when a tree from the start can use it: refinement also keeps copies in
+    // contexts no tree reaches.
+    let has_copy = reachable_copies(&cfg, start);
+    let mut base_reach = vec![false; base.nts.len()];
+    for nt in base.reachable(base.require(&args.start)?) {
+        base_reach[nt as usize] = true;
     }
     for p in outcome.covered.ones() {
         iso_covered[cfg.prods[p].unrefined as usize] = true;
@@ -376,13 +443,17 @@ fn purdom(args: PurdomArgs) -> Result<()> {
     let mut by_reason: BTreeMap<&str, Vec<String>> = BTreeMap::new();
     for u in (0..total).filter(|&u| !iso_covered[u]) {
         let p = u as u32;
+        if !has_copy[u] && base_reach[base.prod(p).lhs as usize] {
+            let key = match &claimable {
+                Some(has) if has[u] => "outside the claim",
+                _ => {
+                    "forbidden in every context (syntax rules, or conformance rules every claim keeps)"
+                }
+            };
+            by_reason.entry(key).or_default().push(describe(&base, p));
+            continue;
+        }
         let Some(reason) = iso_reason[u] else {
-            if !has_copy[u] {
-                by_reason
-                    .entry("forbidden by the syntax rules in every context")
-                    .or_default()
-                    .push(describe(&base, p));
-            }
             continue;
         };
         let cfg = &base;
@@ -404,8 +475,16 @@ fn purdom(args: PurdomArgs) -> Result<()> {
     for (reason, lines) in by_reason {
         writeln!(out, "{reason}: {}", lines.len())?;
         // Unreachable productions are mostly the lexical layer (whitespace, comments), which
-        // is reachable from <token> instead. Group those by ISO definition to keep it short.
-        if reason == "unreachable from start" {
+        // is reachable from <token> instead. Group those by ISO definition to keep it short;
+        // the same for what the claim excludes, which can be most of the grammar.
+        if reason == "outside the claim" {
+            let mut defs: BTreeMap<&str, usize> = BTreeMap::new();
+            for l in &lines {
+                let def = l.split(" ::=").next().unwrap_or(l);
+                *defs.entry(def).or_default() += 1;
+            }
+            writeln!(out, "  in {} definitions", defs.len())?;
+        } else if reason == "unreachable from start" {
             let mut defs: BTreeMap<String, usize> = BTreeMap::new();
             for u in (0..total).filter(|&u| !iso_covered[u]) {
                 if iso_reason[u] == Some(Reason::Unreachable) {
@@ -465,8 +544,225 @@ fn purdom(args: PurdomArgs) -> Result<()> {
             writeln!(out, "  {}", rule.cite())?;
         }
         writeln!(out, "  ID086 (default match mode): {:?}", id086)?;
+        let unenforced = conformance.unenforced(&claim);
+        writeln!(
+            out,
+            "claim: {} of {} features (closed under table 10), {} conformance rules in force, {} more not enforced by the grammar (`features --claim`)",
+            claim.features.len(),
+            conformance.features.len(),
+            forbidden.len(),
+            unenforced.len()
+        )?;
     }
     writeln!(out)?;
     write_report(&mut out, &report)?;
+    Ok(())
+}
+
+/// Per unrefined production, whether some copy of it is in a tree from `start`.
+fn reachable_copies(cfg: &Cfg, start: u32) -> Vec<bool> {
+    let base_len = cfg
+        .prods
+        .iter()
+        .map(|p| p.unrefined as usize + 1)
+        .max()
+        .unwrap_or(0);
+    let mut has = vec![false; base_len];
+    for nt in cfg.reachable(start) {
+        for &p in &cfg.nts[nt as usize].prods {
+            has[cfg.prods[p as usize].unrefined as usize] = true;
+        }
+    }
+    has
+}
+
+fn negatives(args: NegativesArgs) -> Result<()> {
+    let bnf = read_grammar(&None)?;
+    let base = Cfg::from_bnf(&bnf);
+    let start = base.require("GQL-program")?;
+    let id086 = MatchModeDefault::from(args.match_mode_default);
+    let conformance = Conformance::load(CONFORMANCE_JSON)?;
+    let claim = Claim::parse(&args.claim, &conformance)?;
+    let verifier = Verifier::new(Grammar::new(&bnf))
+        .with_syntax_rules(id086)
+        .with_conformance(conformance.forbidden(&claim));
+    let names: BTreeMap<&str, &str> = conformance
+        .features
+        .iter()
+        .map(|f| (f.code.as_str(), f.name.as_str()))
+        .collect();
+    let mut out = io::stdout().lock();
+    let wanted: Vec<_> = conformance
+        .statements
+        .iter()
+        .filter(|s| {
+            s.kind == "pattern"
+                && !claim.features.contains(&s.feature)
+                && args.feature.as_ref().is_none_or(|f| *f == s.feature)
+        })
+        .flat_map(|s| s.forbid.iter().map(move |p| (s, p)))
+        .collect();
+    // Each search refines the grammar on its own, so they run in parallel; results keep the
+    // statements' order.
+    let found: Vec<Negative> = wanted
+        .par_iter()
+        .map(|&(s, pattern)| {
+            negative(
+                &base,
+                start,
+                id086,
+                args.seed,
+                &conformance,
+                &claim,
+                &verifier,
+                s,
+                pattern,
+            )
+        })
+        .collect::<Result<_>>()?;
+    let (mut made, tried, mut without) = (0, wanted.len(), Vec::new());
+    for (&(s, _), found) in wanted.iter().zip(found) {
+        {
+            let sentence = match found {
+                Negative::Query(_, sentence) => sentence,
+                Negative::Needs(also) => {
+                    let why = if also.is_empty() {
+                        "no query has it".to_string()
+                    } else {
+                        let also: Vec<String> = also.into_iter().collect();
+                        format!("its shortest query also needs {}", also.join(", "))
+                    };
+                    without.push(format!("{}: {why}", s.cite()));
+                    continue;
+                }
+            };
+            made += 1;
+            let name = names.get(s.feature.as_str()).copied().unwrap_or("");
+            match args.format {
+                Format::Jsonl => {
+                    let record = serde_json::json!({
+                        "negative": made,
+                        "phase": "feature",
+                        "feature": s.feature,
+                        "rule": s.cite(),
+                        "expect": args.unsupported_status,
+                        "sentence": sentence,
+                    });
+                    writeln!(out, "{record}")?;
+                }
+                _ => {
+                    writeln!(
+                        out,
+                        "# negative {made}: {} ({name}), expect {}",
+                        s.cite(),
+                        args.unsupported_status
+                    )?;
+                    writeln!(out, "{sentence}\n")?;
+                }
+            }
+        }
+    }
+    if args.format != Format::Jsonl {
+        writeln!(out, "# summary")?;
+        writeln!(
+            out,
+            "claim: {} features, negatives: {made} for {tried} patterns of unclaimed features",
+            claim.features.len()
+        )?;
+        if !without.is_empty() {
+            writeln!(
+                out,
+                "no query breaks only its own feature: {}",
+                without.len()
+            )?;
+            for w in &without {
+                writeln!(out, "  {w}")?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn features(args: FeaturesArgs) -> Result<()> {
+    let bnf = read_grammar(&None)?;
+    let base = Cfg::from_bnf(&bnf);
+    let start = base.require("GQL-program")?;
+    let conformance = Conformance::load(CONFORMANCE_JSON)?;
+    let claim = Claim::parse(&args.claim, &conformance)?;
+    let mut out = io::stdout().lock();
+    let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
+    for s in &conformance.statements {
+        *kinds.entry(s.kind.as_str()).or_default() += 1;
+    }
+    let kinds: Vec<String> = kinds.iter().map(|(k, n)| format!("{n} {k}")).collect();
+    writeln!(out, "# conformance map ({CONFORMANCE_JSON})")?;
+    writeln!(
+        out,
+        "features: {}, statements: {} ({}), unconditional: {}, implications: {}, claim rules: {}",
+        conformance.features.len(),
+        conformance.statements.len(),
+        kinds.join(", "),
+        conformance.devices.len(),
+        conformance.implies.len(),
+        conformance.claim_rules.len()
+    )?;
+    let forbidden = conformance.forbidden(&claim);
+    let patterns: Vec<Pattern> = forbidden.iter().flat_map(|f| f.patterns.clone()).collect();
+    let (_, notes) = collapse(&base, start, &patterns)?;
+    // Compiling checks every name against the grammar.
+    ClaimRules::new(&base, start, &forbidden, &[])?;
+    writeln!(
+        out,
+        "claim {}: {} features after table 10, {} rules in force, all names resolve in the grammar",
+        args.claim,
+        claim.features.len(),
+        forbidden.len()
+    )?;
+    if !notes.is_empty() {
+        writeln!(out, "rules that forbid a whole definition: {}", notes.len())?;
+        for n in &notes {
+            writeln!(out, "  {n}")?;
+        }
+    }
+    // Every pattern should match some tree; one that cannot is a rule no query breaks as
+    // written, which is either an extraction bug or a mismatch between ISO's prose and its BNF.
+    let patterns: Vec<(&Statement, &Pattern)> = conformance
+        .statements
+        .iter()
+        .filter(|s| s.kind == "pattern")
+        .flat_map(|s| s.forbid.iter().map(move |p| (s, p)))
+        .collect();
+    let unbreakable: Vec<String> = patterns
+        .par_iter()
+        .map(|&(s, p)| {
+            witness(&base, start, MatchModeDefault::Portable, 0, &[], p)
+                .map(|w| w.is_none().then(|| s.cite()))
+        })
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
+        .collect();
+    writeln!(
+        out,
+        "rules no query breaks as written (with the syntax rules, any claim): {}",
+        unbreakable.len()
+    )?;
+    for c in &unbreakable {
+        writeln!(out, "  {c}")?;
+    }
+    let mut owners: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for s in conformance.unenforced(&claim) {
+        let owner = format!("{} ({})", s.kind, s.owner.as_deref().unwrap_or("?"));
+        owners.entry(owner).or_default().push(s.cite());
+    }
+    if !owners.is_empty() {
+        writeln!(out, "in force but not enforced by the grammar:")?;
+        for (owner, cites) in owners {
+            writeln!(out, "  {owner}: {}", cites.len())?;
+            for c in cites {
+                writeln!(out, "    {c}")?;
+            }
+        }
+    }
     Ok(())
 }

@@ -9,8 +9,11 @@
 //! - the rendered string is exactly the tree's tokens joined by one space, with tokens cut at
 //!   lexical definitions, which `tokens::Grammar::check` proves are single tokens
 
+mod conformance;
+
 use crate::MatchModeDefault;
 use crate::bnf::Ebnf;
+use crate::features::Forbidden;
 use crate::tokens::{EXCLUDED, Grammar};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use std::collections::HashSet;
@@ -64,6 +67,8 @@ pub struct Verifier<'b> {
     reserved: HashSet<String>,
     /// Check the Syntax Rules `refine` compiles into the grammar, with this ID086.
     syntax_rules: Option<MatchModeDefault>,
+    /// Conformance rules in force: no tree may contain a match of any of their patterns.
+    conformance: Vec<Forbidden>,
 }
 
 impl<'b> Verifier<'b> {
@@ -75,6 +80,7 @@ impl<'b> Verifier<'b> {
             lexical,
             reserved,
             syntax_rules: None,
+            conformance: Vec::new(),
         }
     }
 
@@ -82,6 +88,21 @@ impl<'b> Verifier<'b> {
     pub fn with_syntax_rules(mut self, id086: MatchModeDefault) -> Self {
         self.syntax_rules = Some(id086);
         self
+    }
+
+    /// Also check these conformance rules, the ones a claim leaves in force.
+    pub fn with_conformance(mut self, rules: Vec<Forbidden>) -> Self {
+        self.conformance = rules;
+        self
+    }
+
+    /// The conformance rules in force that `tree` breaks.
+    pub fn broken_conformance(&self, tree: &Plain) -> Vec<&Forbidden> {
+        let t = conformance::Tree::new(tree);
+        self.conformance
+            .iter()
+            .filter(|f| f.patterns.iter().any(|p| t.occurs(p)))
+            .collect()
     }
 
     pub fn grammar(&self) -> &Grammar<'b> {
@@ -94,6 +115,13 @@ impl<'b> Verifier<'b> {
         self.walk(tree, &mut Vec::new(), &mut out);
         if let Some(id086) = self.syntax_rules {
             syntax_rules(tree, id086, &mut Vec::new(), &mut out);
+        }
+        for f in self.broken_conformance(tree) {
+            out.push(Violation {
+                path: String::new(),
+                rule: "conformance rule",
+                detail: f.label.clone(),
+            });
         }
         let expected = self.render(tree);
         if expected != rendered {

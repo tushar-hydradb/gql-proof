@@ -5,3 +5,9 @@
 
 # local tooling
 /.venv-pdf/
+
+# iso artifacts and everything derived from the pdf: `just fetch`, `just features`
+/grammar/*
+!/grammar/README.md
+
+__pycache__/
