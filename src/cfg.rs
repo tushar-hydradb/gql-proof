@@ -16,6 +16,18 @@ use std::collections::HashMap;
 pub type NtId = u32;
 pub type LitId = u32;
 pub type ProdId = u32;
+pub type OccId = u32;
+
+/// A position on a right hand side of the ISO grammar: one node of the grammar graph of
+/// Havrikov, Kampmann & Zeller. The two productions a desugared repeat becomes share theirs.
+#[derive(Debug, Clone)]
+pub struct Occurrence {
+    /// The ISO definition whose right hand side this is.
+    pub owner: String,
+    /// A reference to an ISO definition or a literal. References to desugaring groups are not:
+    /// those groups are the grammar graph's alternation and quantifier nodes.
+    pub symbolic: bool,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Sym {
@@ -49,6 +61,8 @@ pub struct Nonterminal {
 pub struct Production {
     pub lhs: NtId,
     pub rhs: Vec<Sym>,
+    /// The occurrence of each right hand side position, in step with `rhs`.
+    pub occ: Vec<OccId>,
     /// The unrefined production this one specializes; itself unless refined.
     pub unrefined: ProdId,
 }
@@ -58,6 +72,7 @@ pub struct Cfg {
     pub nts: Vec<Nonterminal>,
     pub prods: Vec<Production>,
     pub lits: Vec<Lit>,
+    pub occs: Vec<Occurrence>,
     by_name: HashMap<String, NtId>,
     lit_ids: HashMap<Lit, LitId>,
 }
@@ -68,6 +83,7 @@ impl Cfg {
             nts: Vec::new(),
             prods: Vec::new(),
             lits: Vec::new(),
+            occs: Vec::new(),
             by_name: HashMap::new(),
             lit_ids: HashMap::new(),
         };
@@ -115,7 +131,12 @@ impl Cfg {
 
     /// A grammar built from parts, for refinements. Nonterminals' `prods` must list exactly
     /// the productions with them on the left.
-    pub fn from_parts(nts: Vec<Nonterminal>, prods: Vec<Production>, lits: Vec<Lit>) -> Cfg {
+    pub fn from_parts(
+        nts: Vec<Nonterminal>,
+        prods: Vec<Production>,
+        lits: Vec<Lit>,
+        occs: Vec<Occurrence>,
+    ) -> Cfg {
         let by_name = nts
             .iter()
             .enumerate()
@@ -130,6 +151,7 @@ impl Cfg {
             nts,
             prods,
             lits,
+            occs,
             by_name,
             lit_ids,
         }
@@ -174,23 +196,33 @@ impl Cfg {
         id
     }
 
-    fn add_prod(&mut self, lhs: NtId, rhs: Vec<Sym>) {
+    fn add_prod(&mut self, lhs: NtId, rhs: Vec<(Sym, OccId)>) {
         let id = self.prods.len() as ProdId;
+        let (rhs, occ) = rhs.into_iter().unzip();
         self.prods.push(Production {
             lhs,
             rhs,
+            occ,
             unrefined: id,
         });
         self.nts[lhs as usize].prods.push(id);
     }
 
-    fn lit(&mut self, lit: Lit) -> Sym {
+    fn lit(&mut self, lit: Lit, def: &str) -> (Sym, OccId) {
         let next = self.lits.len() as LitId;
         let id = *self.lit_ids.entry(lit.clone()).or_insert(next);
         if id == next {
             self.lits.push(lit);
         }
-        Sym::Lit(id)
+        (Sym::Lit(id), self.occurrence(def, true))
+    }
+
+    fn occurrence(&mut self, def: &str, symbolic: bool) -> OccId {
+        self.occs.push(Occurrence {
+            owner: def.to_string(),
+            symbolic,
+        });
+        (self.occs.len() - 1) as OccId
     }
 
     fn fresh(&mut self, def: &str, kind: &str, counter: &mut u32) -> NtId {
@@ -198,24 +230,25 @@ impl Cfg {
         self.add_nt(format!("{def}/{kind}{counter}"), true, def.to_string())
     }
 
-    /// Lowers `e` to the symbol sequence that replaces it, adding fresh nonterminals as needed.
-    fn lower(&mut self, e: &Ebnf, def: &str, fresh: &mut u32) -> Vec<Sym> {
+    /// Lowers `e` to the symbol sequence that replaces it, each with its occurrence, adding
+    /// fresh nonterminals as needed.
+    fn lower(&mut self, e: &Ebnf, def: &str, fresh: &mut u32) -> Vec<(Sym, OccId)> {
         match e {
             Ebnf::Seq(items) => items
                 .iter()
                 .flat_map(|i| self.lower(i, def, fresh))
                 .collect(),
-            Ebnf::Ref(name) => vec![Sym::Nt(self.by_name[name])],
-            Ebnf::Kw(k) => vec![self.lit(Lit::Kw(k.clone()))],
-            Ebnf::Term(t) => vec![self.lit(Lit::Term(t.clone()))],
-            Ebnf::Opaque(name) => vec![self.lit(Lit::Opaque(name.clone()))],
+            Ebnf::Ref(name) => vec![(Sym::Nt(self.by_name[name]), self.occurrence(def, true))],
+            Ebnf::Kw(k) => vec![self.lit(Lit::Kw(k.clone()), def)],
+            Ebnf::Term(t) => vec![self.lit(Lit::Term(t.clone()), def)],
+            Ebnf::Opaque(name) => vec![self.lit(Lit::Opaque(name.clone()), def)],
             Ebnf::Alt(alts) => {
                 let n = self.fresh(def, "alt", fresh);
                 for alt in alts {
                     let rhs = self.lower(alt, def, fresh);
                     self.add_prod(n, rhs);
                 }
-                vec![Sym::Nt(n)]
+                vec![(Sym::Nt(n), self.occurrence(def, false))]
             }
             Ebnf::Opt(inner) => {
                 let n = self.fresh(def, "opt", fresh);
@@ -228,16 +261,16 @@ impl Cfg {
                     self.add_prod(n, rhs);
                 }
                 self.add_prod(n, Vec::new());
-                vec![Sym::Nt(n)]
+                vec![(Sym::Nt(n), self.occurrence(def, false))]
             }
             Ebnf::Repeat(inner) => {
                 let n = self.fresh(def, "rep", fresh);
                 let once = self.lower(inner, def, fresh);
                 let mut more = once.clone();
-                more.push(Sym::Nt(n));
+                more.push((Sym::Nt(n), self.occurrence(def, false)));
                 self.add_prod(n, once);
                 self.add_prod(n, more);
-                vec![Sym::Nt(n)]
+                vec![(Sym::Nt(n), self.occurrence(def, false))]
             }
         }
     }

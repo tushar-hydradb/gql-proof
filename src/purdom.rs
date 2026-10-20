@@ -20,7 +20,12 @@
 //! The seed only breaks ties between equally cheap choices, so every seed gives the same
 //! coverage with a different set of trees.
 
+mod targeted;
+
+pub use targeted::{Report, TargetReason};
+
 use crate::cfg::{Cfg, Lit, NtId, ProdId, Sym};
+use crate::coverage::Criteria;
 use crate::leaf::LeafProvider;
 use crate::tree::Node;
 use anyhow::{Result, bail};
@@ -72,6 +77,8 @@ pub struct Generated {
     pub new: usize,
     /// Purdom's length: nodes in the derivation tree, grouping nodes from desugaring excluded.
     pub length: u32,
+    /// The CDRC or k-path target a targeted tree was built for; `None` for Purdom's trees.
+    pub covers: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +90,8 @@ pub struct Outcome {
     pub length_cap: Option<u32>,
     /// The reference length under this height cap.
     pub reference_length: u32,
+    /// One report per CDRC or k-path criterion, when enabled.
+    pub targets: Vec<targeted::Report>,
 }
 
 /// What the grammar and the leaf provider determine before any cap is chosen.
@@ -343,25 +352,7 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
     pub fn covering_lengths(&self, start: NtId) -> Vec<Option<u32>> {
         let depth = self.lengths.depth;
         // ctx[nt][r]: the shortest rest of a sentence around `nt` placed with room `r`.
-        let mut ctx = vec![vec![INF; depth as usize + 1]; self.cfg.nts.len()];
-        ctx[start as usize][depth as usize] = 0;
-        for r in (1..=depth).rev() {
-            for (q, prod) in self.cfg.prods.iter().enumerate() {
-                let around = ctx[prod.lhs as usize][r as usize];
-                let whole = self.prod_len(q as ProdId, r);
-                let usable = self.a.fillable[q] && self.a.propagates(prod.lhs);
-                if around == INF || whole == INF || !usable {
-                    continue;
-                }
-                for sym in &prod.rhs {
-                    if let Sym::Nt(child) = *sym {
-                        let rest = around + whole - self.lengths.nt(child, r - 1);
-                        let slot = &mut ctx[child as usize][r as usize - 1];
-                        *slot = (*slot).min(rest);
-                    }
-                }
-            }
-        }
+        let ctx = targeted::contexts(self.a, &self.lengths, start).len;
         (0..self.cfg.prods.len())
             .map(|p| {
                 let lhs = self.cfg.prods[p].lhs as usize;
@@ -387,6 +378,10 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
     }
 
     pub fn run(mut self, start: NtId) -> Result<Outcome> {
+        self.run_inner(start)
+    }
+
+    fn run_inner(&mut self, start: NtId) -> Result<Outcome> {
         if !self.a.template_errors.is_empty() {
             bail!("fixed tokens: {}", self.a.template_errors.join(", "));
         }
@@ -422,7 +417,12 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
             // itself being new.
             assert!(new > 0, "purdom round made no progress");
             let length = size(self.cfg, &root);
-            trees.push(Generated { root, new, length });
+            trees.push(Generated {
+                root,
+                new,
+                length,
+                covers: None,
+            });
         }
         let uncovered = self.classify(start, &covering, cap);
         let mut covered = self.unused.clone();
@@ -433,7 +433,19 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
             uncovered,
             length_cap: cap,
             reference_length,
+            targets: Vec::new(),
         })
+    }
+
+    /// Purdom's trees, then targeted trees for every CDRC pair and k-path of `criteria` not yet
+    /// covered. Targets are counted on `base`, the unrefined grammar `self`'s was refined from.
+    pub fn run_with(mut self, start: NtId, base: &Cfg, criteria: Criteria) -> Result<Outcome> {
+        let mut outcome = self.run_inner(start)?;
+        if criteria.any() {
+            let base_start = base.require(self.cfg.base(start))?;
+            outcome.targets = self.cover(start, base, base_start, criteria, &mut outcome.trees);
+        }
+        Ok(outcome)
     }
 
     /// Length of the shortest tree of height at most `r` rooted at `nt` that uses an unused

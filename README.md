@@ -58,6 +58,21 @@ with the rules on (seed 1): reference height 49, reference length 99, 327 senten
 
 not checked yet: binding, typing and scoping. that is the context provider's job
 
+## cdrc and k-paths
+
+purdom covers each production once, in whichever context is cheapest. two criteria cover constructs in context, both counted on occurrences (positions on right hand sides, so the same symbol in two places is two things to cover):
+- `--cdrc`: context-dependent rule coverage (lämmel 2001): every production of X used at every place X occurs. empty alternatives count, so every optional is seen absent in every context
+- `--k N`: k-path coverage (havrikov, kampmann & zeller, tosem 2022): every chain of up to N symbol occurrences along a root path, desugaring groups skipped. empty alternatives have no symbols, so cdrc and purdom cover what k-paths cannot
+
+token-level definitions are leaves unless `--k-lexical`. after purdom's trees, each target not yet covered gets the shortest tree within the height cap that contains it (their algorithm 1, longest targets first), and every target that tree happens to contain is dropped. targets are counted on the unrefined grammar and built on the refined one, so the compiled syntax rules still hold and every tree still passes the verifier
+
+seed 1, rules on, default depth 49:
+- `--cdrc --k 3`: 1737 trees in under a second. cdrc 3414 of 3418, 3-paths 6952 of 6956
+- `--cdrc --k 4`: 4251 trees. 4-paths 16139 of 16149
+- `--cdrc --k 5`: 10539 trees in 1.3s. 5-paths 40761 of 40835
+
+what is left is reported with a reason: the implementation-defined access mode (no portable form), one cdrc pair inside the fixed time zone string token, and a few deep chains in simplified path patterns that need more height than the production-based reference height gives
+
 ## checking against opengql
 
 rendered sentences parsed with opengql's `GQL.g4` (python target): 81 of 114 parse. every failure is a sentence that passes the checks above, so opengql is stricter than the iso bnf there:

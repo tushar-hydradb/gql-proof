@@ -2,8 +2,9 @@ use anyhow::{Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use gql_proof::MatchModeDefault;
 use gql_proof::cfg::Cfg;
+use gql_proof::coverage::{Criteria, Target, describe_target};
 use gql_proof::leaf::StubProvider;
-use gql_proof::purdom::{Analysis, Config, Generator, Length, Reason};
+use gql_proof::purdom::{Analysis, Config, Generator, Length, Reason, TargetReason};
 use gql_proof::refine::{all_rules, refine};
 use gql_proof::tokens::{Grammar, Report};
 use gql_proof::verify::Verifier;
@@ -68,6 +69,17 @@ struct PurdomArgs {
     /// shortest covering sentence is over a number are reported.
     #[arg(long, default_value = "reference", value_parser = parse_length)]
     length: Length,
+    /// After Purdom's trees, cover every production at every place its nonterminal occurs
+    /// (context-dependent rule coverage, Lämmel 2001).
+    #[arg(long)]
+    cdrc: bool,
+    /// After Purdom's trees, cover every chain of up to this many symbol occurrences along a
+    /// root path (k-path coverage, Havrikov & Zeller).
+    #[arg(long, default_value_t = 0)]
+    k: u32,
+    /// Let CDRC and k-paths look inside token-level definitions.
+    #[arg(long)]
+    k_lexical: bool,
     /// Show lexical rules (identifiers, literals, ...) down to single characters.
     #[arg(long)]
     expand_lexical: bool,
@@ -224,7 +236,13 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         max_depth,
         length: args.length,
     };
-    let outcome = Generator::new(&analysis, config, StubProvider).run(start)?;
+    let criteria = Criteria {
+        cdrc: args.cdrc,
+        k: args.k,
+        lexical: args.k_lexical,
+    };
+    let outcome =
+        Generator::new(&analysis, config, StubProvider).run_with(start, &base, criteria)?;
 
     // Nothing is printed unless every tree passes the independent checker.
     let mut failed = 0;
@@ -268,10 +286,14 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         }
         writeln!(
             out,
-            "# tree {n}: length {}, height {}, {} new productions",
+            "# tree {n}: length {}, height {}, {} new productions{}",
             generated.length,
             root.height(),
-            generated.new
+            generated.new,
+            generated
+                .covers
+                .as_ref()
+                .map_or(String::new(), |c| format!(", covers {c}"))
         )?;
         if matches!(args.format, Format::Tree | Format::Both) {
             write!(out, "{}", root.display(&cfg, args.expand_lexical))?;
@@ -401,6 +423,35 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         } else {
             for l in lines {
                 writeln!(out, "  {l}")?;
+            }
+        }
+    }
+    for report in &outcome.targets {
+        let reference = report
+            .reference_length
+            .map_or(String::new(), |r| format!(", reference length {r}"));
+        writeln!(
+            out,
+            "{}: covered {} of {}, {} targeted trees{reference}",
+            report.kind, report.covered, report.total, report.trees
+        )?;
+        let mut by_reason: BTreeMap<String, Vec<&Target>> = BTreeMap::new();
+        for (t, reason) in &report.uncovered {
+            let key = match reason {
+                TargetReason::NeedsDepth => "needs a deeper tree".to_string(),
+                TargetReason::NeedsLength(_) => "needs a longer sentence".to_string(),
+                TargetReason::Never => "in no tree the grammar and its rules allow".to_string(),
+                TargetReason::FixedToken => "inside a token the leaf provider fixes".to_string(),
+            };
+            by_reason.entry(key).or_default().push(t);
+        }
+        for (reason, targets) in by_reason {
+            writeln!(out, "  {reason}: {}", targets.len())?;
+            for t in targets.iter().take(5) {
+                writeln!(out, "    {}", describe_target(&base, t))?;
+            }
+            if targets.len() > 5 {
+                writeln!(out, "    ...")?;
             }
         }
     }

@@ -331,6 +331,7 @@ pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined
             prods.push(Production {
                 lhs,
                 rhs,
+                occ: prod.occ.clone(),
                 unrefined: prod.unrefined,
             });
         })?;
@@ -349,7 +350,7 @@ pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined
         );
     }
     Ok(Refined {
-        cfg: Cfg::from_parts(nts, prods, cfg.lits.clone()),
+        cfg: Cfg::from_parts(nts, prods, cfg.lits.clone(), cfg.occs.clone()),
         start,
     })
 }

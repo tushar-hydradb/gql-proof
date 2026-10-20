@@ -2,6 +2,7 @@
 
 pub mod bnf;
 pub mod cfg;
+pub mod coverage;
 pub mod leaf;
 pub mod purdom;
 pub mod refine;
