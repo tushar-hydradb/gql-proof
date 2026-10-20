@@ -149,6 +149,10 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         let (key, line) = match reason {
             Reason::Unreachable => ("unreachable from start", describe(&cfg, p)),
             Reason::Unproductive => ("no finite derivation", describe(&cfg, p)),
+            Reason::NoLeaf => (
+                "needs a prose leaf with no portable form",
+                describe(&cfg, p),
+            ),
             Reason::NeedsDepth(d) => (
                 "needs a deeper tree",
                 format!("{} (depth {d})", describe(&cfg, p)),

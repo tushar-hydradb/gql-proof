@@ -48,7 +48,15 @@ fn iso_grammar_parses_completely() {
         }
     }
     bnf.defs.iter().for_each(|d| count(&d.rhs, &mut opaque));
-    assert_eq!(opaque, 23);
+    // 23 `seeTheRules` in the xml: 16 whole definitions in prose, 7 annotations on real
+    // content such as `<double single quote> ::= <quote> <quote> !! See the Syntax Rules`.
+    assert_eq!(opaque, 16);
+    assert_eq!(bnf.defs.iter().filter(|d| d.see_rules).count(), 7);
+    let double_single_quote = &bnf.get("double single quote").unwrap().rhs;
+    assert_eq!(
+        *double_single_quote,
+        Ebnf::Seq(vec![Ebnf::Ref("quote".into()), Ebnf::Ref("quote".into())])
+    );
 }
 
 #[test]

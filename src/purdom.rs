@@ -43,6 +43,9 @@ pub enum Reason {
     NeedsDepth(u32),
     /// No finite derivation exists.
     Unproductive,
+    /// Every derivation needs a prose leaf the `LeafProvider` cannot fill, such as an
+    /// implementation-defined rule.
+    NoLeaf,
 }
 
 #[derive(Debug, Clone)]
@@ -79,8 +82,23 @@ pub struct Generator<'g, L> {
 
 impl<'g, L: LeafProvider> Generator<'g, L> {
     pub fn new(cfg: &'g Cfg, config: Config, leaf: L) -> Self {
-        let (nt_height, prod_height) = min_heights(cfg);
-        let (nt_len, prod_len) = min_lens(cfg);
+        // Productions needing a leaf the provider cannot fill get no finite measure, so the
+        // generator never picks them.
+        let fillable: Vec<bool> = cfg
+            .prods
+            .iter()
+            .map(|prod| {
+                prod.rhs.iter().all(|sym| match *sym {
+                    Sym::Lit(l) => match &cfg.lits[l as usize] {
+                        Lit::Opaque(name) => leaf.supports(name),
+                        _ => true,
+                    },
+                    Sym::Nt(_) => true,
+                })
+            })
+            .collect();
+        let (nt_height, prod_height) = min_heights(cfg, &fillable);
+        let (nt_len, prod_len) = min_lens(cfg, &fillable);
         let mut unused = FixedBitSet::with_capacity(cfg.prods.len());
         unused.insert_range(..);
         let slots = cfg.nts.len() * (config.max_depth as usize + 1);
@@ -252,11 +270,14 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
         for nt in self.cfg.reachable(start) {
             reachable[nt as usize] = true;
         }
+        let (_, unrestricted) = min_heights(self.cfg, &vec![true; self.cfg.prods.len()]);
         self.unused
             .ones()
             .map(|p| {
                 let lhs = self.cfg.prods[p].lhs as usize;
-                let reason = if self.prod_height[p] == INF {
+                let reason = if self.prod_height[p] == INF && unrestricted[p] != INF {
+                    Reason::NoLeaf
+                } else if self.prod_height[p] == INF {
                     Reason::Unproductive
                 } else if !reachable[lhs] {
                     Reason::Unreachable
@@ -311,8 +332,8 @@ fn min_opt(a: Option<u32>, b: Option<u32>) -> Option<u32> {
 
 /// Minimum derivation height per nonterminal and per production. A literal is 0, a
 /// production is one above its tallest child, so an empty rhs is 1.
-fn min_heights(cfg: &Cfg) -> (Vec<u32>, Vec<u32>) {
-    fixpoint(cfg, |rhs, nt| {
+fn min_heights(cfg: &Cfg, fillable: &[bool]) -> (Vec<u32>, Vec<u32>) {
+    fixpoint(cfg, fillable, |rhs, nt| {
         rhs.iter()
             .map(|sym| match *sym {
                 Sym::Lit(_) => 0,
@@ -325,8 +346,8 @@ fn min_heights(cfg: &Cfg) -> (Vec<u32>, Vec<u32>) {
 }
 
 /// Shortest yield length per nonterminal and per production, counting each literal as 1.
-fn min_lens(cfg: &Cfg) -> (Vec<u32>, Vec<u32>) {
-    fixpoint(cfg, |rhs, nt| {
+fn min_lens(cfg: &Cfg, fillable: &[bool]) -> (Vec<u32>, Vec<u32>) {
+    fixpoint(cfg, fillable, |rhs, nt| {
         rhs.iter()
             .map(|sym| match *sym {
                 Sym::Lit(_) => 1,
@@ -338,13 +359,20 @@ fn min_lens(cfg: &Cfg) -> (Vec<u32>, Vec<u32>) {
 
 /// Least fixed point of `measure` over all productions, with a nonterminal taking the best
 /// of its productions. `INF` marks "no finite derivation yet" and must stay absorbing.
-fn fixpoint(cfg: &Cfg, measure: impl Fn(&[Sym], &[u32]) -> u32) -> (Vec<u32>, Vec<u32>) {
+fn fixpoint(
+    cfg: &Cfg,
+    fillable: &[bool],
+    measure: impl Fn(&[Sym], &[u32]) -> u32,
+) -> (Vec<u32>, Vec<u32>) {
     let mut nt = vec![INF; cfg.nts.len()];
     let mut prod = vec![INF; cfg.prods.len()];
     let mut changed = true;
     while changed {
         changed = false;
         for (p, production) in cfg.prods.iter().enumerate() {
+            if !fillable[p] {
+                continue;
+            }
             let value = measure(&production.rhs, &nt);
             if value < prod[p] {
                 prod[p] = value;

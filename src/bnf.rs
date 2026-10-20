@@ -3,7 +3,13 @@
 //! The XML vocabulary is described by the DTD at the top of that file. The parts we use:
 //! `BNFdef` (one definition), `rhs`, `alt`, `opt` (`[...]`), `group` (`{...}`), `repeat`
 //! (postfix `...` on the previous item), `BNF` (a reference), `kw`, `terminalsymbol` and
-//! `seeTheRules` ("!! See the Syntax Rules", a definition given in prose).
+//! `seeTheRules` ("!! See the Syntax Rules").
+//!
+//! `seeTheRules` means two different things. Alone it says the definition is given in prose
+//! (`<identifier start> ::= !! See the Syntax Rules.`), which becomes an `Opaque` leaf. After
+//! real content it is an annotation pointing at extra constraints
+//! (`<double single quote> ::= <quote> <quote> !! See the Syntax Rules.`), which adds nothing
+//! to the language and is kept only as `Def::see_rules`.
 
 use anyhow::{Context, Result, anyhow, bail};
 use std::collections::HashSet;
@@ -26,6 +32,8 @@ pub enum Ebnf {
 pub struct Def {
     pub name: String,
     pub rhs: Ebnf,
+    /// The definition carries "!! See the Syntax Rules" next to real content.
+    pub see_rules: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -57,10 +65,13 @@ pub fn parse(xml: &str) -> Result<Bnf> {
         let rhs = elements(def)
             .find(|n| n.has_tag_name("rhs"))
             .ok_or_else(|| anyhow!("<{name}> has no rhs"))?;
+        let annotated = elements(rhs).any(|n| n.has_tag_name("seeTheRules"));
         let rhs = container(rhs, name).with_context(|| format!("in <{name}>"))?;
+        let see_rules = annotated && !matches!(rhs, Ebnf::Opaque(_));
         defs.push(Def {
             name: name.to_string(),
             rhs,
+            see_rules,
         });
     }
     let bnf = Bnf { defs };
@@ -79,6 +90,7 @@ fn elements<'a, 'i>(
 fn container(node: roxmltree::Node, def: &str) -> Result<Ebnf> {
     let mut alts = Vec::new();
     let mut seq: Vec<Ebnf> = Vec::new();
+    let mut prose = false;
     for child in elements(node) {
         match child.tag_name().name() {
             "alt" => alts.push(container(child, def)?),
@@ -100,21 +112,16 @@ fn container(node: roxmltree::Node, def: &str) -> Result<Ebnf> {
                     .ok_or_else(|| anyhow!("repeat with nothing before it"))?;
                 seq.push(Ebnf::Repeat(Box::new(last)));
             }
-            "seeTheRules" => seq.push(Ebnf::Opaque(def.to_string())),
+            "seeTheRules" => prose = true,
             other => bail!("unsupported element <{other}>"),
         }
     }
-    if alts.is_empty() {
-        return Ok(simplify(seq));
+    match (alts.is_empty(), seq.is_empty()) {
+        (true, true) if prose => Ok(Ebnf::Opaque(def.to_string())),
+        (true, _) => Ok(simplify(seq)),
+        (false, true) => Ok(Ebnf::Alt(alts)),
+        (false, false) => bail!("alternatives mixed with a sequence"),
     }
-    // The DTD allows `alt+` followed by an optional `seeTheRules`, which reads as one more
-    // alternative given in prose.
-    match seq.as_slice() {
-        [] => {}
-        [Ebnf::Opaque(_)] => alts.push(seq.pop().unwrap()),
-        _ => bail!("alternatives mixed with a sequence"),
-    }
-    Ok(Ebnf::Alt(alts))
 }
 
 fn simplify(mut seq: Vec<Ebnf>) -> Ebnf {
