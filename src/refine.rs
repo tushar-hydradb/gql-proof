@@ -13,6 +13,12 @@
 //! Nothing here is trusted. `verify` checks each rule again, directly from its text, and a
 //! test makes the two agree.
 //!
+//! A child's inherited state may also read the synthesized states of the children left of
+//! it, which is how what one statement binds reaches the next (an L-attributed grammar,
+//! still finite state, still context-free once multiplied out). A rule may allow a node
+//! several synthesized states, so it can choose, and fix the text of a copy: a copy of
+//! `<binding variable>` is one name.
+//!
 //! A state is a set of facts. Each rule owns some facts: producer nodes add them, consumer
 //! nodes read and remove them, so nothing leaks past the construct it belongs to. A grouping
 //! node from desugaring is stepped too, with `Node::group` set; rules that do not care about
@@ -27,7 +33,7 @@
 use crate::MatchModeDefault;
 use crate::cfg::{Cfg, Lit, Nonterminal, NtId, ProdId, Production, Sym};
 use crate::verify::Plain;
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// A fact a rule tracks about a subtree or its context.
@@ -100,6 +106,9 @@ pub struct Node<'a> {
     pub def: &'a str,
     pub group: bool,
     pub items: &'a [Item<'a>],
+    /// The text the subtree spells, when checking a given tree; `None` while refining, where
+    /// a rule that cares chooses instead.
+    pub text: Option<&'a str>,
 }
 
 pub trait Rule {
@@ -112,8 +121,10 @@ pub trait Rule {
     fn bookkeeping(&self) -> bool {
         false
     }
-    /// Adds to `out` the inherited facts of the child at `pos`, given this node's.
-    fn down(&self, _node: &Node, _inh: &State, _pos: usize, _out: &mut State) {}
+    /// Adds to `out` the inherited facts of the child at `pos`, given this node's and the
+    /// synthesized states of the children left of it (`left`): what a statement binds is in
+    /// scope for the statements after it.
+    fn down(&self, _node: &Node, _inh: &State, _pos: usize, _left: &[State], _out: &mut State) {}
     /// Whether `step` rejects `node` in this inherited context whatever its children are.
     /// Refinement then does not look below it at all.
     fn rejects(&self, _node: &Node, _inh: &State) -> bool {
@@ -122,7 +133,19 @@ pub trait Rule {
     /// The synthesized state of `node`, from its inherited state, each position's synthesized
     /// state (empty for tokens) and `syn`: the union of those, as earlier rules left it.
     /// `None` rejects the node.
-    fn step(&self, node: &Node, inh: &State, children: &[State], syn: State) -> Option<State>;
+    fn step(&self, _node: &Node, _inh: &State, _children: &[State], syn: State) -> Option<State> {
+        Some(syn)
+    }
+    /// Every synthesized state `node` may take: a rule that chooses (which name a variable
+    /// is) gives several, refinement keeps a copy for each. Empty rejects the node.
+    fn steps(&self, node: &Node, inh: &State, children: &[State], syn: State) -> Vec<State> {
+        self.step(node, inh, children, syn).into_iter().collect()
+    }
+    /// The text every tree of a copy of `def` with synthesized state `syn` spells, if this
+    /// rule fixes it.
+    fn text(&self, _def: &str, _syn: &State) -> Option<String> {
+        None
+    }
 }
 
 /// Every syntax rule, in the order they apply.
@@ -353,24 +376,37 @@ impl Rule for DataModifyingModifies {
     }
 }
 
-fn down_all(rules: &[Box<dyn Rule>], node: &Node, inh: &State, pos: usize) -> State {
+fn down_all(
+    rules: &[Box<dyn Rule>],
+    node: &Node,
+    inh: &State,
+    pos: usize,
+    left: &[State],
+) -> State {
     let mut out = State::default();
     for r in rules {
-        r.down(node, inh, pos, &mut out);
+        r.down(node, inh, pos, left, &mut out);
     }
     out
 }
 
+/// Every synthesized state the rules allow `node`, each rule applied to every state the
+/// rules before it left.
 fn step_all(
     rules: &[Box<dyn Rule>],
     node: &Node,
     inh: &State,
     children: &[State],
-) -> Option<State> {
+) -> BTreeSet<State> {
     let union = children.iter().fold(State::default(), |a, c| a.union(c));
-    rules
-        .iter()
-        .try_fold(union, |s, r| r.step(node, inh, children, s))
+    let mut states = BTreeSet::from([union]);
+    for r in rules {
+        states = states
+            .into_iter()
+            .flat_map(|s| r.steps(node, inh, children, s))
+            .collect();
+    }
+    states
 }
 
 /// Above this many child-state combinations for one production, refinement gives up rather
@@ -386,129 +422,167 @@ pub struct Refined {
 /// A nonterminal of the grammar being refined, in one inherited context.
 type Ctx = (NtId, State);
 
-/// The grammar whose derivation trees are exactly `cfg`'s that every rule accepts.
-pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined> {
-    let items: Vec<Vec<Item>> = cfg.prods.iter().map(|p| items_of(cfg, p)).collect();
-    let node = |p: ProdId| {
-        let lhs = &cfg.nts[cfg.prods[p as usize].lhs as usize];
+/// One refinement under way: the contexts found so far, the productions each keeps, the
+/// synthesized states found so far, and which productions read each context.
+struct Refiner<'c, 'r> {
+    cfg: &'c Cfg,
+    rules: &'r [Box<dyn Rule>],
+    items: Vec<Vec<Item<'c>>>,
+    /// The start symbol, when nothing uses it: its synthesized state is never consumed, so
+    /// it is forgotten, which keeps one start.
+    forget: Option<NtId>,
+    index: BTreeMap<Ctx, usize>,
+    contexts: Vec<Ctx>,
+    prods: Vec<Vec<ProdId>>,
+    states: Vec<BTreeSet<State>>,
+    users: Vec<BTreeSet<(usize, usize)>>,
+    work: Vec<(usize, usize)>,
+    queued: BTreeSet<(usize, usize)>,
+}
+
+/// A production's children in one context: the context of each nonterminal position, and
+/// the synthesized state each takes.
+type Tuple = (Vec<Option<usize>>, Vec<State>);
+
+impl<'c, 'r> Refiner<'c, 'r> {
+    fn new(cfg: &'c Cfg, rules: &'r [Box<dyn Rule>], start: NtId) -> Self {
+        let used = cfg.prods.iter().any(|p| p.rhs.contains(&Sym::Nt(start)));
+        Refiner {
+            cfg,
+            rules,
+            items: cfg.prods.iter().map(|p| items_of(cfg, p)).collect(),
+            forget: (!used).then_some(start),
+            index: BTreeMap::new(),
+            contexts: Vec::new(),
+            prods: Vec::new(),
+            states: Vec::new(),
+            users: Vec::new(),
+            work: Vec::new(),
+            queued: BTreeSet::new(),
+        }
+    }
+
+    fn node(&self, p: ProdId) -> Node<'_> {
+        let lhs = &self.cfg.nts[self.cfg.prods[p as usize].lhs as usize];
         Node {
             def: &lhs.base,
             group: lhs.synthetic,
-            items: &items[p as usize],
-        }
-    };
-    // Inherited contexts, top-down. Every nonterminal is a root with nothing inherited, so
-    // the parts of the grammar the start does not reach keep a copy, as without rules. Each
-    // context's productions, with the context of every nonterminal position.
-    let root: Ctx = (start, State::default());
-    let mut index: BTreeMap<Ctx, usize> = BTreeMap::new();
-    let mut contexts: Vec<Ctx> = Vec::new();
-    let mut expansions: Vec<Vec<(ProdId, Vec<Option<usize>>)>> = Vec::new();
-    let mut intern = |ctx: Ctx, contexts: &mut Vec<Ctx>| -> usize {
-        *index.entry(ctx.clone()).or_insert_with(|| {
-            contexts.push(ctx);
-            contexts.len() - 1
-        })
-    };
-    for nt in 0..cfg.nts.len() as NtId {
-        intern((nt, State::default()), &mut contexts);
-    }
-    let mut next = 0;
-    while next < contexts.len() {
-        let (nt, inh) = contexts[next].clone();
-        let mut prods = Vec::new();
-        for &p in &cfg.nts[nt as usize].prods {
-            let here = node(p);
-            if rules.iter().any(|r| r.rejects(&here, &inh)) {
-                continue;
-            }
-            let kids = cfg.prods[p as usize]
-                .rhs
-                .iter()
-                .enumerate()
-                .map(|(pos, &sym)| match sym {
-                    Sym::Nt(c) => Some(intern(
-                        (c, down_all(rules, &here, &inh, pos)),
-                        &mut contexts,
-                    )),
-                    Sym::Lit(_) => None,
-                })
-                .collect();
-            prods.push((p, kids));
-        }
-        expansions.push(prods);
-        next += 1;
-    }
-    let mut users: Vec<Vec<(usize, usize)>> = vec![Vec::new(); contexts.len()];
-    for (x, prods) in expansions.iter().enumerate() {
-        for (slot, (_, kids)) in prods.iter().enumerate() {
-            for &k in kids.iter().flatten() {
-                users[k].push((x, slot));
-            }
+            items: &self.items[p as usize],
+            text: None,
         }
     }
 
-    // The start symbol's synthesized state is never consumed, so it is forgotten, which keeps
-    // one start.
-    let forget_at_start = !cfg.prods.iter().any(|p| p.rhs.contains(&Sym::Nt(start)));
-    let state_of = |p: ProdId, inh: &State, children: &[State]| -> Option<State> {
-        let s = step_all(rules, &node(p), inh, children)?;
-        let lhs = cfg.prods[p as usize].lhs;
-        Some(if forget_at_start && lhs == start {
-            State::default()
+    /// The context's index, adding it, with the productions no rule rejects in it, and
+    /// queueing them, if it is new.
+    fn intern(&mut self, ctx: Ctx) -> usize {
+        if let Some(&x) = self.index.get(&ctx) {
+            return x;
+        }
+        let (nt, inh) = &ctx;
+        let kept: Vec<ProdId> = self.cfg.nts[*nt as usize]
+            .prods
+            .iter()
+            .copied()
+            .filter(|&p| !self.rules.iter().any(|r| r.rejects(&self.node(p), inh)))
+            .collect();
+        let x = self.contexts.len();
+        for slot in 0..kept.len() {
+            self.queued.insert((x, slot));
+            self.work.push((x, slot));
+        }
+        self.index.insert(ctx.clone(), x);
+        self.contexts.push(ctx);
+        self.prods.push(kept);
+        self.states.push(BTreeSet::new());
+        self.users.push(BTreeSet::new());
+        x
+    }
+
+    /// Every combination of child states production `slot` of context `x` can take with the
+    /// states found so far, left to right, each child in the context its left siblings give
+    /// it. Registers `(x, slot)` as a reader of every context it looks at. Ordered with the
+    /// first position varying fastest.
+    fn tuples(&mut self, x: usize, slot: usize) -> Result<Vec<Tuple>> {
+        let p = self.prods[x][slot];
+        let inh = self.contexts[x].1.clone();
+        let rhs = self.cfg.prods[p as usize].rhs.clone();
+        // Each partial tuple keeps the index of every state in its context's set, to order by.
+        let mut partial: Vec<(Vec<Option<usize>>, Vec<State>, Vec<usize>)> =
+            vec![(Vec::new(), Vec::new(), Vec::new())];
+        for (pos, sym) in rhs.iter().enumerate() {
+            let mut next = Vec::new();
+            for (kids, states, order) in partial {
+                match *sym {
+                    Sym::Lit(_) => {
+                        let mut t = (kids, states, order);
+                        t.0.push(None);
+                        t.1.push(State::default());
+                        t.2.push(0);
+                        next.push(t);
+                    }
+                    Sym::Nt(c) => {
+                        let inh_c = down_all(self.rules, &self.node(p), &inh, pos, &states);
+                        let k = self.intern((c, inh_c));
+                        self.users[k].insert((x, slot));
+                        for (i, s) in self.states[k].iter().enumerate() {
+                            let mut t = (kids.clone(), states.clone(), order.clone());
+                            t.0.push(Some(k));
+                            t.1.push(s.clone());
+                            t.2.push(i);
+                            next.push(t);
+                        }
+                    }
+                }
+            }
+            if next.len() > MAX_TUPLES {
+                bail!(
+                    "refinement would need more than {MAX_TUPLES} child-state combinations in {}",
+                    crate::describe(self.cfg, p)
+                );
+            }
+            partial = next;
+        }
+        partial.sort_by(|a, b| a.2.iter().rev().cmp(b.2.iter().rev()));
+        Ok(partial.into_iter().map(|(k, s, _)| (k, s)).collect())
+    }
+
+    fn state_of(&self, p: ProdId, inh: &State, children: &[State]) -> BTreeSet<State> {
+        let states = step_all(self.rules, &self.node(p), inh, children);
+        if self.forget == Some(self.cfg.prods[p as usize].lhs) && !states.is_empty() {
+            BTreeSet::from([State::default()])
         } else {
-            s
-        })
-    };
-    let empty: BTreeSet<State> = BTreeSet::from([State::default()]);
-    let options = |kids: &[Option<usize>], states: &[BTreeSet<State>]| -> Vec<Vec<State>> {
-        kids.iter()
-            .map(|k| match k {
-                Some(k) => states[*k].iter().cloned().collect(),
-                None => empty.iter().cloned().collect(),
-            })
-            .collect()
-    };
+            states
+        }
+    }
+}
+
+/// The grammar whose derivation trees are exactly `cfg`'s that every rule accepts.
+pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined> {
+    let mut r = Refiner::new(cfg, rules, start);
+    // Every nonterminal is a root with nothing inherited, so the parts of the grammar the
+    // start does not reach keep a copy, as without rules.
+    for nt in 0..cfg.nts.len() as NtId {
+        r.intern((nt, State::default()));
+    }
+    let root = r.index[&(start, State::default())];
 
     // Synthesized states per context: a least fixed point, bottom-up, revisiting a production
-    // only when one of its children gained a state.
-    let mut states: Vec<BTreeSet<State>> = vec![BTreeSet::new(); contexts.len()];
-    let mut queued: BTreeSet<(usize, usize)> = BTreeSet::new();
-    let mut work: Vec<(usize, usize)> = Vec::new();
-    for (x, prods) in expansions.iter().enumerate() {
-        for slot in 0..prods.len() {
-            queued.insert((x, slot));
-            work.push((x, slot));
-        }
-    }
-    while let Some((x, slot)) = work.pop() {
-        queued.remove(&(x, slot));
-        let (p, kids) = &expansions[x][slot];
-        let inh = &contexts[x].1;
-        let opts = options(kids, &states);
-        let mut found = Vec::new();
-        for_each_tuple(&opts, &mut |tuple| {
-            let children: Vec<State> = tuple.iter().map(|s| (*s).clone()).collect();
-            if let Some(s) = state_of(*p, inh, &children) {
-                found.push(s);
-            }
-        })
-        .with_context(|| {
-            let sizes: Vec<String> = opts.iter().map(|o| o.len().to_string()).collect();
-            format!(
-                "in {} (states per position: {})",
-                crate::describe(cfg, *p),
-                sizes.join(" x ")
-            )
-        })?;
+    // only when a context it reads gained a state. A child's context depends on the states of
+    // the children left of it, so contexts are found along the way.
+    while let Some((x, slot)) = r.work.pop() {
+        r.queued.remove(&(x, slot));
+        let p = r.prods[x][slot];
+        let found = r.tuples(x, slot)?;
         let mut grew = false;
-        for s in found {
-            grew |= states[x].insert(s);
+        for (_, children) in found {
+            for s in r.state_of(p, &r.contexts[x].1.clone(), &children) {
+                grew |= r.states[x].insert(s);
+            }
         }
         if grew {
-            for &u in &users[x] {
-                if queued.insert(u) {
-                    work.push(u);
+            for &u in &r.users[x].clone() {
+                if r.queued.insert(u) {
+                    r.work.push(u);
                 }
             }
         }
@@ -517,9 +591,9 @@ pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined
     let labels: BTreeMap<Fact, String> = rules.iter().flat_map(|r| r.labels()).collect();
     let mut ids: BTreeMap<(usize, State), NtId> = BTreeMap::new();
     let mut nts = Vec::new();
-    for (x, (nt, inh)) in contexts.iter().enumerate() {
+    for (x, (nt, inh)) in r.contexts.iter().enumerate() {
         let nt = &cfg.nts[*nt as usize];
-        for syn in &states[x] {
+        for syn in &r.states[x] {
             ids.insert((x, syn.clone()), nts.len() as NtId);
             nts.push(Nonterminal {
                 name: copy_name(&nt.name, inh, syn, &labels),
@@ -528,6 +602,10 @@ pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined
                 lexical: nt.lexical,
                 origin: nt.origin.clone(),
                 prods: Vec::new(),
+                text: rules
+                    .iter()
+                    .find_map(|r| r.text(&nt.base, syn))
+                    .or_else(|| nt.text.clone()),
             });
         }
     }
@@ -544,61 +622,55 @@ pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined
     type Key = (u32, Vec<Fact>, Vec<Fact>, Vec<Vec<Fact>>);
     let mut classes: BTreeMap<Key, u32> = BTreeMap::new();
     let mut prods = Vec::new();
-    for (x, expansion) in expansions.iter().enumerate() {
-        let inh = &contexts[x].1;
-        for (p, kids) in expansion {
-            let prod = &cfg.prods[*p as usize];
-            let opts = options(kids, &states);
-            for_each_tuple(&opts, &mut |tuple| {
-                let children: Vec<State> = tuple.iter().map(|s| (*s).clone()).collect();
-                let Some(s) = state_of(*p, inh, &children) else {
-                    return;
-                };
-                let key = (
-                    prod.context,
-                    visible(inh),
-                    visible(&s),
-                    children.iter().map(visible).collect(),
-                );
-                let next = classes.len() as u32;
-                let context = *classes.entry(key).or_insert(next);
-                let lhs = ids[&(x, s)];
-                let rhs = prod
-                    .rhs
-                    .iter()
-                    .zip(kids)
-                    .zip(&children)
-                    .map(|((&sym, k), cs)| match k {
-                        Some(k) => Sym::Nt(ids[&(*k, cs.clone())]),
-                        None => sym,
-                    })
-                    .collect();
-                nts[lhs as usize].prods.push(prods.len() as ProdId);
-                prods.push(Production {
-                    lhs,
-                    rhs,
-                    occ: prod.occ.clone(),
-                    unrefined: prod.unrefined,
-                    context,
-                });
-            })?;
+    for x in 0..r.contexts.len() {
+        let inh = r.contexts[x].1.clone();
+        for slot in 0..r.prods[x].len() {
+            let p = r.prods[x][slot];
+            let prod = &cfg.prods[p as usize];
+            for (kids, children) in r.tuples(x, slot)? {
+                for s in r.state_of(p, &inh, &children) {
+                    let key = (
+                        prod.context,
+                        visible(&inh),
+                        visible(&s),
+                        children.iter().map(visible).collect(),
+                    );
+                    let next = classes.len() as u32;
+                    let context = *classes.entry(key).or_insert(next);
+                    let lhs = ids[&(x, s)];
+                    let rhs = prod
+                        .rhs
+                        .iter()
+                        .zip(&kids)
+                        .zip(&children)
+                        .map(|((&sym, k), cs)| match k {
+                            Some(k) => Sym::Nt(ids[&(*k, cs.clone())]),
+                            None => sym,
+                        })
+                        .collect();
+                    nts[lhs as usize].prods.push(prods.len() as ProdId);
+                    prods.push(Production {
+                        lhs,
+                        rhs,
+                        occ: prod.occ.clone(),
+                        unrefined: prod.unrefined,
+                        context,
+                    });
+                }
+            }
         }
     }
-    let r = contexts
-        .iter()
-        .position(|c| *c == root)
-        .expect("every nonterminal has a root context");
-    let Some(first) = states[r].iter().next() else {
+    let Some(first) = r.states[root].iter().next() else {
         bail!("the rules reject every tree from <{}>", cfg.name(start));
     };
-    if states[r].len() > 1 {
+    if r.states[root].len() > 1 {
         bail!(
             "<{}> is recursive and ends in several states",
             cfg.name(start)
         );
     }
     Ok(Refined {
-        start: ids[&(r, first.clone())],
+        start: ids[&(root, first.clone())],
         cfg: Cfg::from_parts(nts, prods, cfg.lits.clone(), cfg.occs.clone()),
     })
 }
@@ -615,28 +687,6 @@ fn items_of<'c>(cfg: &'c Cfg, p: &Production) -> Vec<Item<'c>> {
             },
         })
         .collect()
-}
-
-fn for_each_tuple<T>(options: &[Vec<T>], f: &mut dyn FnMut(&[&T])) -> Result<()> {
-    let total = options.iter().map(Vec::len).product::<usize>();
-    if total > MAX_TUPLES {
-        bail!("refinement would need {total} child-state combinations for one production");
-    }
-    let mut index = vec![0; options.len()];
-    let mut tuple: Vec<&T> = Vec::with_capacity(options.len());
-    for _ in 0..total {
-        tuple.clear();
-        tuple.extend(index.iter().enumerate().map(|(i, &c)| &options[i][c]));
-        f(&tuple);
-        for (i, choice) in index.iter_mut().enumerate() {
-            *choice += 1;
-            if *choice < options[i].len() {
-                break;
-            }
-            *choice = 0;
-        }
-    }
-    Ok(())
 }
 
 fn copy_name(name: &str, inh: &State, syn: &State, labels: &BTreeMap<Fact, String>) -> String {
@@ -660,14 +710,16 @@ pub fn accepts(rules: &[Box<dyn Rule>], tree: &Plain) -> Result<(), String> {
     run(rules, tree, &State::default()).map(|_| ())
 }
 
-fn run(rules: &[Box<dyn Rule>], node: &Plain, inh: &State) -> Result<State, String> {
+/// The synthesized state of `node` and the text it spells. Where a rule allows several
+/// states, the text decides (a rule that chooses a name reads it), and the first is kept.
+fn run(rules: &[Box<dyn Rule>], node: &Plain, inh: &State) -> Result<(State, String), String> {
     let Plain::Def {
         name,
         synthetic,
         children,
     } = node
     else {
-        return Ok(State::default());
+        return Ok((State::default(), node.text()));
     };
     let items: Vec<Item> = children
         .iter()
@@ -682,20 +734,27 @@ fn run(rules: &[Box<dyn Rule>], node: &Plain, inh: &State) -> Result<State, Stri
             Plain::Leaf { def, .. } => Item::Prose(def),
         })
         .collect();
-    let here = Node {
+    let mut here = Node {
         def: name,
         group: *synthetic,
         items: &items,
+        text: None,
     };
     let mut states = Vec::with_capacity(children.len());
+    let mut text = String::new();
     for (pos, child) in children.iter().enumerate() {
-        states.push(run(rules, child, &down_all(rules, &here, inh, pos))?);
+        let (s, t) = run(rules, child, &down_all(rules, &here, inh, pos, &states))?;
+        states.push(s);
+        text.push_str(&t);
     }
+    here.text = Some(&text);
     let mut s = states.iter().fold(State::default(), |a, c| a.union(c));
     for rule in rules {
         s = rule
-            .step(&here, inh, &states, s)
+            .steps(&here, inh, &states, s)
+            .into_iter()
+            .next()
             .ok_or_else(|| format!("{} at <{name}>", rule.name()))?;
     }
-    Ok(s)
+    Ok((s, text))
 }

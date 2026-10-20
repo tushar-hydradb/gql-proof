@@ -55,6 +55,9 @@ pub struct Nonterminal {
     /// The ISO definition this nonterminal came from.
     pub origin: String,
     pub prods: Vec<ProdId>,
+    /// The text every tree of this nonterminal spells, when a rule fixes it (a refined copy
+    /// of `<binding variable>` is one name).
+    pub text: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -196,6 +199,7 @@ impl Cfg {
             lexical: false,
             origin,
             prods: Vec::new(),
+            text: None,
         });
         id
     }

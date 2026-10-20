@@ -1919,7 +1919,7 @@ impl Rule for ClaimRules {
             })
     }
 
-    fn down(&self, node: &Node, inh: &State, pos: usize, out: &mut State) {
+    fn down(&self, node: &Node, inh: &State, pos: usize, _left: &[State], out: &mut State) {
         let item = node.items[pos];
         let Some(child) = self.id(item) else { return };
         let child = child as usize;

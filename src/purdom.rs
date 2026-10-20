@@ -127,12 +127,17 @@ impl<'g> Analysis<'g> {
                 })
             })
             .collect();
-        // Tokens the provider fixes are derived once, through the grammar, so the result is an
-        // ordinary derivation tree the verifier can check.
+        // Tokens the provider fixes, and the text a rule fixes for a refined copy, are derived
+        // once, through the grammar, so the result is an ordinary derivation tree the verifier
+        // can check.
         let mut templates = vec![None; cfg.nts.len()];
         let mut template_errors = Vec::new();
         for (nt, info) in cfg.nts.iter().enumerate() {
-            let Some(text) = leaf.token(&info.base).filter(|_| !info.synthetic) else {
+            let fixed = info
+                .text
+                .as_deref()
+                .or_else(|| leaf.token(&info.base).filter(|_| !info.synthetic));
+            let Some(text) = fixed else {
                 continue;
             };
             let chars: Vec<char> = text.chars().collect();
