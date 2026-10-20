@@ -6,6 +6,10 @@ statements to collect are every sentence that begins that way, wherever it is. T
 containment vocabulary is defined in 5.3.2.1, and `conformance.lark` parses each one into a
 tree pattern over the BNF's names.
 
+The rules are those of the 2024 text as Cor 1:2026 corrects them: `corrigendum.py` reads Cor 1
+into `corrigendum.json` first, and its rule, table 10 and 24.2 edits are applied here after the
+2024 text has been checked against itself.
+
 The PDF stays local and so does the output: nothing here is committed.
 
     .venv-pdf/bin/python -I tools/conformance.py <iso pdf> <grammar dir> <out json>
@@ -20,6 +24,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import pdfplumber
 import pypdfium2 as pdfium
 from lark import Lark, Token, Transformer, Tree, v_args
 from lark.visitors import CollapseAmbiguities
@@ -186,9 +191,10 @@ def blocks(pdf, marks):
 
 # A statement ends at a full stop before the next enumerator, note, sentence or the end, or at
 # the next enumerator when its full stop is missing (GQ22's is).
-ENUMERATOR = r"\s+\(?[0-9a-z]+\)\s"
+# Cor 1 numbers the rules it inserts 1.1), 40.1).
+ENUMERATOR = r"\s+\(?[0-9a-z]+(?:\.[0-9]+)?\)\s"
 STATEMENT = re.compile(
-    r"(?:(?P<rule>\(?[0-9a-z]+\))\s+)?"
+    r"(?:(?P<rule>\(?[0-9a-z]+(?:\.[0-9]+)?\))\s+)?"
     r"(?P<text>Without ?Feature ?(?P<code>[A-Z][A-Z0-9]{3}) ?, ?“(?P<name>[^”]*)” ?,?(?P<body>.*?))"
     rf"(?:\.(?=(?:{ENUMERATOR}|\s+NOTE\s|\s+Without ?Feature|\s+[A-Z][a-z]*\s)|\s*$)|(?={ENUMERATOR})|\s*$)"
 )
@@ -255,29 +261,88 @@ def subclause(bs, number):
 CODE = r"[A-Z][A-Z0-9]{3}"
 
 
-def table10(pdf, marks, features, failures):
-    """24.7 table 10, read by position: per row, the feature in the first column implies the
-    one in the third. Codes are paired by height; the two columns split at the page middle."""
+def table_rows(path, pages):
+    """Table 10's rows on these pages, read from the ruled cells with pdfplumber: the feature,
+    its name, and what it implies. A row whose third cell is "At least one of:" collects the
+    codes of the rows under it, whose first cells are empty, across a page break too."""
+    out = []
+    with pdfplumber.open(path) as pdf:
+        for p in pages:
+            page = pdf.pages[p]
+            for table in page.find_tables():
+                for row in table.extract():
+                    cells = [c or "" for c in row]
+                    if len(cells) != 4 or not (re.fullmatch(CODE, cells[0]) or (not cells[0] and out)):
+                        continue
+                    if cells[0]:
+                        either = squash(cells[2]).lower() == "atleastoneof:"
+                        out.append(
+                            {
+                                "page": p,
+                                "top": table.bbox[1],
+                                "feature": cells[0],
+                                "name": cells[1],
+                                "implied": [] if either else [cells[2]],
+                                "names": [] if either else [cells[3]],
+                                "either": either,
+                            }
+                        )
+                    else:
+                        out[-1]["implied"].append(cells[2])
+                        out[-1]["names"].append(cells[3])
+    for r in out:
+        for c in [r["feature"], *r["implied"]]:
+            if not re.fullmatch(CODE, c):
+                raise SystemExit(f"table 10 row {r['feature']}: “{c}” is not a feature code")
+        if r["either"] and len(r["implied"]) < 2:
+            raise SystemExit(f"table 10 row {r['feature']}: “at least one of” with {len(r['implied'])} codes")
+    return out
+
+
+def row_key(r):
+    return (r["feature"], r["either"], tuple(r["implied"]))
+
+
+def check_row_names(rows, features, failures, where):
+    for r in rows:
+        for code, name in [(r["feature"], r["name"]), *zip(r["implied"], r["names"])]:
+            if code not in features:
+                failures.append(f"{where}: {code} is not a feature")
+            elif same_text(name) != same_text(features[code]):
+                failures.append(f"{where}: {code} named “{name}”, the features say “{features[code]}”")
+
+
+def table10(path, marks, cor, features, cor_features, failures, notes):
+    """24.7 table 10 as cor 1 leaves it. A row with one implied feature is an implication,
+    which a claim is closed under; an "at least one of" row is a claim rule, checked like
+    24.3's."""
     start = next(p for p, n, _ in marks if n == "24.7")
     end = next(p for p, n, _ in marks if n == "A")
-    out = []
-    for p in range(start, end):
-        page = pdf[p]
-        middle = page.get_size()[0] / 2
-        left, right = [], []
-        for word, x, y in positioned_words(page):
-            if word in features:
-                (left if x < middle else right).append((y, word))
-        for y, code in left:
-            pair = [c for yy, c in right if abs(yy - y) < LINE_TOLERANCE]
-            if len(pair) != 1:
-                failures.append(f"table 10: {code} has {len(pair)} implied features on its row")
-                continue
-            out.append([code, pair[0]])
-        if len(left) != len(right):
-            failures.append(f"table 10, page {p + 1}: {len(left)} implying and {len(right)} implied codes")
+    rows = table_rows(path, range(start, end))
+    check_row_names(rows, features, failures, "table 10")
+    for it in cor:
+        if it["kind"] == "table rows delete":
+            for r in it["rows"]:
+                hit = [x for x in rows if row_key(x) == row_key(r)]
+                if len(hit) != 1:
+                    failures.append(f"cor 1 deletes table 10 row {r['feature']} -> {r['implied']}, which 2024 has {len(hit)} times")
+                for x in hit:
+                    rows.remove(x)
+        elif it["kind"] == "table rows add":
+            check_row_names(it["rows"], cor_features, failures, "cor 1 table 10")
+            for r in it["rows"]:
+                if any(row_key(x) == row_key(r) for x in rows):
+                    notes.append(f"cor 1 adds table 10 row {r['feature']} -> {r['implied']}, which is there already")
+                else:
+                    rows.append(r)
+    implies = [[r["feature"], b] for r in rows if not r["either"] for b in r["implied"]]
+    either = [
+        {"if_any": [r["feature"]], "one_of": [[b] for b in r["implied"]], "source": "table 10"}
+        for r in rows
+        if r["either"]
+    ]
     graph = collections.defaultdict(set)
-    for a, b in out:
+    for a, b in implies:
         graph[a].add(b)
 
     def cyclic(n, path):
@@ -286,35 +351,86 @@ def table10(pdf, marks, features, failures):
     for a in list(graph):
         if cyclic(a, frozenset()):
             failures.append(f"table 10: {a} implies itself")
-    return out
+    return implies, either
 
 
-def claims(bs, features, failures):
+def claims(bs, item1, features, failures):
     """The rules a claim must satisfy, as "if any of these is claimed, at least one of these
-    sets is claimed in full". 24.2 for minimum conformance (no condition), 24.3 for the rest."""
+    sets is claimed in full". 24.2 for minimum conformance (no condition), with its list item
+    1) as cor 1 replaces it, and 24.3 for the rest."""
     out = []
     minimum = subclause(bs, "24.2")
-    m = re.search(
-        rf"at least one of: a\) Feature ({CODE}),.*?b\) Feature ({CODE}),.*?at least one of:(.*?)2\)",
-        minimum,
-    )
+    if item1 is not None:
+        minimum, n = re.subn(r"1\) A claim of conformance to at least one of:.*?(?= 2\) )", lambda _: item1, minimum, count=1)
+        if n != 1:
+            failures.append("24.2: cor 1 replaces list item 1), which does not read as expected")
+    m = re.search(r"1\) A claim of conformance to at least one of:(.*?) 2\) ", minimum)
     if not m:
         failures.append("24.2: the minimum conformance claim does not read as expected")
     else:
-        graph_types = re.findall(rf"Feature ({CODE})", m.group(3))
-        out.append({"if_any": None, "one_of": [[m.group(1)]] + [[m.group(2), g] for g in graph_types]})
+        # a), b), ... are the options; an option may carry its own "at least one of: i) ii)"
+        options, letter = [], "a"
+        for part in re.split(r"\s([a-z])\)\s", " " + m.group(1))[1:]:
+            if part == letter:
+                options.append("")
+                letter = chr(ord(letter) + 1)
+            elif options:
+                options[-1] += part if len(part) > 1 else f" {part}) "
+        one_of = []
+        for o in options:
+            codes = re.findall(rf"Feature ({CODE})", o)
+            one_of += [[codes[0]]] if len(codes) == 1 else [[codes[0], c] for c in codes[1:]]
+        out.append({"if_any": None, "one_of": one_of, "source": "24.2"})
     for m in re.finditer(
         r"claims conformance to (.*?), shall also claim conformance to at least one of:(.*?)(?=A GQL-implementation|$)",
         subclause(bs, "24.3"),
     ):
         if_any = re.findall(rf"Feature ({CODE})", m.group(1))
         one_of = [[c] for c in re.findall(rf"Feature ({CODE})", m.group(2))]
-        out.append({"if_any": if_any, "one_of": one_of})
+        out.append({"if_any": if_any, "one_of": one_of, "source": "24.3"})
     for r in out:
         for c in (r["if_any"] or []) + [c for s in r["one_of"] for c in s]:
             if c not in features:
-                failures.append(f"claim rule names {c}, which is not in features.xml")
+                failures.append(f"claim rule names {c}, which is not a feature")
     return out
+
+
+def corrected(rules, implicit, cor, titles, failures, notes):
+    """The conformance rules and implicit statements with cor 1's edits applied: its rules
+    replace, delete and add whole Conformance Rules by number, and any "Without Feature"
+    statement in the text it puts elsewhere (GC00's, in 4.2.5.3) joins the implicit ones."""
+    rules, implicit = list(rules), list(implicit)
+
+    def new(it, section):
+        block = Block(it["page"], it["subclause"], titles.get(it["subclause"]), section)
+        return [{**s, "source": "Cor 1"} for s in statements(it["text"], block)]
+
+    for it in cor:
+        if it["applied"] is None and it.get("text"):
+            if any(s["subclause"] == it["subclause"] for s in implicit):
+                failures.append(f"cor 1 rewrites text in {it['subclause']}, which holds 2024 statements outside its Conformance Rules")
+            implicit += new(it, None)
+        if not it["kind"].startswith("conformance rule"):
+            continue
+        here = [s for s in rules if s["subclause"] == it["subclause"]]
+        if it["kind"] in ("conformance rule delete", "conformance rule replace"):
+            for n in it["rules"]:
+                gone = [s for s in here if s["rule"] == f"{n})"]
+                if not gone:
+                    failures.append(f"cor 1 {it['kind'].split()[-1]}s {it['subclause']} Conformance Rule {n}), which 2024 does not have")
+                rules = [s for s in rules if not any(s is g for g in gone)]
+        if it["kind"] == "conformance rule delete":
+            continue
+        added = new(it, "Conformance Rules")
+        if it["kind"] == "conformance rule replace" and sorted(s["rule"] for s in added) != sorted(f"{n})" for n in it["rules"]):
+            failures.append(f"cor 1 replaces {it['subclause']} rules {it['rules']} with {[s['rule'] for s in added]}")
+        if not added:
+            failures.append(f"cor 1 {it['subclause']} item {it['item']}: no rule in “{it['text'][:60]}”")
+        for s in added:
+            if it["kind"] == "conformance rule add" and any(x["rule"] == s["rule"] for x in here):
+                notes.append(f"cor 1 adds {it['subclause']} Conformance Rule {s['rule']} ({s['feature']}), a number 2024 already uses")
+        rules += added
+    return rules, implicit
 
 
 class Bnf:
@@ -653,12 +769,14 @@ def main():
         return
 
     grammar = Path(args.grammar)
-    bnf = Bnf(grammar / "ISO_IEC_39075(en).bnf.xml")
+    # the rules are read against the grammar as cor 1 leaves it (`corrigendum.py`)
+    bnf = Bnf(grammar / "ISO_IEC_39075(en)+Cor1.bnf.xml")
+    cor = json.loads((grammar / "corrigendum.json").read_text())
     features = {
         f.findtext("code"): " ".join("".join(f.find("description").itertext()).split())
         for f in ET.parse(grammar / "ISO_IEC_39075(en)-features.xml").getroot()
     }
-    failures = []
+    failures, notes = [], []
 
     # Every Conformance Rules statement is recapitulated in annex A, word for word.
     rules = [s for s in found["body"] if s["section"] == "Conformance Rules"]
@@ -669,13 +787,25 @@ def main():
     for f, _ in recap - body:
         failures.append(f"{f}: annex A recapitulates a rule the body does not have")
 
+    # Cor 1's names: a code features.xml lacks is new, a known code under another name is renamed
+    cor_names = cor["features"]
+    for c, n in cor_names.items():
+        if c in features and same_text(n) != same_text(features[c]):
+            notes.append(f"cor 1 renames {c} “{features[c]}” to “{n}”")
+    corrected_features = {**features, **cor_names}
+    titles = {n: t for _, n, t in marks}
+    implicit = [s for s in found["body"] if s["section"] != "Conformance Rules"] + found["implicit"]
+    rules, implicit = corrected(rules, implicit, cor["items"], titles, failures, notes)
+
     statements_out = []
-    for origin, sts in (("conformance rule", rules), ("implicit", [s for s in found["body"] if s["section"] != "Conformance Rules"] + found["implicit"])):
+    for origin, sts in (("conformance rule", rules), ("implicit", implicit)):
         for s in sts:
-            if s["feature"] not in features:
-                failures.append(f"{s['feature']}: not in features.xml")
-            elif same_text(s["name"]) != same_text(features[s["feature"]]):
-                failures.append(f"{s['feature']}: named “{s['name']}”, features.xml says “{features[s['feature']]}”")
+            source = s.get("source", "2024")
+            names = cor_names if source == "Cor 1" else features
+            if s["feature"] not in corrected_features:
+                failures.append(f"{s['feature']}: not a feature")
+            elif same_text(s["name"]) != same_text(names.get(s["feature"], corrected_features[s["feature"]])):
+                failures.append(f"{s['feature']}: named “{s['name']}”, {source} says “{names[s['feature']]}”")
             subject = s["title"][1:-1] if s["title"] and s["title"].startswith("<") else None
             try:
                 reading = with_readings(parse(s["body"], subject, bnf), bnf)
@@ -689,6 +819,7 @@ def main():
                     "section": s["section"],
                     "rule": s["rule"],
                     "origin": origin,
+                    "source": source,
                     **reading,
                     "sha256": sha(s["text"]),
                 }
@@ -704,31 +835,48 @@ def main():
     covered = {s["feature"] for s in statements_out}
     # annex A's implicit summary also names features whose implicit rules begin "If ... supports"
     supports = set(re.findall(rf"Specifications for Feature ({CODE})", subclause(bs, "A")))
-    for f in sorted(set(features) - covered - supports):
+    for f in sorted(set(corrected_features) - covered - supports):
         failures.append(f"{f}: no statement defines it")
     for f in sorted(supports - covered):
         print(f"{f}: defined only by statements that do not begin “Without Feature”", file=sys.stderr)
 
-    implies = table10(pdf, marks, features, failures)
-    claim_rules = claims(bs, features, failures)
+    implies, either = table10(args.pdf, marks, cor["items"], features, corrected_features, failures, notes)
+    item1 = [it for it in cor["items"] if it["kind"] == "list item replace" and it["subclause"] == "24.2"]
+    if any(it["kind"] == "list item replace" and it["subclause"] != "24.2" for it in cor["items"]):
+        failures.append("cor 1 replaces a list item outside 24.2")
+    if len(item1) > 1 or (item1 and item1[0]["rules"] != ["1"]):
+        failures.append("cor 1 replaces 24.2 list items other than 1)")
+    claim_rules = claims(bs, item1[0]["text"] if item1 else None, corrected_features, failures) + either
 
+    for n in dict.fromkeys(notes):
+        print(n, file=sys.stderr)
     if failures:
         print("\n".join(failures), file=sys.stderr)
         sys.exit(1)
 
     out = {
-        "features": [{"code": c, "name": n} for c, n in features.items()],
+        "edition": "ISO/IEC 39075:2024 + Cor 1:2026",
+        "features": [
+            {"code": c, "name": n, **({"cor1": "new" if c not in features else "renamed"} if c in cor_names and same_text(n) != same_text(features.get(c, "")) else {})}
+            for c, n in corrected_features.items()
+        ],
         "statements": statements_out,
         "devices": devices_out,
         "implies": implies,
         "claim_rules": claim_rules,
+        "corrigendum": [
+            {k: it[k] for k in ("subclause", "item", "kind", "instruction", "rationale", "applied")}
+            for it in cor["items"]
+        ],
+        "notes": list(dict.fromkeys(cor["notes"] + notes)),
     }
     Path(args.out).write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n")
     kinds = collections.Counter(s["kind"] for s in statements_out)
     print(
-        f"{len(statements_out)} statements over {len(covered)} of {len(features)} features "
+        f"{len(statements_out)} statements over {len(covered)} of {len(corrected_features)} features "
         f"({', '.join(f'{n} {k}' for k, n in kinds.most_common())}), {len(devices_out)} unconditional, "
-        f"{len(implies)} implications, {len(claim_rules)} claim rules",
+        f"{len(implies)} implications, {len(claim_rules)} claim rules, "
+        f"{sum(1 for s in statements_out if s['source'] == 'Cor 1')} statements from cor 1",
         file=sys.stderr,
     )
 

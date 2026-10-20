@@ -6,7 +6,7 @@ use gql_proof::bnf;
 use gql_proof::cfg::Cfg;
 use gql_proof::coverage::Criteria;
 use gql_proof::features::{
-    CONFORMANCE_JSON, Claim, ClaimRules, Conformance, Negative, negative, witness,
+    CONFORMANCE_JSON, Claim, ClaimRules, Conformance, Negative, Pattern, negative, witness,
 };
 use gql_proof::leaf::StubProvider;
 use gql_proof::purdom::{Analysis, Config, Generator, Length};
@@ -36,16 +36,22 @@ fn claims_close_under_table_10() {
 
 #[test]
 fn claims_follow_24_2_and_24_3() {
-    // 24.2: minimum conformance needs a graph type feature.
+    // 24.2, as cor 1 has it: automatic graph population or graph management.
     assert!(claim(&[]).unwrap_err().contains("24.2"));
     // 24.3: exact numbers need an exact numeric type, inline procedures a variable scope kind.
-    assert!(claim(&["GG01", "GL04"]).unwrap_err().contains("24.3"));
-    assert!(claim(&["GG01", "GP01"]).unwrap_err().contains("24.3"));
-    claim(&["GG01", "GL04", "GV07", "GP01", "GP02"]).unwrap();
+    assert!(claim(&["GC00", "GL04"]).unwrap_err().contains("24.3"));
+    assert!(claim(&["GC00", "GP01"]).unwrap_err().contains("24.3"));
+    claim(&["GC00", "GL04", "GV07", "GP01", "GP02"]).unwrap();
     assert_eq!(
         Claim::parse("none", &CONF).unwrap().features,
-        BTreeSet::from(["GG01".to_string(), "GC04".to_string()])
+        BTreeSet::from(["GC00".to_string()])
     );
+    // cor 1's "at least one of" rows in table 10: explicit WALK needs a path prefix, graph
+    // management a graph type. GG01 implies GC04, which then holds.
+    assert!(claim(&["GC00", "G010"]).unwrap_err().contains("table 10"));
+    claim(&["GC00", "G010", "G005"]).unwrap();
+    assert!(claim(&["GC04"]).unwrap_err().contains("table 10"));
+    assert!(claim(&["GG01"]).unwrap().features.contains("GC04"));
 }
 
 fn trees(cfg: &Cfg, start: u32, seed: u64, criteria: Criteria) -> Vec<Plain> {
@@ -168,7 +174,10 @@ fn negatives_break_only_their_own_feature() {
         .with_conformance(CONF.forbidden(&none));
     // Not G061: an unbounded quantifier needs a guard (16.4 SR 14), and every guard is an
     // optional feature of its own.
-    for code in ["G002", "GQ09", "GQ04", "GS05", "GL01", "GQ12", "GE07"] {
+    // GS09, GS18 and GQ27 are cor 1's.
+    for code in [
+        "G002", "GQ09", "GQ04", "GS05", "GL01", "GQ12", "GE07", "GS09", "GS18", "GQ27",
+    ] {
         let s = CONF
             .statements
             .iter()
@@ -265,6 +274,44 @@ fn rules_no_unrefined_tree_breaks_have_witnesses() {
         )];
         assert!(accepts(&rule, &tree).is_err(), "{cite}: {sentence}");
         eprintln!("{cite}: {sentence}");
+    }
+}
+
+#[test]
+fn the_grammar_is_cor_1s() {
+    // Cor 1 17.1: a relative directory path ends in a solidus, so `..` alone is gone. 18.9: a
+    // component type list has at least two components.
+    let start = BASE.require("GQL-program").unwrap();
+    for (nt, needs) in [
+        ("relative directory path", ".. /"),
+        ("component type list", "|"),
+    ] {
+        let pattern = Pattern {
+            nt: Some(nt.to_string()),
+            words: None,
+            conds: Vec::new(),
+        };
+        let (_, sentence) = witness(&BASE, start, MatchModeDefault::Portable, 0, &[], &pattern)
+            .unwrap()
+            .unwrap();
+        assert!(sentence.contains(needs), "<{nt}>: {sentence}");
+    }
+    // 21.3: TYPE is reserved, |+| a delimiter token.
+    let grammar = Grammar::new(&ISO);
+    assert!(grammar.reserved_words().contains("TYPE"));
+    assert!(CONF.notes.iter().any(|n| n.contains("TYPE")));
+}
+
+#[test]
+fn cor_1_leaves_the_compiled_syntax_rules_alone() {
+    // 16.4 SR 6 and 14, and 13.1 SR 5, are compiled into the grammar from the 2024 text.
+    for it in &CONF.corrigendum {
+        assert!(
+            !(it.kind == "syntax rule" && ["16.4", "13.1"].contains(&it.subclause.as_str())),
+            "cor 1 edits {} syntax rules: {}",
+            it.subclause,
+            it.instruction
+        );
     }
 }
 

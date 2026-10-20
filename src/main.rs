@@ -1,6 +1,5 @@
 use anyhow::{Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
-use gql_proof::MatchModeDefault;
 use gql_proof::cfg::Cfg;
 use gql_proof::coverage::{Criteria, Target, describe_target};
 use gql_proof::features::{
@@ -12,6 +11,7 @@ use gql_proof::purdom::{Analysis, Config, Generator, Length, Reason, TargetReaso
 use gql_proof::refine::{all_rules, refine};
 use gql_proof::tokens::{Grammar, Report};
 use gql_proof::verify::Verifier;
+use gql_proof::{EDITION, MatchModeDefault};
 use gql_proof::{ISO_BNF_XML, bnf, describe};
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
@@ -622,6 +622,7 @@ fn purdom(args: PurdomArgs) -> Result<()> {
 
 /// The deviations a claim states and the readings its rules in force rely on.
 fn write_claim_notes(out: &mut impl Write, forbidden: &[Forbidden]) -> io::Result<()> {
+    writeln!(out, "edition: {EDITION}")?;
     let deviations: Vec<&str> = forbidden
         .iter()
         .filter_map(|f| f.label.strip_prefix("deviation "))
@@ -798,6 +799,36 @@ fn features(args: FeaturesArgs) -> Result<()> {
         conformance.implies.len(),
         conformance.claim_rules.len()
     )?;
+    let mut applied: BTreeMap<&str, usize> = BTreeMap::new();
+    for it in &conformance.corrigendum {
+        *applied
+            .entry(it.applied.as_deref().unwrap_or("recorded only"))
+            .or_default() += 1;
+    }
+    let applied: Vec<String> = applied.iter().map(|(k, n)| format!("{n} {k}")).collect();
+    writeln!(
+        out,
+        "edition: {EDITION}, cor 1 items: {} ({}), statements from cor 1: {}",
+        conformance.corrigendum.len(),
+        applied.join(", "),
+        conformance
+            .statements
+            .iter()
+            .filter(|s| s.source != "2024")
+            .count()
+    )?;
+    for f in conformance.features.iter().filter(|f| f.cor1.is_some()) {
+        writeln!(
+            out,
+            "  {} {} by cor 1: {}",
+            f.code,
+            f.cor1.as_deref().unwrap_or(""),
+            f.name
+        )?;
+    }
+    for n in &conformance.notes {
+        writeln!(out, "  {n}")?;
+    }
     let forbidden = conformance.forbidden(&claim);
     let patterns: Vec<Pattern> = forbidden.iter().flat_map(|f| f.patterns.clone()).collect();
     let (_, notes) = collapse(&base, start, &patterns)?;

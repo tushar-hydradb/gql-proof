@@ -41,14 +41,34 @@ pub struct Conformance {
     pub devices: Vec<Device>,
     /// Table 10: claiming the first implies the second.
     pub implies: Vec<[String; 2]>,
-    /// 24.2 and 24.3.
+    /// 24.2, 24.3 and table 10's "at least one of" rows.
     pub claim_rules: Vec<ClaimConstraint>,
+    /// Every item of Cor 1, applied or only recorded.
+    #[serde(default)]
+    pub corrigendum: Vec<CorrigendumItem>,
+    /// Where Cor 1 was read rather than taken as written.
+    #[serde(default)]
+    pub notes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Feature {
     pub code: String,
     pub name: String,
+    /// `new` or `renamed` by Cor 1.
+    pub cor1: Option<String>,
+}
+
+/// One Cor 1 instruction. `applied` names the tool that applied it (`grammar`,
+/// `conformance`); syntax and general rules, paragraphs and figures are only recorded.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CorrigendumItem {
+    pub subclause: String,
+    pub item: u32,
+    pub kind: String,
+    pub instruction: String,
+    pub rationale: String,
+    pub applied: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -58,6 +78,8 @@ pub struct Statement {
     pub section: Option<String>,
     pub rule: Option<String>,
     pub origin: String,
+    /// `2024`, or `Cor 1` for a rule Cor 1 adds or replaces.
+    pub source: String,
     /// `pattern`, or who enforces it instead: `typed`, `context`, `structural`, `lexical`,
     /// `semantic`.
     pub kind: String,
@@ -87,6 +109,9 @@ impl Statement {
         if let Some(rule) = &self.rule {
             out.push_str(&format!(" {rule}"));
         }
+        if self.source != "2024" {
+            out.push_str(&format!(" ({})", self.source));
+        }
         out
     }
 }
@@ -108,6 +133,8 @@ pub struct Device {
 pub struct ClaimConstraint {
     pub if_any: Option<Vec<String>>,
     pub one_of: Vec<Vec<String>>,
+    /// `24.2`, `24.3` or `table 10`.
+    pub source: String,
 }
 
 /// An instance of `nt` (or, with no `nt`, a keyword phrase), whose yield contains `words`
@@ -352,9 +379,10 @@ impl Claim {
             if applies && !met {
                 let need: Vec<String> = rule.one_of.iter().map(|s| s.join("+")).collect();
                 match &rule.if_any {
-                    None => bail!("24.2: a claim needs one of {}", need.join(", ")),
+                    None => bail!("{}: a claim needs one of {}", rule.source, need.join(", ")),
                     Some(a) => bail!(
-                        "24.3: a claim to any of {} needs one of {}",
+                        "{}: a claim to any of {} needs one of {}",
+                        rule.source,
                         a.join(", "),
                         need.join(", ")
                     ),
@@ -410,8 +438,14 @@ pub enum Negative {
 
 /// The shortest query breaking `pattern`, one of statement `s`'s, that breaks no rule of
 /// another unclaimed feature, as `verifier` reads them: it checks the syntax rules and the
-/// rules `claim` leaves in force. Tried first with only what every claim forbids, which is
-/// usually enough, then with every other unclaimed feature forbidden too.
+/// rules `claim` leaves in force. Tried first with only what every claim forbids; each time
+/// the shortest tree breaks rules of other unclaimed features, their rules are forbidden too
+/// and it is tried again. Forbidding every unclaimed feature at once is one search, but its
+/// automaton takes gigabytes, and most queries only ever run into a few of them.
+///
+/// The query is the shortest under the rules forbidden by then, so never longer than under
+/// all of them. When none is left, none is left under all of them either: the features the
+/// tries broke are what it needs.
 #[allow(clippy::too_many_arguments)]
 pub fn negative(
     base: &Cfg,
@@ -440,11 +474,9 @@ pub fn negative(
         .into_iter()
         .filter(|f| f.feature.as_ref() != Some(&s.feature))
         .collect();
+    let mut forbidden = always;
     let mut needs = BTreeSet::new();
-    for forbidden in [&always, &others] {
-        let Some((tree, sentence)) = witness(base, start, id086, seed, forbidden, pattern)? else {
-            continue;
-        };
+    while let Some((tree, sentence)) = witness(base, start, id086, seed, &forbidden, pattern)? {
         let violations = verifier.verify(&tree, &sentence);
         let own_only = violations
             .iter()
@@ -452,13 +484,22 @@ pub fn negative(
         if own_only && violations.iter().any(|v| v.detail == s.cite()) {
             return Ok(Negative::Query(tree, sentence));
         }
-        for f in verifier.broken_conformance(&tree) {
-            if let Some(code) = &f.feature
-                && *code != s.feature
-            {
-                needs.insert(code.clone());
-            }
+        let broken: BTreeSet<String> = verifier
+            .broken_conformance(&tree)
+            .into_iter()
+            .filter_map(|f| f.feature.clone())
+            .filter(|code| *code != s.feature && !needs.contains(code))
+            .collect();
+        if broken.is_empty() {
+            break;
         }
+        forbidden.extend(
+            others
+                .iter()
+                .filter(|f| f.feature.as_ref().is_some_and(|c| broken.contains(c)))
+                .cloned(),
+        );
+        needs.extend(broken);
     }
     Ok(Negative::Needs(needs))
 }

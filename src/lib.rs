@@ -11,9 +11,13 @@ pub mod tokens;
 pub mod tree;
 pub mod verify;
 
-/// The ISO grammar, as `just fetch` downloads it unmodified from
-/// https://standards.iso.org/iso-iec/39075/ed-1/en/.
-pub const ISO_BNF_XML: &str = include_str!("../grammar/ISO_IEC_39075(en).bnf.xml");
+/// The ISO grammar as ISO/IEC 39075:2024/Cor 1:2026 corrects it: `just fetch` downloads the
+/// 2024 one from https://standards.iso.org/iso-iec/39075/ed-1/en/, which Cor 1 has not
+/// updated, and `just grammar` applies Cor 1's grammar edits to it (`tools/corrigendum.py`).
+pub const ISO_BNF_XML: &str = include_str!("../grammar/ISO_IEC_39075(en)+Cor1.bnf.xml");
+
+/// What every grammar, rule and claim here is read against.
+pub const EDITION: &str = "ISO/IEC 39075:2024 + Cor 1:2026";
 
 use cfg::{Cfg, Lit, ProdId, Sym};
 

@@ -1,5 +1,6 @@
 iso := "https://standards.iso.org/iso-iec/39075/ed-1/en"
 pdf := "papers/iso/ISO_IEC_39075_2024.pdf"
+cor1 := "papers/iso/ISO_IEC_39075;2024_Cor_1;2026_en.pdf"
 python := ".venv-pdf/bin/python"
 
 # download the iso artifacts into grammar/, skipping ones already there
@@ -14,13 +15,20 @@ fetch:
 # python tooling for the pdf
 venv:
     uv venv .venv-pdf
-    uv pip install --python {{python}} pypdfium2 lark pageindex
+    uv pip install --python {{python}} pypdfium2 pdfplumber lark pageindex
 
-# extract the conformance rules from the iso pdf into grammar/conformance.json
-features: fetch
+# read cor 1 into grammar/corrigendum.json and apply its grammar edits to the 2024 bnf.xml,
+# which iso has not updated
+grammar: fetch
     #!/usr/bin/env bash
     set -euo pipefail
-    [ -f "{{pdf}}" ] || { echo "the iso pdf is not downloadable, put your copy at {{pdf}}" >&2; exit 1; }
+    for f in "{{pdf}}" "{{cor1}}"; do
+        [ -f "$f" ] || { echo "the iso pdfs are not downloadable, put your copy at $f" >&2; exit 1; }
+    done
+    {{python}} -I tools/corrigendum.py "{{cor1}}" "{{pdf}}" grammar
+
+# extract the conformance rules, as cor 1 corrects them, into grammar/conformance.json
+features: grammar
     {{python}} -I tools/conformance.py "{{pdf}}" grammar grammar/conformance.json
 
 test: features
