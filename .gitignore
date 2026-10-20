@@ -1,1 +1,7 @@
 /target
+
+# copyrighted papers and the iso pdf stay local
+/papers/
+
+# local tooling
+/.venv-pdf/
