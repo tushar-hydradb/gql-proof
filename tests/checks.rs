@@ -6,7 +6,7 @@ use gql_proof::ISO_BNF_XML;
 use gql_proof::bnf::{self, Bnf};
 use gql_proof::cfg::Cfg;
 use gql_proof::leaf::StubProvider;
-use gql_proof::purdom::{Config, Generator};
+use gql_proof::purdom::{Analysis, Config, Generator, Length};
 use gql_proof::tokens::Grammar;
 use gql_proof::verify::{Plain, Verifier, Violation};
 use std::sync::LazyLock;
@@ -54,10 +54,11 @@ fn generated(seed: u64) -> Vec<(Plain, String)> {
     let cfg = Cfg::from_bnf(&ISO);
     let config = Config {
         seed,
-        max_depth: 50,
-        max_new_per_tree: Some(10),
+        max_depth: 46,
+        length: Length::Cap(60),
     };
-    let outcome = Generator::new(&cfg, config, StubProvider)
+    let analysis = Analysis::new(&cfg, &StubProvider);
+    let outcome = Generator::new(&analysis, config, StubProvider)
         .run(cfg.require("GQL-program").unwrap())
         .unwrap();
     outcome
@@ -65,6 +66,14 @@ fn generated(seed: u64) -> Vec<(Plain, String)> {
         .iter()
         .map(|t| (t.root.export(&cfg), t.root.render(&cfg)))
         .collect()
+}
+
+/// The biggest tree for seed 1, so mutations have plenty to work on.
+fn largest() -> (Plain, String) {
+    generated(1)
+        .into_iter()
+        .max_by_key(|(_, rendered)| rendered.len())
+        .unwrap()
 }
 
 /// The first real node, in preorder, for which `f` returns a changed copy.
@@ -192,7 +201,7 @@ fn static_check_flags_an_empty_token() {
 
 #[test]
 fn rejects_swapped_children() {
-    let (tree, _) = generated(1).remove(3);
+    let (tree, _) = largest();
     let swapped = mutate_first(&tree, &|n| match n {
         Plain::Def {
             name,
@@ -229,7 +238,7 @@ fn rejects_swapped_children() {
 
 #[test]
 fn rejects_a_wrong_keyword() {
-    let (tree, _) = generated(1).remove(3);
+    let (tree, _) = largest();
     let changed = mutate_first(&tree, &|n| match n {
         Plain::Kw(_) => Some(Plain::Kw("BOGUS".into())),
         _ => None,
@@ -240,7 +249,7 @@ fn rejects_a_wrong_keyword() {
 
 #[test]
 fn rejects_a_dropped_child() {
-    let (tree, _) = generated(1).remove(3);
+    let (tree, _) = largest();
     let dropped = mutate_first(&tree, &|n| match n {
         Plain::Def {
             name,
@@ -259,7 +268,7 @@ fn rejects_a_dropped_child() {
 
 #[test]
 fn rejects_tampered_rendering() {
-    let (tree, rendered) = generated(1).remove(3);
+    let (tree, rendered) = largest();
     let v = verifier().verify(&tree, &format!("{rendered} ;"));
     assert_eq!(rules(&v), ["21.3 SR 13, 14"]);
 }

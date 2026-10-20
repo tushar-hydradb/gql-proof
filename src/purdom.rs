@@ -1,16 +1,21 @@
 //! Purdom's sentence generator (P. Purdom, "A sentence generator for testing parsers",
-//! BIT 12, 1972), with a cap on tree height.
+//! BIT 12, 1972), with a cap on tree height and Zheng & Wu's length control.
 //!
 //! The goal is a small set of derivation trees that together use every production at least
 //! once. Purdom precomputes, for each nonterminal, the shortest terminal derivation and the
 //! cheapest way to get from the start symbol to it, then builds sentences that each pick up as
 //! many unused productions as they can, falling back to the shortest derivation once nothing
-//! new is reachable. This version keeps the same shape with two changes:
+//! new is reachable. Length is Purdom's: the number of nodes in the derivation tree. This
+//! version keeps that shape with three changes:
 //!
-//! - every cost is computed under a remaining height budget, so no tree exceeds `max_depth`,
-//!   and productions that only fit in taller trees are reported rather than dropped
+//! - every measure is computed under a remaining height budget, so no tree exceeds
+//!   `max_depth`, and productions that only fit in taller trees are reported, not dropped
 //! - "is something unused reachable from here" is recomputed live as productions get used,
 //!   which is what Purdom's ONCE/ONST bookkeeping approximates
+//! - sentence length is capped. Zheng & Wu (COMPSAC 2009, as described by Xu, Zheng & Chen)
+//!   take as reference the largest over all productions of the shortest sentence covering it,
+//!   which is the smallest possible maximum length of any covering set. Here that reference is
+//!   computed under the height cap, and every sentence stays within it
 //!
 //! The seed only breaks ties between equally cheap choices, so every seed gives the same
 //! coverage with a different set of trees.
@@ -26,13 +31,23 @@ use rand_chacha::ChaCha8Rng;
 
 const INF: u32 = u32::MAX;
 
+/// How long a sentence may get.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Length {
+    /// No cap: few, long sentences, closest to Purdom's original.
+    Unbounded,
+    /// The reference length: the longest of the shortest sentences covering each production.
+    Reference,
+    /// An explicit cap. Productions whose shortest covering sentence is longer are reported.
+    Cap(u32),
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub seed: u64,
     /// Maximum tree height. A literal leaf has height 0.
     pub max_depth: u32,
-    /// Stop chasing new productions in a tree once it has used this many.
-    pub max_new_per_tree: Option<usize>,
+    pub length: Length,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +56,8 @@ pub enum Reason {
     Unreachable,
     /// Reachable, but the smallest tree from the start symbol using it has this height.
     NeedsDepth(u32),
+    /// Fits the height cap, but the shortest sentence using it has this length, over the cap.
+    NeedsLength(u32),
     /// No finite derivation exists.
     Unproductive,
     /// Every derivation needs a prose leaf the `LeafProvider` cannot fill, such as an
@@ -53,6 +70,8 @@ pub struct Generated {
     pub root: Node,
     /// Productions this tree used for the first time.
     pub new: usize,
+    /// Purdom's length: nodes in the derivation tree, grouping nodes from desugaring excluded.
+    pub length: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -60,35 +79,29 @@ pub struct Outcome {
     pub trees: Vec<Generated>,
     pub covered: FixedBitSet,
     pub uncovered: Vec<(ProdId, Reason)>,
+    /// The length every sentence stays within, if any.
+    pub length_cap: Option<u32>,
+    /// The reference length under this height cap.
+    pub reference_length: u32,
 }
 
-pub struct Generator<'g, L> {
+/// What the grammar and the leaf provider determine before any cap is chosen.
+pub struct Analysis<'g> {
     cfg: &'g Cfg,
-    config: Config,
-    leaf: L,
-    rng: ChaCha8Rng,
-    /// Minimum derivation height per nonterminal and per production.
-    nt_height: Vec<u32>,
-    prod_height: Vec<u32>,
-    /// Shortest yield length per nonterminal and per production.
-    nt_len: Vec<u32>,
-    prod_len: Vec<u32>,
-    unused: FixedBitSet,
-    /// `cost(nt, r)` memo, tagged with the `generation` it was computed in.
-    memo: Vec<(u32, Option<u32>)>,
-    generation: u32,
-    budget: usize,
+    fillable: Vec<bool>,
     /// Fixed subtrees for definitions whose token the provider fixes, with the productions
     /// each uses.
     templates: Vec<Option<(Node, Vec<ProdId>)>>,
-    fixed_height: Vec<Option<u32>>,
     template_errors: Vec<String>,
-    /// The ISO definitions above the node being expanded, for leaf context.
-    ctx: Vec<NtId>,
+    /// Minimum derivation height per nonterminal and per production.
+    nt_height: Vec<u32>,
+    prod_height: Vec<u32>,
+    /// The same, ignoring what the leaf provider can fill.
+    unrestricted_height: Vec<u32>,
 }
 
-impl<'g, L: LeafProvider> Generator<'g, L> {
-    pub fn new(cfg: &'g Cfg, config: Config, leaf: L) -> Self {
+impl<'g> Analysis<'g> {
+    pub fn new(cfg: &'g Cfg, leaf: &impl LeafProvider) -> Self {
         // Productions needing a leaf the provider cannot fill get no finite measure, so the
         // generator never picks them.
         let fillable: Vec<bool> = cfg
@@ -127,46 +140,33 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
                 }
             }
         }
-        let fixed_height: Vec<Option<u32>> = templates
+        let fixed: Vec<Option<u32>> = templates
             .iter()
             .map(|t| t.as_ref().map(|(node, _)| node.height()))
             .collect();
-        let fixed_len: Vec<Option<u32>> = templates
-            .iter()
-            .map(|t| t.as_ref().map(|(node, _)| leaves(node)))
-            .collect();
-        let (nt_height, mut prod_height) = min_heights(cfg, &fillable, &fixed_height);
-        let (nt_len, mut prod_len) = min_lens(cfg, &fillable, &fixed_len);
-        // A fixed token is only ever its template: its root production costs what the
-        // template costs, and its other productions are never chosen.
+        let (nt_height, mut prod_height) = min_heights(cfg, &fillable, &fixed);
+        let all = vec![true; cfg.prods.len()];
+        let (_, unrestricted_height) = min_heights(cfg, &all, &fixed);
+        // A fixed token is only ever its template: its root production is as tall as the
+        // template, and its other productions are never chosen.
         for (nt, template) in templates.iter().enumerate() {
             let Some((node, _)) = template else { continue };
             for &p in &cfg.nts[nt].prods {
-                let used = node.prod == Some(p);
-                prod_height[p as usize] = if used { node.height() } else { INF };
-                prod_len[p as usize] = if used { leaves(node) } else { INF };
+                prod_height[p as usize] = if node.prod == Some(p) {
+                    node.height()
+                } else {
+                    INF
+                };
             }
         }
-        let mut unused = FixedBitSet::with_capacity(cfg.prods.len());
-        unused.insert_range(..);
-        let slots = cfg.nts.len() * (config.max_depth as usize + 1);
-        Generator {
+        Analysis {
             cfg,
-            rng: ChaCha8Rng::seed_from_u64(config.seed),
-            config,
-            leaf,
+            fillable,
+            templates,
+            template_errors,
             nt_height,
             prod_height,
-            nt_len,
-            prod_len,
-            unused,
-            memo: vec![(0, None); slots],
-            generation: 1,
-            budget: 0,
-            templates,
-            fixed_height,
-            template_errors,
-            ctx: Vec::new(),
+            unrestricted_height,
         }
     }
 
@@ -174,49 +174,278 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
         self.nt_height[nt as usize]
     }
 
-    pub fn run(mut self, start: NtId) -> Result<Outcome> {
-        if !self.template_errors.is_empty() {
-            bail!("fixed tokens: {}", self.template_errors.join(", "));
+    /// Whether `nt`'s productions may contain `child` in a tree, given a remaining height for
+    /// `nt`. A templated definition only ever yields its template, never a path elsewhere.
+    fn propagates(&self, nt: NtId) -> bool {
+        self.templates[nt as usize].is_none()
+    }
+
+    /// For each nonterminal, the most remaining height it can be placed with in a tree of
+    /// height at most `depth` from `start`, or `None` if it cannot appear.
+    fn avail(&self, start: NtId, depth: u32) -> Vec<Option<u32>> {
+        let mut avail = vec![None; self.cfg.nts.len()];
+        avail[start as usize] = Some(depth);
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for (q, prod) in self.cfg.prods.iter().enumerate() {
+                let Some(room) = avail[prod.lhs as usize] else {
+                    continue;
+                };
+                if self.prod_height[q] > room || !self.propagates(prod.lhs) {
+                    continue;
+                }
+                for sym in &prod.rhs {
+                    if let Sym::Nt(child) = *sym {
+                        let slot = &mut avail[child as usize];
+                        if slot.is_none_or(|have| have < room - 1) {
+                            *slot = Some(room - 1);
+                            changed = true;
+                        }
+                    }
+                }
+            }
         }
-        let need = self.nt_height[start as usize];
-        if need > self.config.max_depth {
+        avail
+    }
+
+    /// For each production, the smallest height cap under which some tree from `start` uses
+    /// it. Exact: sibling subtrees are independent, and a production's height already requires
+    /// every child to fit.
+    pub fn need_depths(&self, start: NtId) -> Vec<Option<u32>> {
+        let fits = |avail: &[Option<u32>], p: usize| {
+            let lhs = self.cfg.prods[p].lhs as usize;
+            avail[lhs].is_some_and(|room| self.prod_height[p] <= room)
+        };
+        // Everything that fits under some cap: an unbounded cap, as far as heights go.
+        let unbounded = self.avail(start, INF / 2);
+        let target = (0..self.cfg.prods.len())
+            .filter(|&p| fits(&unbounded, p))
+            .count();
+        let mut need = vec![None; self.cfg.prods.len()];
+        let mut found = 0;
+        let mut depth = self.nt_height[start as usize];
+        while found < target {
+            let avail = self.avail(start, depth);
+            for (p, slot) in need.iter_mut().enumerate() {
+                if slot.is_none() && fits(&avail, p) {
+                    *slot = Some(depth);
+                    found += 1;
+                }
+            }
+            depth += 1;
+        }
+        need
+    }
+
+    /// The smallest height cap under which every production that can appear at all does.
+    pub fn reference_height(&self, start: NtId) -> u32 {
+        self.need_depths(start)
+            .into_iter()
+            .flatten()
+            .max()
+            .unwrap_or(0)
+    }
+}
+
+/// Height-aware lengths for one cap: `len[nt][r]` is the shortest derivation of `nt` within
+/// remaining height `r`, in Purdom's node count.
+struct Lengths {
+    depth: u32,
+    len: Vec<Vec<u32>>,
+}
+
+impl Lengths {
+    fn new(a: &Analysis, depth: u32) -> Self {
+        let cfg = a.cfg;
+        let mut len = vec![vec![INF; depth as usize + 1]; cfg.nts.len()];
+        for r in 1..=depth {
+            for nt in 0..cfg.nts.len() {
+                let best = match &a.templates[nt] {
+                    Some((node, _)) if node.height() <= r => size(cfg, node),
+                    Some(_) => INF,
+                    None => cfg.nts[nt]
+                        .prods
+                        .iter()
+                        .filter(|&&p| a.fillable[p as usize])
+                        .map(|&p| prod_len(cfg, &len, p, r))
+                        .min()
+                        .unwrap_or(INF),
+                };
+                len[nt][r as usize] = best;
+            }
+        }
+        Lengths { depth, len }
+    }
+
+    fn nt(&self, nt: NtId, r: u32) -> u32 {
+        self.len[nt as usize][r as usize]
+    }
+}
+
+/// A production's length at remaining height `r`: one for a real node, one per literal, and
+/// each child's shortest length at `r - 1`.
+fn prod_len(cfg: &Cfg, len: &[Vec<u32>], p: ProdId, r: u32) -> u32 {
+    let prod = &cfg.prods[p as usize];
+    let own = u32::from(!cfg.nts[prod.lhs as usize].synthetic);
+    prod.rhs.iter().fold(own, |acc, sym| {
+        let part = match *sym {
+            Sym::Lit(_) => 1,
+            Sym::Nt(c) => len[c as usize][r as usize - 1],
+        };
+        acc.saturating_add(part)
+    })
+}
+
+pub struct Generator<'a, 'g, L> {
+    a: &'a Analysis<'g>,
+    cfg: &'g Cfg,
+    config: Config,
+    leaf: L,
+    rng: ChaCha8Rng,
+    lengths: Lengths,
+    unused: FixedBitSet,
+    /// `cost(nt, r)` memo, tagged with the `generation` it was computed in.
+    memo: Vec<(u32, Option<u32>)>,
+    generation: u32,
+    /// How much longer the current sentence may get than the lengths its parents planned.
+    slack: i64,
+    /// The ISO definitions above the node being expanded, for leaf context.
+    ctx: Vec<NtId>,
+}
+
+impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
+    pub fn new(a: &'a Analysis<'g>, config: Config, leaf: L) -> Self {
+        let mut unused = FixedBitSet::with_capacity(a.cfg.prods.len());
+        unused.insert_range(..);
+        let slots = a.cfg.nts.len() * (config.max_depth as usize + 1);
+        Generator {
+            a,
+            cfg: a.cfg,
+            rng: ChaCha8Rng::seed_from_u64(config.seed),
+            lengths: Lengths::new(a, config.max_depth),
+            config,
+            leaf,
+            unused,
+            memo: vec![(0, None); slots],
+            generation: 1,
+            slack: 0,
+            ctx: Vec::new(),
+        }
+    }
+
+    fn prod_len(&self, p: ProdId, r: u32) -> u32 {
+        prod_len(self.cfg, &self.lengths.len, p, r)
+    }
+
+    /// For each production, the length of the shortest sentence from `start` within the
+    /// height cap that uses it: Purdom's phase two, with heights.
+    pub fn covering_lengths(&self, start: NtId) -> Vec<Option<u32>> {
+        let depth = self.lengths.depth;
+        // ctx[nt][r]: the shortest rest of a sentence around `nt` placed with room `r`.
+        let mut ctx = vec![vec![INF; depth as usize + 1]; self.cfg.nts.len()];
+        ctx[start as usize][depth as usize] = 0;
+        for r in (1..=depth).rev() {
+            for (q, prod) in self.cfg.prods.iter().enumerate() {
+                let around = ctx[prod.lhs as usize][r as usize];
+                let whole = self.prod_len(q as ProdId, r);
+                let usable = self.a.fillable[q] && self.a.propagates(prod.lhs);
+                if around == INF || whole == INF || !usable {
+                    continue;
+                }
+                for sym in &prod.rhs {
+                    if let Sym::Nt(child) = *sym {
+                        let rest = around + whole - self.lengths.nt(child, r - 1);
+                        let slot = &mut ctx[child as usize][r as usize - 1];
+                        *slot = (*slot).min(rest);
+                    }
+                }
+            }
+        }
+        (0..self.cfg.prods.len())
+            .map(|p| {
+                let lhs = self.cfg.prods[p].lhs as usize;
+                if !self.a.fillable[p] {
+                    return None;
+                }
+                // A templated definition's root production is as long as the template.
+                let own = |r: u32| match &self.a.templates[lhs] {
+                    Some((node, _)) if node.prod == Some(p as ProdId) => {
+                        self.lengths.nt(lhs as NtId, r)
+                    }
+                    Some(_) => INF,
+                    None => self.prod_len(p as ProdId, r),
+                };
+                (1..=depth)
+                    .filter_map(|r| {
+                        let (around, own) = (ctx[lhs][r as usize], own(r));
+                        (around != INF && own != INF).then(|| around + own)
+                    })
+                    .min()
+            })
+            .collect()
+    }
+
+    pub fn run(mut self, start: NtId) -> Result<Outcome> {
+        if !self.a.template_errors.is_empty() {
+            bail!("fixed tokens: {}", self.a.template_errors.join(", "));
+        }
+        let depth = self.config.max_depth;
+        let need = self.a.nt_height[start as usize];
+        if need > depth {
             bail!(
-                "<{}> needs a max depth of at least {need}, got {}",
-                self.cfg.name(start),
-                self.config.max_depth
+                "<{}> needs a max depth of at least {need}, got {depth}",
+                self.cfg.name(start)
             );
         }
+        let covering = self.covering_lengths(start);
+        let reference_length = covering.iter().flatten().copied().max().unwrap_or(0);
+        let cap = match self.config.length {
+            Length::Unbounded => None,
+            Length::Reference => Some(reference_length),
+            Length::Cap(n) => Some(n),
+        };
+        let shortest = self.lengths.nt(start, depth);
         let mut trees = Vec::new();
-        while self.cost(start, self.config.max_depth).is_some() {
-            self.budget = self.config.max_new_per_tree.unwrap_or(usize::MAX).max(1);
+        while let Some(cost) = self.cost(start, depth) {
+            // The cheapest sentence that uses something new is the shortest covering sentence
+            // of some unused production, never above the reference length.
+            if cap.is_some_and(|c| cost > c) {
+                break;
+            }
+            self.slack = cap.map_or(i64::MAX / 2, |c| i64::from(c) - i64::from(shortest));
             let before = self.unused.count_ones(..);
-            let root = self.expand(start, self.config.max_depth);
+            let root = self.expand(start, depth, shortest);
             let new = before - self.unused.count_ones(..);
-            // Every round picks up at least one production: the root follows a finite cost,
-            // and nothing before that path can consume its target without itself being new.
+            // Every round picks up at least one production: the root follows a finite cost
+            // within the slack, and nothing before that path can consume its target without
+            // itself being new.
             assert!(new > 0, "purdom round made no progress");
-            trees.push(Generated { root, new });
+            let length = size(self.cfg, &root);
+            trees.push(Generated { root, new, length });
         }
-        let uncovered = self.classify(start);
+        let uncovered = self.classify(start, &covering, cap);
         let mut covered = self.unused.clone();
         covered.toggle_range(..);
         Ok(Outcome {
             trees,
             covered,
             uncovered,
+            length_cap: cap,
+            reference_length,
         })
     }
 
-    /// Cheapest extra yield length for a tree of height at most `r` rooted at `nt` that uses
-    /// an unused production, or `None` if there is no such tree.
+    /// Length of the shortest tree of height at most `r` rooted at `nt` that uses an unused
+    /// production, or `None` if there is no such tree.
     fn cost(&mut self, nt: NtId, r: u32) -> Option<u32> {
         if r == 0 {
             return None;
         }
-        if let Some((node, prods)) = &self.templates[nt as usize] {
+        if let Some((node, prods)) = &self.a.templates[nt as usize] {
             let fits = node.height() <= r;
             let new = prods.iter().any(|&p| self.unused.contains(p as usize));
-            return (fits && new).then_some(self.nt_len[nt as usize]);
+            return (fits && new).then(|| size(self.cfg, node));
         }
         let slot = nt as usize * (self.config.max_depth as usize + 1) + r as usize;
         if self.memo[slot].0 == self.generation {
@@ -225,34 +454,43 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
         let cfg = self.cfg;
         let mut best = None;
         for &p in &cfg.nts[nt as usize].prods {
-            if self.prod_height[p as usize] <= r {
-                best = min_opt(best, self.prod_cost(p, r));
-            }
+            best = min_opt(best, self.prod_cost(p, r));
         }
         self.memo[slot] = (self.generation, best);
         best
     }
 
     fn prod_cost(&mut self, p: ProdId, r: u32) -> Option<u32> {
-        let len = self.prod_len[p as usize];
+        let len = self.prod_len(p, r);
+        if len == INF || !self.a.fillable[p as usize] {
+            return None;
+        }
         if self.unused.contains(p as usize) {
             return Some(len);
         }
+        self.chase(p, r).map(|(_, c)| c)
+    }
+
+    /// The child of an already used production to chase an unused one through, and the
+    /// resulting length.
+    fn chase(&mut self, p: ProdId, r: u32) -> Option<(usize, u32)> {
+        let len = self.prod_len(p, r);
         let cfg = self.cfg;
-        let mut best = None;
-        for sym in &cfg.prods[p as usize].rhs {
-            if let Sym::Nt(child) = *sym {
-                let via = self
-                    .cost(child, r - 1)
-                    .map(|c| len - self.nt_len[child as usize] + c);
-                best = min_opt(best, via);
+        let mut best: Option<(usize, u32)> = None;
+        for (i, sym) in cfg.prods[p as usize].rhs.iter().enumerate() {
+            let Sym::Nt(child) = *sym else { continue };
+            if let Some(c) = self.cost(child, r - 1) {
+                let via = len - self.lengths.nt(child, r - 1) + c;
+                if best.is_none_or(|(_, b)| via < b) {
+                    best = Some((i, via));
+                }
             }
         }
         best
     }
 
-    fn expand(&mut self, nt: NtId, r: u32) -> Node {
-        if let Some((node, prods)) = &self.templates[nt as usize] {
+    fn expand(&mut self, nt: NtId, r: u32, plan: u32) -> Node {
+        if let Some((node, prods)) = &self.a.templates[nt as usize] {
             let node = node.clone();
             for p in prods.clone() {
                 self.mark_used(p);
@@ -263,7 +501,7 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
         if real {
             self.ctx.push(nt);
         }
-        let node = self.expand_free(nt, r);
+        let node = self.expand_free(nt, r, plan);
         if real {
             self.ctx.pop();
         }
@@ -274,47 +512,72 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
         if self.unused.contains(p as usize) {
             self.unused.set(p as usize, false);
             self.generation += 1;
-            // Fallback expansions can also use something new; that still counts.
-            self.budget = self.budget.saturating_sub(1);
         }
     }
 
-    fn expand_free(&mut self, nt: NtId, r: u32) -> Node {
+    /// Expands `nt` within height `r`. `plan` is the length the parent counted on; the subtree
+    /// may exceed it by at most the sentence's slack.
+    fn expand_free(&mut self, nt: NtId, r: u32, plan: u32) -> Node {
         let cfg = self.cfg;
         let fitting: Vec<ProdId> = cfg.nts[nt as usize]
             .prods
             .iter()
             .copied()
-            .filter(|&p| self.prod_height[p as usize] <= r)
+            .filter(|&p| self.a.fillable[p as usize] && self.prod_len(p, r) != INF)
             .collect();
-        let mut chosen = None;
-        if self.budget > 0 {
-            let scored: Vec<(ProdId, u32)> = fitting
-                .iter()
-                .filter_map(|&p| self.prod_cost(p, r).map(|c| (p, c)))
-                .collect();
-            chosen = self.pick(&scored);
-        }
-        let p = match chosen {
-            Some(p) => p,
+        let allowance = i64::from(plan) + self.slack;
+        let chases: Vec<(ProdId, u32)> = fitting
+            .iter()
+            .filter_map(|&p| self.prod_cost(p, r).map(|c| (p, c)))
+            .filter(|&(_, c)| i64::from(c) <= allowance)
+            .collect();
+        let (p, chosen_len, through) = match self.pick(&chases) {
+            Some(p) => {
+                let len = chases.iter().find(|&&(q, _)| q == p).unwrap().1;
+                // An unused production is the target itself; a used one leads to it.
+                let through = match self.unused.contains(p as usize) {
+                    true => None,
+                    false => self.chase(p, r).map(|(i, _)| i),
+                };
+                (p, len, through)
+            }
             None => {
-                let shortest: Vec<(ProdId, u32)> = fitting
-                    .iter()
-                    .map(|&p| (p, self.prod_len[p as usize]))
-                    .collect();
-                self.pick(&shortest)
-                    .expect("caller checked a production fits")
+                let shortest: Vec<(ProdId, u32)> =
+                    fitting.iter().map(|&p| (p, self.prod_len(p, r))).collect();
+                let p = self
+                    .pick(&shortest)
+                    .expect("caller checked a production fits");
+                (p, self.prod_len(p, r), None)
             }
         };
-        self.mark_used(p);
-        let children = cfg.prods[p as usize]
-            .rhs
+        // The shortest fitting production is exactly the plan's floor, so this only ever
+        // spends slack on a chase and never goes below zero.
+        self.slack -= i64::from(chosen_len) - i64::from(plan);
+        // Fix every child's plan now: what was charged against the slack is decided here, not
+        // after earlier siblings have changed what is unused.
+        let rhs = &cfg.prods[p as usize].rhs;
+        let plans: Vec<u32> = rhs
             .iter()
-            .map(|&sym| match sym {
-                Sym::Nt(child) => self.expand(child, r - 1),
-                Sym::Lit(l) => self.literal(l),
+            .enumerate()
+            .map(|(i, &sym)| match sym {
+                Sym::Nt(child) => {
+                    let floor = self.lengths.nt(child, r - 1);
+                    match through == Some(i) {
+                        true => self.cost(child, r - 1).unwrap_or(floor),
+                        false => floor,
+                    }
+                }
+                Sym::Lit(_) => 1,
             })
             .collect();
+        self.mark_used(p);
+        let mut children = Vec::with_capacity(rhs.len());
+        for (&sym, plan) in rhs.iter().zip(plans) {
+            children.push(match sym {
+                Sym::Nt(child) => self.expand(child, r - 1, plan),
+                Sym::Lit(l) => self.literal(l),
+            });
+        }
         Node {
             sym: Sym::Nt(nt),
             prod: Some(p),
@@ -351,66 +614,52 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
         }
     }
 
-    fn classify(&self, start: NtId) -> Vec<(ProdId, Reason)> {
+    fn classify(
+        &self,
+        start: NtId,
+        covering: &[Option<u32>],
+        cap: Option<u32>,
+    ) -> Vec<(ProdId, Reason)> {
         let mut reachable = vec![false; self.cfg.nts.len()];
         for nt in self.cfg.reachable(start) {
             reachable[nt as usize] = true;
         }
-        let all = vec![true; self.cfg.prods.len()];
-        let (_, unrestricted) = min_heights(self.cfg, &all, &self.fixed_height);
+        let need = self.a.need_depths(start);
         self.unused
             .ones()
             .map(|p| {
                 let lhs = self.cfg.prods[p].lhs as usize;
-                let reason = if self.prod_height[p] == INF && unrestricted[p] != INF {
+                let reason = if self.a.prod_height[p] == INF && self.a.unrestricted_height[p] != INF
+                {
                     Reason::NoLeaf
-                } else if self.prod_height[p] == INF {
+                } else if self.a.prod_height[p] == INF {
                     Reason::Unproductive
-                } else if !reachable[lhs] {
-                    Reason::Unreachable
                 } else {
-                    Reason::NeedsDepth(self.height_using(start, p as ProdId))
+                    match (need[p], covering[p]) {
+                        _ if !reachable[lhs] => Reason::Unreachable,
+                        (None, _) => Reason::Unreachable,
+                        (Some(d), _) if d > self.config.max_depth => Reason::NeedsDepth(d),
+                        (_, Some(len)) if cap.is_some_and(|c| len > c) => Reason::NeedsLength(len),
+                        // Fits both caps yet uncovered, which the generator rules out; report
+                        // it plainly rather than hide it.
+                        (Some(d), _) => Reason::NeedsDepth(d),
+                    }
                 };
                 (p as ProdId, reason)
             })
             .collect()
     }
+}
 
-    /// Height of the smallest tree from `start` that uses `target`.
-    fn height_using(&self, start: NtId, target: ProdId) -> u32 {
-        let cfg = self.cfg;
-        let mut best = vec![INF; cfg.nts.len()];
-        best[cfg.prods[target as usize].lhs as usize] = self.prod_height[target as usize];
-        let mut changed = true;
-        while changed {
-            changed = false;
-            for prod in &cfg.prods {
-                // A templated definition only ever yields its template, never a path to
-                // anything else.
-                if self.templates[prod.lhs as usize].is_some() {
-                    continue;
-                }
-                for (i, sym) in prod.rhs.iter().enumerate() {
-                    let Sym::Nt(child) = *sym else { continue };
-                    let via = best[child as usize];
-                    if via == INF {
-                        continue;
-                    }
-                    let mut h = via;
-                    for (j, other) in prod.rhs.iter().enumerate() {
-                        if let (true, Sym::Nt(o)) = (i != j, *other) {
-                            h = h.max(self.nt_height[o as usize]);
-                        }
-                    }
-                    let h = h.saturating_add(1);
-                    if h < best[prod.lhs as usize] {
-                        best[prod.lhs as usize] = h;
-                        changed = true;
-                    }
-                }
-            }
+/// Purdom's length of a subtree: real nodes and literals, grouping nodes from desugaring not
+/// counted.
+pub fn size(cfg: &Cfg, node: &Node) -> u32 {
+    match node.sym {
+        Sym::Lit(_) => 1,
+        Sym::Nt(nt) => {
+            let own = u32::from(!cfg.nts[nt as usize].synthetic);
+            own + node.children.iter().map(|c| size(cfg, c)).sum::<u32>()
         }
-        best[start as usize]
     }
 }
 
@@ -422,42 +671,10 @@ fn min_opt(a: Option<u32>, b: Option<u32>) -> Option<u32> {
     }
 }
 
-/// Minimum derivation height per nonterminal and per production. A literal is 0, a
-/// production is one above its tallest child, so an empty rhs is 1.
+/// Minimum derivation height per nonterminal and per production, a nonterminal taking its
+/// `fixed` height when it has one. A literal is 0, a production is one above its tallest
+/// child, so an empty rhs is 1. `INF` marks "no finite derivation yet" and stays absorbing.
 fn min_heights(cfg: &Cfg, fillable: &[bool], fixed: &[Option<u32>]) -> (Vec<u32>, Vec<u32>) {
-    fixpoint(cfg, fillable, fixed, |rhs, nt| {
-        rhs.iter()
-            .map(|sym| match *sym {
-                Sym::Lit(_) => 0,
-                Sym::Nt(c) => nt[c as usize],
-            })
-            .max()
-            .unwrap_or(0)
-            .saturating_add(1)
-    })
-}
-
-/// Shortest yield length per nonterminal and per production, counting each literal as 1.
-fn min_lens(cfg: &Cfg, fillable: &[bool], fixed: &[Option<u32>]) -> (Vec<u32>, Vec<u32>) {
-    fixpoint(cfg, fillable, fixed, |rhs, nt| {
-        rhs.iter()
-            .map(|sym| match *sym {
-                Sym::Lit(_) => 1,
-                Sym::Nt(c) => nt[c as usize],
-            })
-            .fold(0u32, u32::saturating_add)
-    })
-}
-
-/// Least fixed point of `measure` over all productions, with a nonterminal taking the best
-/// of its productions, or its `fixed` value when it has one. `INF` marks "no finite
-/// derivation yet" and must stay absorbing.
-fn fixpoint(
-    cfg: &Cfg,
-    fillable: &[bool],
-    fixed: &[Option<u32>],
-    measure: impl Fn(&[Sym], &[u32]) -> u32,
-) -> (Vec<u32>, Vec<u32>) {
     let mut nt: Vec<u32> = fixed.iter().map(|f| f.unwrap_or(INF)).collect();
     let mut prod = vec![INF; cfg.prods.len()];
     let mut changed = true;
@@ -467,7 +684,16 @@ fn fixpoint(
             if !fillable[p] {
                 continue;
             }
-            let value = measure(&production.rhs, &nt);
+            let value = production
+                .rhs
+                .iter()
+                .map(|sym| match *sym {
+                    Sym::Lit(_) => 0,
+                    Sym::Nt(c) => nt[c as usize],
+                })
+                .max()
+                .unwrap_or(0)
+                .saturating_add(1);
             if value < prod[p] {
                 prod[p] = value;
                 let lhs = production.lhs as usize;
@@ -479,13 +705,6 @@ fn fixpoint(
         }
     }
     (nt, prod)
-}
-
-fn leaves(node: &Node) -> u32 {
-    match node.sym {
-        Sym::Lit(_) => 1,
-        Sym::Nt(_) => node.children.iter().map(leaves).sum(),
-    }
 }
 
 /// Every derivation of `nt` matching a prefix of `text[i..]`, with where each ends. Keywords
@@ -507,8 +726,8 @@ fn derive(
         if !fillable[p as usize] {
             continue;
         }
-        for (children, end) in derive_seq(cfg, fillable, &cfg.prods[p as usize].rhs, text, i, depth)
-        {
+        let rhs = &cfg.prods[p as usize].rhs;
+        for (children, end) in derive_seq(cfg, fillable, rhs, text, i, depth) {
             out.push((
                 Node {
                     sym: Sym::Nt(nt),
@@ -544,15 +763,13 @@ fn derive_seq(
             match want {
                 Some(t) if text[i..].starts_with(&t.chars().collect::<Vec<_>>()) => {
                     let end = i + t.chars().count();
-                    vec![(
-                        Node {
-                            sym: head,
-                            prod: None,
-                            text: Some(t),
-                            children: Vec::new(),
-                        },
-                        end,
-                    )]
+                    let node = Node {
+                        sym: head,
+                        prod: None,
+                        text: Some(t),
+                        children: Vec::new(),
+                    };
+                    vec![(node, end)]
                 }
                 _ => Vec::new(),
             }

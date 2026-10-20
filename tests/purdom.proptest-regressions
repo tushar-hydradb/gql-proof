@@ -6,3 +6,4 @@
 # everyone who runs the test benefits from these saved cases.
 cc 85ced870f30eaf69d981c1b4ba9af3da8f1707a9c3dda5d83f216efcf9125755 # shrinks to seed = 0, max_depth = 22, max_new = Some(23)
 cc 83c4b724c49885b4f30114921cb12c913ab0098fc34daa053b3d964e27b5ed03 # shrinks to seed = 0, max_depth = 20, max_new = None
+cc e5697d8b4e1c6262b852259e1ca1e628c5df8cb42f5e12e0f23313db70cacbc1 # shrinks to seed = 0, max_depth = 52, length = Cap(57)

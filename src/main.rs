@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use gql_proof::cfg::Cfg;
 use gql_proof::leaf::StubProvider;
-use gql_proof::purdom::{Config, Generator, Reason};
+use gql_proof::purdom::{Analysis, Config, Generator, Length, Reason};
 use gql_proof::tokens::{Grammar, Report};
 use gql_proof::verify::Verifier;
 use gql_proof::{ISO_BNF_XML, bnf, describe};
@@ -41,9 +41,10 @@ struct PurdomArgs {
     /// Breaks ties between equally cheap choices. Same seed, same trees.
     #[arg(long, default_value_t = 0)]
     seed: u64,
-    /// Maximum tree height. Productions that need more are reported, not dropped.
-    #[arg(long, default_value_t = 50)]
-    max_depth: u32,
+    /// Maximum tree height. Productions that need more are reported, not dropped. Defaults
+    /// to the reference height, the smallest cap under which every production fits.
+    #[arg(long)]
+    max_depth: Option<u32>,
     /// Start symbol.
     #[arg(long, default_value = "GQL-program")]
     start: String,
@@ -52,9 +53,11 @@ struct PurdomArgs {
     tree: Option<usize>,
     #[arg(long, value_enum, default_value_t = Format::Both)]
     format: Format,
-    /// Stop chasing new productions in a tree after this many, for smaller trees.
-    #[arg(long)]
-    max_new_per_tree: Option<usize>,
+    /// Longest sentence, in Purdom's length (nodes in the derivation tree): `reference`, the
+    /// smallest cap any covering set needs; `unbounded`; or a number. Productions whose
+    /// shortest covering sentence is over a number are reported.
+    #[arg(long, default_value = "reference", value_parser = parse_length)]
+    length: Length,
     /// Show lexical rules (identifiers, literals, ...) down to single characters.
     #[arg(long)]
     expand_lexical: bool,
@@ -73,9 +76,20 @@ enum Format {
     Both,
     /// Only the coverage summary, same as `--summary` with no trees.
     Summary,
-    /// One JSON object per tree (`tree`, `height`, `new`, `sentence`), no summary. Sentences
+    /// One JSON object per tree (`tree`, `length`, `height`, `new`, `sentence`), no summary. Sentences
     /// can contain newlines from comments and whitespace, so this is the format for tooling.
     Jsonl,
+}
+
+fn parse_length(s: &str) -> Result<Length, String> {
+    match s {
+        "reference" => Ok(Length::Reference),
+        "unbounded" => Ok(Length::Unbounded),
+        n => n
+            .parse()
+            .map(Length::Cap)
+            .map_err(|_| format!("expected reference, unbounded or a number, got {n:?}")),
+    }
 }
 
 fn main() -> Result<()> {
@@ -160,12 +174,15 @@ fn purdom(args: PurdomArgs) -> Result<()> {
     let verifier = Verifier::new(grammar);
     let cfg = Cfg::from_bnf(&bnf);
     let start = cfg.require(&args.start)?;
+    let analysis = Analysis::new(&cfg, &StubProvider);
+    let reference_height = analysis.reference_height(start);
+    let max_depth = args.max_depth.unwrap_or(reference_height);
     let config = Config {
         seed: args.seed,
-        max_depth: args.max_depth,
-        max_new_per_tree: args.max_new_per_tree,
+        max_depth,
+        length: args.length,
     };
-    let outcome = Generator::new(&cfg, config, StubProvider).run(start)?;
+    let outcome = Generator::new(&analysis, config, StubProvider).run(start)?;
 
     // Nothing is printed unless every tree passes the independent checker.
     let mut failed = 0;
@@ -199,6 +216,7 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         if args.format == Format::Jsonl {
             let record = serde_json::json!({
                 "tree": n,
+                "length": generated.length,
                 "height": root.height(),
                 "new": generated.new,
                 "sentence": root.render(&cfg),
@@ -208,7 +226,8 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         }
         writeln!(
             out,
-            "# tree {n}: height {}, {} new productions",
+            "# tree {n}: length {}, height {}, {} new productions",
+            generated.length,
             root.height(),
             generated.new
         )?;
@@ -229,16 +248,32 @@ fn purdom(args: PurdomArgs) -> Result<()> {
     let total = cfg.prods.len();
     let covered = outcome.covered.count_ones(..);
     writeln!(out, "# summary")?;
+    let depth_note = match args.max_depth {
+        None => " (reference height)".to_string(),
+        Some(_) => format!(" (reference height {reference_height})"),
+    };
     writeln!(
         out,
-        "seed {}, max depth {}, start <{}>",
-        args.seed, args.max_depth, args.start
+        "seed {}, max depth {max_depth}{depth_note}, start <{}>",
+        args.seed, args.start
     )?;
+    let cap = match (args.length, outcome.length_cap) {
+        (Length::Unbounded, _) => "unbounded".to_string(),
+        (Length::Reference, Some(c)) => format!("{c} (reference length)"),
+        (_, Some(c)) => format!("{c} (reference length {})", outcome.reference_length),
+        (_, None) => "unbounded".to_string(),
+    };
+    writeln!(out, "length cap: {cap}")?;
     writeln!(
         out,
         "trees: {}, all verified (iso ebnf, prose leaves, token rules, rendering)",
         outcome.trees.len()
     )?;
+    let lengths: Vec<u32> = outcome.trees.iter().map(|t| t.length).collect();
+    if let (Some(min), Some(max)) = (lengths.iter().min(), lengths.iter().max()) {
+        let avg = lengths.iter().sum::<u32>() as f64 / lengths.len() as f64;
+        writeln!(out, "sentence length: min {min}, avg {avg:.1}, max {max}")?;
+    }
     writeln!(
         out,
         "productions covered: {covered} of {total} (desugared: every [..] both ways, every ... once and repeated)"
@@ -256,6 +291,10 @@ fn purdom(args: PurdomArgs) -> Result<()> {
             Reason::NeedsDepth(d) => (
                 "needs a deeper tree",
                 format!("{} (depth {d})", describe(&cfg, p)),
+            ),
+            Reason::NeedsLength(l) => (
+                "needs a longer sentence",
+                format!("{} (length {l})", describe(&cfg, p)),
             ),
         };
         by_reason.entry(key).or_default().push(line);
