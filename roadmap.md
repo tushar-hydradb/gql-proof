@@ -23,11 +23,13 @@ prior art for everything below is in `research/prior-art-2026-10-20.md`. the nea
    - concrete names assigned late, with xsmith's lifting (create the missing declaration upstream) instead of discarding the tree
    - dinkel's split between scoped query state and the persistent schema, one rule per gql clause
    - mgql's schema model for the catalog: closed graph types, node and edge types, nullability, unions and lists
+   - emits an obligations record per query, collected while the tree is built rather than by a second pass: variables and their types, the labels and properties they need, which must be equal (a repeated name is a join) and which must differ (match modes), and the predicates per partition (which `WHERE` should come out true, false or null). data and oracle read it instead of reanalysing the query, the way xdata and qagen do
    - without it most sentences are rejected for semantic reasons, e.g. `SESSION SET GRAPH X''` + newline + `'B  e  '` (11.1 SR 3 a ii wants a graph reference)
 3. **syntax rule inventory.** classify every syntax rule in the pdf once: structural (compile into the grammar), binding or typing (context provider), implementation-defined (a parameter, like ID086), or not syntax at all (general rules). gives a coverage number for the rules we honour
-4. **data.** a minimal graph per query and partition built by a solver (xdata, qagen, qex style, with z3), plus hand-picked shapes under the small scope hypothesis: self-loops, parallel edges, short cycles, disconnected parts, nulls, multi-labels. sqlfpc's mc/dc, null included, as the adequacy criterion. consistent with the context provider's catalog. no graph data generator meets a coverage goal today, gdsmith and dinkel only avoid empty results
+4. **data.** a minimal graph per query and partition built by a solver from the context provider's obligations record (xdata, qagen, qex style, with z3), plus hand-picked shapes under the small scope hypothesis: self-loops, parallel edges, short cycles, disconnected parts, nulls, multi-labels. sqlfpc's mc/dc, null included, as the adequacy criterion. consistent with the context provider's catalog. no graph data generator meets a coverage goal today, gdsmith and dinkel only avoid empty results
 5. **oracle.** in tiers, each test tagged with the tier that backs it:
    - expected status for negative tests, known by construction
+   - witnesses, known by construction: the graph was built so that a binding satisfies the query, so that row must be in the result. a partial oracle (rows that must appear, not the full answer) that reaches past mgql's core and catches wrong empty results, dropped rows and wrong status codes
    - reference execution: mgql for the read-only core through an emitter from our trees to lean terms, gpml-conformance for paths, cross-checked where they overlap
    - general-rule tables for the rest, **exception conditions included**. neither mgql nor gpml-conformance models them, and they are half of the totality claim
    - metamorphic relations (tlp, rewrites that must not change results), reported as consistency only, never as correctness
@@ -52,7 +54,7 @@ prior art for everything below is in `research/prior-art-2026-10-20.md`. the nea
 ## order
 
 1. feature tagging, the claimed-feature refinement, and the three kinds of negatives
-2. context provider phase 1: the finite environment abstraction in the product grammar, scoping, binding and a small type system for the read-only core (`MATCH`, `RETURN`, `WHERE`, expressions). cdrc and k-paths on the typed grammar with infeasible targets reported
-3. oracle for that core via mgql and gpml-conformance, exception condition tables for it, and solver-built graphs
+2. context provider phase 1: the finite environment abstraction in the product grammar, scoping, binding and a small type system for the read-only core (`MATCH`, `RETURN`, `WHERE`, expressions), and the obligations record. cdrc and k-paths on the typed grammar with infeasible targets reported
+3. solver-built graphs from the obligations record with witnesses as the first oracle, then mgql and gpml-conformance for that core and exception condition tables for it
 4. the claim for that core in bernot's terms: features F, bound k, hypotheses H1 to H5 and what discharges each
 5. grow outward: data modification, the syntax rule inventory, value partitions
