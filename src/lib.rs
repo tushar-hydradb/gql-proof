@@ -4,6 +4,7 @@ pub mod bnf;
 pub mod cfg;
 pub mod leaf;
 pub mod purdom;
+pub mod refine;
 pub mod tokens;
 pub mod tree;
 pub mod verify;
@@ -12,6 +13,17 @@ pub mod verify;
 pub const ISO_BNF_XML: &str = include_str!("../grammar/ISO_IEC_39075(en).bnf.xml");
 
 use cfg::{Cfg, Lit, ProdId, Sym};
+
+/// The match mode a `<graph pattern>` without one gets: implementation-defined (ID086,
+/// 16.4 SR 10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MatchModeDefault {
+    /// Assume nothing: only what is valid whichever default an engine picks.
+    #[default]
+    Portable,
+    DifferentEdges,
+    RepeatableElements,
+}
 
 /// `<lhs> ::= ...` for a desugared production, for reports.
 pub fn describe(cfg: &Cfg, p: ProdId) -> String {

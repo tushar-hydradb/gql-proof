@@ -18,7 +18,7 @@ impl Node {
     pub fn export(&self, cfg: &Cfg) -> Plain {
         match self.sym {
             Sym::Nt(nt) => Plain::Def {
-                name: cfg.name(nt).to_string(),
+                name: cfg.base(nt).to_string(),
                 synthetic: cfg.nts[nt as usize].synthetic,
                 children: self.children.iter().map(|c| c.export(cfg)).collect(),
             },
@@ -118,7 +118,7 @@ impl Node {
 
     fn label(&self, cfg: &Cfg) -> String {
         match self.sym {
-            Sym::Nt(nt) => format!("<{}>", cfg.name(nt)),
+            Sym::Nt(nt) => format!("<{}>", cfg.base(nt)),
             Sym::Lit(l) => {
                 let text = self.text.as_deref().unwrap_or_default();
                 match &cfg.lits[l as usize] {

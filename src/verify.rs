@@ -9,6 +9,7 @@
 //! - the rendered string is exactly the tree's tokens joined by one space, with tokens cut at
 //!   lexical definitions, which `tokens::Grammar::check` proves are single tokens
 
+use crate::MatchModeDefault;
 use crate::bnf::Ebnf;
 use crate::tokens::{EXCLUDED, Grammar};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
@@ -61,6 +62,8 @@ pub struct Verifier<'b> {
     grammar: Grammar<'b>,
     lexical: HashSet<&'b str>,
     reserved: HashSet<String>,
+    /// Check the Syntax Rules `refine` compiles into the grammar, with this ID086.
+    syntax_rules: Option<MatchModeDefault>,
 }
 
 impl<'b> Verifier<'b> {
@@ -71,7 +74,14 @@ impl<'b> Verifier<'b> {
             grammar,
             lexical,
             reserved,
+            syntax_rules: None,
         }
+    }
+
+    /// Also check 16.4 SR 6, 16.4 SR 14 and 13.1 SR 5.
+    pub fn with_syntax_rules(mut self, id086: MatchModeDefault) -> Self {
+        self.syntax_rules = Some(id086);
+        self
     }
 
     pub fn grammar(&self) -> &Grammar<'b> {
@@ -82,6 +92,9 @@ impl<'b> Verifier<'b> {
     pub fn verify(&self, tree: &Plain, rendered: &str) -> Vec<Violation> {
         let mut out = Vec::new();
         self.walk(tree, &mut Vec::new(), &mut out);
+        if let Some(id086) = self.syntax_rules {
+            syntax_rules(tree, id086, &mut Vec::new(), &mut out);
+        }
         let expected = self.render(tree);
         if expected != rendered {
             out.push(Violation {
@@ -481,4 +494,205 @@ fn violation(path: &[&str], rule: &'static str, detail: String) -> Violation {
         .collect::<Vec<_>>()
         .join(" > ");
     Violation { path, rule, detail }
+}
+
+// --- Syntax Rules above the token layer, read directly from the text ---------------------
+//
+// Reading: 16.4 SR 6 and 14 are applied per depth of graph pattern matching (16.4 SR 2), so a
+// rule looks no further out than the nearest enclosing <graph pattern>. 13.1 SR 5 is read
+// along the statement sequence, see `modifies`.
+
+fn syntax_rules<'t>(
+    node: &'t Plain,
+    id086: MatchModeDefault,
+    ancestors: &mut Vec<&'t Plain>,
+    out: &mut Vec<Violation>,
+) {
+    let Plain::Def {
+        name,
+        synthetic,
+        children,
+    } = node
+    else {
+        return;
+    };
+    if !synthetic {
+        let path: Vec<&str> = ancestors.iter().filter_map(|a| def_name(a)).collect();
+        match name.as_str() {
+            "quantified path primary" | "simplified quantified" => {
+                if unbounded(node) && !guarded(ancestors, id086) {
+                    out.push(violation(
+                        &path,
+                        "16.4 SR 14",
+                        "unbounded quantifier without a restrictive path mode, a selective path pattern or DIFFERENT EDGES".into(),
+                    ));
+                }
+            }
+            "graph pattern" => {
+                let keep = flat(children)
+                    .into_iter()
+                    .any(|c| def_name(c) == Some("keep clause"));
+                let searched = path_patterns(node).into_iter().any(|pp| {
+                    own(pp, "path pattern prefix")
+                        .is_some_and(|p| contains(p, "path search prefix"))
+                });
+                if keep && searched {
+                    out.push(violation(
+                        &path,
+                        "16.4 SR 6",
+                        "a path pattern has its own search prefix next to a KEEP clause".into(),
+                    ));
+                }
+            }
+            "linear data-modifying statement" if !modifies(node) => {
+                out.push(violation(
+                    &path,
+                    "13.1 SR 5",
+                    "no INSERT, SET, REMOVE, DELETE or data-modifying CALL".into(),
+                ));
+            }
+            _ => {}
+        }
+        ancestors.push(node);
+    }
+    children
+        .iter()
+        .for_each(|c| syntax_rules(c, id086, ancestors, out));
+    if !synthetic {
+        ancestors.pop();
+    }
+}
+
+fn def_name(node: &Plain) -> Option<&str> {
+    match node {
+        Plain::Def { name, .. } => Some(name),
+        _ => None,
+    }
+}
+
+/// Children with desugaring groups flattened away.
+fn flat(children: &[Plain]) -> Vec<&Plain> {
+    let mut out = Vec::new();
+    flatten(children, &mut out);
+    out
+}
+
+/// The child of `node` that is a `<want>`.
+fn own<'t>(node: &'t Plain, want: &str) -> Option<&'t Plain> {
+    let Plain::Def { children, .. } = node else {
+        return None;
+    };
+    flat(children)
+        .into_iter()
+        .find(|c| def_name(c) == Some(want))
+}
+
+fn contains(node: &Plain, want: &str) -> bool {
+    let mut found = Vec::new();
+    find(node, want, &mut found);
+    !found.is_empty()
+}
+
+/// `*`, `+`, or `{m,}` with no upper bound.
+fn unbounded(qpp: &Plain) -> bool {
+    let Some(q) = own(qpp, "graph pattern quantifier") else {
+        return false;
+    };
+    let Plain::Def { children, .. } = q else {
+        return false;
+    };
+    match flat(children).first().and_then(|c| def_name(c)) {
+        Some("asterisk" | "plus sign") => true,
+        Some("general quantifier") => {
+            own(q, "general quantifier").is_some_and(|g| !contains(g, "upper bound"))
+        }
+        _ => false,
+    }
+}
+
+/// A prefix that is restrictive (TRAIL, SIMPLE, ACYCLIC) or selective (a search prefix other
+/// than ALL).
+fn prefix_guards(prefix: &Plain) -> bool {
+    let mut modes = Vec::new();
+    find(prefix, "path mode", &mut modes);
+    let restrictive = modes
+        .iter()
+        .any(|m| matches!(m.text().as_str(), "TRAIL" | "SIMPLE" | "ACYCLIC"));
+    let mut searches = Vec::new();
+    find(prefix, "path search prefix", &mut searches);
+    let selective = searches.iter().any(|s| own(s, "all path search").is_none());
+    restrictive || selective
+}
+
+/// 16.4 SR 14, from the quantified path primary's ancestors up to its graph pattern.
+fn guarded(ancestors: &[&Plain], id086: MatchModeDefault) -> bool {
+    for a in ancestors.iter().rev() {
+        match def_name(a) {
+            // SR 7 puts a path pattern's prefix in parentheses around its expression.
+            Some("parenthesized path pattern expression") => {
+                if own(a, "path mode prefix").is_some_and(prefix_guards) {
+                    return true;
+                }
+            }
+            Some("path pattern") => {
+                if own(a, "path pattern prefix").is_some_and(prefix_guards) {
+                    return true;
+                }
+            }
+            Some("graph pattern") => {
+                let keep = own(a, "keep clause").is_some_and(prefix_guards);
+                let different = match own(a, "match mode") {
+                    Some(mode) => contains(mode, "different edges match mode"),
+                    None => id086 == MatchModeDefault::DifferentEdges,
+                };
+                return keep || different;
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// The path patterns of a graph pattern's own path pattern list.
+fn path_patterns(gp: &Plain) -> Vec<&Plain> {
+    let Some(Plain::Def { children, .. }) = own(gp, "path pattern list") else {
+        return Vec::new();
+    };
+    flat(children)
+        .into_iter()
+        .filter(|c| def_name(c) == Some("path pattern"))
+        .collect()
+}
+
+/// 13.1 SR 5, read with 13.1's Function ("a linear composition of at least one <simple
+/// data-modifying statement>"): an element of the statement's sequence is a simple
+/// data-modifying statement, or a nested `{ ... }` data-modifying procedure whose own
+/// statements satisfy this. So the search only follows statements, never subqueries.
+fn modifies(statement: &Plain) -> bool {
+    const FOLLOW: &[&str] = &[
+        "simple linear data-accessing statement",
+        "simple data-accessing statement",
+        "ambient linear data-modifying statement",
+        "ambient linear data-modifying statement body",
+        "focused linear data-modifying statement",
+        "focused linear data-modifying statement body",
+        "focused nested data-modifying procedure specification",
+        "nested data-modifying procedure specification",
+        "data-modifying procedure specification",
+        "procedure body",
+        "statement block",
+        "next statement",
+        "statement",
+        "linear data-modifying statement",
+    ];
+    let Plain::Def { children, .. } = statement else {
+        return false;
+    };
+    flat(children)
+        .into_iter()
+        .any(|child| match def_name(child) {
+            Some("simple data-modifying statement") => true,
+            Some(name) if FOLLOW.contains(&name) => modifies(child),
+            _ => false,
+        })
 }

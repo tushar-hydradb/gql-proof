@@ -1,8 +1,10 @@
 use anyhow::{Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
+use gql_proof::MatchModeDefault;
 use gql_proof::cfg::Cfg;
 use gql_proof::leaf::StubProvider;
 use gql_proof::purdom::{Analysis, Config, Generator, Length, Reason};
+use gql_proof::refine::{all_rules, refine};
 use gql_proof::tokens::{Grammar, Report};
 use gql_proof::verify::Verifier;
 use gql_proof::{ISO_BNF_XML, bnf, describe};
@@ -38,6 +40,14 @@ struct CheckArgs {
 
 #[derive(Parser)]
 struct PurdomArgs {
+    /// Compile the Syntax Rules a grammar can express (16.4 SR 6, 16.4 SR 14, 13.1 SR 5) into
+    /// the grammar, so every query satisfies them.
+    #[arg(long, value_enum, default_value_t = Rules::All)]
+    rules: Rules,
+    /// The match mode a graph pattern without one gets (ID086). `portable` assumes neither,
+    /// so queries are valid on any engine.
+    #[arg(long, value_enum, default_value_t = Id086::Portable)]
+    match_mode_default: Id086,
     /// Breaks ties between equally cheap choices. Same seed, same trees.
     #[arg(long, default_value_t = 0)]
     seed: u64,
@@ -67,6 +77,29 @@ struct PurdomArgs {
     /// Grammar XML. Defaults to the vendored ISO file.
     #[arg(long)]
     grammar: Option<PathBuf>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Rules {
+    All,
+    None,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Id086 {
+    Portable,
+    DifferentEdges,
+    RepeatableElements,
+}
+
+impl From<Id086> for MatchModeDefault {
+    fn from(v: Id086) -> Self {
+        match v {
+            Id086::Portable => MatchModeDefault::Portable,
+            Id086::DifferentEdges => MatchModeDefault::DifferentEdges,
+            Id086::RepeatableElements => MatchModeDefault::RepeatableElements,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -171,9 +204,18 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         write_report(&mut io::stderr().lock(), &report)?;
         bail!("the grammar fails the token boundary check, refusing to generate");
     }
-    let verifier = Verifier::new(grammar);
-    let cfg = Cfg::from_bnf(&bnf);
-    let start = cfg.require(&args.start)?;
+    let id086 = MatchModeDefault::from(args.match_mode_default);
+    let rules = match args.rules {
+        Rules::All => all_rules(id086),
+        Rules::None => Vec::new(),
+    };
+    let verifier = match args.rules {
+        Rules::All => Verifier::new(grammar).with_syntax_rules(id086),
+        Rules::None => Verifier::new(grammar),
+    };
+    let base = Cfg::from_bnf(&bnf);
+    let refined = refine(&base, &rules, base.require(&args.start)?)?;
+    let (cfg, start) = (refined.cfg, refined.start);
     let analysis = Analysis::new(&cfg, &StubProvider);
     let reference_height = analysis.reference_height(start);
     let max_depth = args.max_depth.unwrap_or(reference_height);
@@ -245,8 +287,17 @@ fn purdom(args: PurdomArgs) -> Result<()> {
     if !summary {
         return Ok(());
     }
-    let total = cfg.prods.len();
-    let covered = outcome.covered.count_ones(..);
+    // Coverage of the ISO productions: covered when any refined copy is.
+    let mut iso_covered = vec![false; base.prods.len()];
+    let mut has_copy = vec![false; base.prods.len()];
+    for prod in &cfg.prods {
+        has_copy[prod.unrefined as usize] = true;
+    }
+    for p in outcome.covered.ones() {
+        iso_covered[cfg.prods[p].unrefined as usize] = true;
+    }
+    let total = base.prods.len();
+    let covered = iso_covered.iter().filter(|&&c| c).count();
     writeln!(out, "# summary")?;
     let depth_note = match args.max_depth {
         None => " (reference height)".to_string(),
@@ -266,8 +317,13 @@ fn purdom(args: PurdomArgs) -> Result<()> {
     writeln!(out, "length cap: {cap}")?;
     writeln!(
         out,
-        "trees: {}, all verified (iso ebnf, prose leaves, token rules, rendering)",
-        outcome.trees.len()
+        "trees: {}, all verified (iso ebnf, prose leaves, token rules, rendering{})",
+        outcome.trees.len(),
+        if rules.is_empty() {
+            ""
+        } else {
+            ", syntax rules"
+        }
     )?;
     let lengths: Vec<u32> = outcome.trees.iter().map(|t| t.length).collect();
     if let (Some(min), Some(max)) = (lengths.iter().min(), lengths.iter().max()) {
@@ -278,23 +334,47 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         out,
         "productions covered: {covered} of {total} (desugared: every [..] both ways, every ... once and repeated)"
     )?;
+    if !rules.is_empty() {
+        writeln!(
+            out,
+            "in context: {} of {} (each production in each state the syntax rules tell apart)",
+            outcome.covered.count_ones(..),
+            cfg.prods.len()
+        )?;
+    }
 
-    let mut by_reason: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    // One reason per uncovered ISO production, from its first uncovered copy.
+    let mut iso_reason: Vec<Option<Reason>> = vec![None; total];
     for &(p, reason) in &outcome.uncovered {
+        let u = cfg.prods[p as usize].unrefined as usize;
+        if !iso_covered[u] && iso_reason[u].is_none() {
+            iso_reason[u] = Some(reason);
+        }
+    }
+    let mut by_reason: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    for u in (0..total).filter(|&u| !iso_covered[u]) {
+        let p = u as u32;
+        let Some(reason) = iso_reason[u] else {
+            if !has_copy[u] {
+                by_reason
+                    .entry("forbidden by the syntax rules in every context")
+                    .or_default()
+                    .push(describe(&base, p));
+            }
+            continue;
+        };
+        let cfg = &base;
         let (key, line) = match reason {
-            Reason::Unreachable => ("unreachable from start", describe(&cfg, p)),
-            Reason::Unproductive => ("no finite derivation", describe(&cfg, p)),
-            Reason::NoLeaf => (
-                "needs a prose leaf with no portable form",
-                describe(&cfg, p),
-            ),
+            Reason::Unreachable => ("unreachable from start", describe(cfg, p)),
+            Reason::Unproductive => ("no finite derivation", describe(cfg, p)),
+            Reason::NoLeaf => ("needs a prose leaf with no portable form", describe(cfg, p)),
             Reason::NeedsDepth(d) => (
                 "needs a deeper tree",
-                format!("{} (depth {d})", describe(&cfg, p)),
+                format!("{} (depth {d})", describe(cfg, p)),
             ),
             Reason::NeedsLength(l) => (
                 "needs a longer sentence",
-                format!("{} (length {l})", describe(&cfg, p)),
+                format!("{} (length {l})", describe(cfg, p)),
             ),
         };
         by_reason.entry(key).or_default().push(line);
@@ -305,9 +385,9 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         // is reachable from <token> instead. Group those by ISO definition to keep it short.
         if reason == "unreachable from start" {
             let mut defs: BTreeMap<String, usize> = BTreeMap::new();
-            for &(p, r) in &outcome.uncovered {
-                if r == Reason::Unreachable {
-                    let origin = &cfg.nts[cfg.prod(p).lhs as usize].origin;
+            for u in (0..total).filter(|&u| !iso_covered[u]) {
+                if iso_reason[u] == Some(Reason::Unreachable) {
+                    let origin = &base.nts[base.prod(u as u32).lhs as usize].origin;
                     *defs.entry(origin.clone()).or_default() += 1;
                 }
             }
@@ -323,6 +403,17 @@ fn purdom(args: PurdomArgs) -> Result<()> {
                 writeln!(out, "  {l}")?;
             }
         }
+    }
+    if !rules.is_empty() {
+        writeln!(
+            out,
+            "syntax rules compiled into the grammar: {}",
+            rules.len()
+        )?;
+        for rule in &rules {
+            writeln!(out, "  {}", rule.cite())?;
+        }
+        writeln!(out, "  ID086 (default match mode): {:?}", id086)?;
     }
     writeln!(out)?;
     write_report(&mut out, &report)?;

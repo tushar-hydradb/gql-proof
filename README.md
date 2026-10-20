@@ -39,7 +39,24 @@ nothing is printed unless it passes two checkers that depend only on the iso xml
 - token internal rules: byte string continuations contain a newline (21.2 SR 57), identifiers are not reserved words (21.3 SR 18), duration, date, time and time zone strings hold iso 8601 values (21.2 SR 59-68)
 - the printed sentence is exactly the tree's tokens joined by one space
 
-not checked yet: the syntax rules above the token layer (binding, typing, scoping). that is the context provider's job
+## syntax rules compiled into the grammar
+
+some syntax rules are not about binding or typing at all: they forbid combinations a grammar could rule out but iso chose to state in prose. `src/refine.rs` writes each as a tree automaton (a bottom-up pass with finitely many states) and compiles it into the grammar, one copy of a nonterminal per state, so the generator only builds queries that satisfy them and everything else keeps working unchanged:
+- 16.4 SR 14: an unbounded quantifier (`*`, `+`, `{n,}`) is inside a restrictive path mode, a selective path pattern, or under `DIFFERENT EDGES`
+- 16.4 SR 6: with `KEEP`, no path pattern has its own search prefix
+- 13.1 SR 5: a data-modifying statement modifies something. without it a bare `MATCH` is a whole program in the bnf
+
+`--match-mode-default portable|different-edges|repeatable-elements` sets ID086, the match mode a pattern without one gets. `portable` (default) assumes neither, so queries are valid on any engine. `--rules none` turns the layer off
+
+`verify.rs` checks each rule again, written from the rule text and sharing no code with the automata, and every printed query passes it. a test runs both over unrefined trees, about a fifth of which break a rule, and requires the same verdict on every one
+
+readings we chose, where the text is open:
+- 16.4 SR 6 and 14 say "contain", which in iso is transitive and would let an outer `MATCH` reach into subqueries nested in it. we apply them per depth of graph pattern matching, the notion 16.4 SR 2 sets up
+- 13.1 SR 5 counts a data-modifying statement in the statement's own sequence, or in a nested `{ ... }` procedure that is one of its elements, following 13.1's function text. one buried in a subquery elsewhere does not count
+
+with the rules on (seed 1): reference height 49, reference length 99, 327 sentences, iso coverage unchanged at 2139, and 2372 of 2902 productions covered in context, i.e. each production in each state the rules tell apart
+
+not checked yet: binding, typing and scoping. that is the context provider's job
 
 ## checking against opengql
 

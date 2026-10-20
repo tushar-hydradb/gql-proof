@@ -122,7 +122,7 @@ impl<'g> Analysis<'g> {
         let mut templates = vec![None; cfg.nts.len()];
         let mut template_errors = Vec::new();
         for (nt, info) in cfg.nts.iter().enumerate() {
-            let Some(text) = leaf.token(&info.name).filter(|_| !info.synthetic) else {
+            let Some(text) = leaf.token(&info.base).filter(|_| !info.synthetic) else {
                 continue;
             };
             let chars: Vec<char> = text.chars().collect();
@@ -602,7 +602,7 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
             Lit::Kw(k) => k.clone(),
             Lit::Term(t) => t.clone(),
             Lit::Opaque(name) => {
-                let ctx: Vec<&str> = self.ctx.iter().map(|&nt| self.cfg.name(nt)).collect();
+                let ctx: Vec<&str> = self.ctx.iter().map(|&nt| self.cfg.base(nt)).collect();
                 self.leaf.leaf(name, &ctx, &mut self.rng)
             }
         };

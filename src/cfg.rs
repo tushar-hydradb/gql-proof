@@ -34,6 +34,9 @@ pub enum Lit {
 #[derive(Debug, Clone)]
 pub struct Nonterminal {
     pub name: String,
+    /// The unrefined name: an ISO definition or a desugaring group. Equal to `name` unless the
+    /// grammar was refined (see `refine`), which makes one copy per state of a rule.
+    pub base: String,
     pub synthetic: bool,
     /// Reachable from `<token>`, so its yield is printed as a single token.
     pub lexical: bool,
@@ -46,6 +49,8 @@ pub struct Nonterminal {
 pub struct Production {
     pub lhs: NtId,
     pub rhs: Vec<Sym>,
+    /// The unrefined production this one specializes; itself unless refined.
+    pub unrefined: ProdId,
 }
 
 #[derive(Debug, Clone)]
@@ -103,6 +108,33 @@ impl Cfg {
         &self.nts[nt as usize].name
     }
 
+    /// The ISO definition or desugaring group `nt` stands for, refined or not.
+    pub fn base(&self, nt: NtId) -> &str {
+        &self.nts[nt as usize].base
+    }
+
+    /// A grammar built from parts, for refinements. Nonterminals' `prods` must list exactly
+    /// the productions with them on the left.
+    pub fn from_parts(nts: Vec<Nonterminal>, prods: Vec<Production>, lits: Vec<Lit>) -> Cfg {
+        let by_name = nts
+            .iter()
+            .enumerate()
+            .map(|(i, nt)| (nt.name.clone(), i as NtId))
+            .collect();
+        let lit_ids = lits
+            .iter()
+            .enumerate()
+            .map(|(i, l)| (l.clone(), i as LitId))
+            .collect();
+        Cfg {
+            nts,
+            prods,
+            lits,
+            by_name,
+            lit_ids,
+        }
+    }
+
     pub fn prod(&self, p: ProdId) -> &Production {
         &self.prods[p as usize]
     }
@@ -132,6 +164,7 @@ impl Cfg {
         let id = self.nts.len() as NtId;
         self.by_name.insert(name.clone(), id);
         self.nts.push(Nonterminal {
+            base: name.clone(),
             name,
             synthetic,
             lexical: false,
@@ -143,7 +176,11 @@ impl Cfg {
 
     fn add_prod(&mut self, lhs: NtId, rhs: Vec<Sym>) {
         let id = self.prods.len() as ProdId;
-        self.prods.push(Production { lhs, rhs });
+        self.prods.push(Production {
+            lhs,
+            rhs,
+            unrefined: id,
+        });
         self.nts[lhs as usize].prods.push(id);
     }
 
