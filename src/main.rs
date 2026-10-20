@@ -5,6 +5,7 @@ use gql_proof::leaf::StubProvider;
 use gql_proof::purdom::{Config, Generator, Reason};
 use gql_proof::{ISO_BNF_XML, bnf, describe};
 use std::collections::BTreeMap;
+use std::io::{self, Write};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -42,6 +43,9 @@ struct PurdomArgs {
     /// Show lexical rules (identifiers, literals, ...) down to single characters.
     #[arg(long)]
     expand_lexical: bool,
+    /// Print the coverage summary after the trees.
+    #[arg(long)]
+    summary: bool,
     /// Grammar XML. Defaults to the vendored ISO file.
     #[arg(long)]
     grammar: Option<PathBuf>,
@@ -52,7 +56,7 @@ enum Format {
     Tree,
     Sentence,
     Both,
-    /// Only the coverage summary.
+    /// Only the coverage summary, same as `--summary` with no trees.
     Summary,
     /// One JSON object per tree (`tree`, `height`, `new`, `sentence`), no summary. Sentences
     /// can contain newlines from comments and whitespace, so this is the format for tooling.
@@ -60,8 +64,18 @@ enum Format {
 }
 
 fn main() -> Result<()> {
-    match Cli::parse().cmd {
+    let result = match Cli::parse().cmd {
         Cmd::Purdom(args) => purdom(args),
+    };
+    // A closed pipe (`| head`) is the reader being done, not an error.
+    match result {
+        Err(e)
+            if e.downcast_ref::<io::Error>()
+                .is_some_and(|e| e.kind() == io::ErrorKind::BrokenPipe) =>
+        {
+            Ok(())
+        }
+        other => other,
     }
 }
 
@@ -78,6 +92,7 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         max_new_per_tree: args.max_new_per_tree,
     };
     let outcome = Generator::new(&cfg, config, StubProvider).run(start)?;
+    let mut out = std::io::stdout().lock();
 
     for (i, generated) in outcome.trees.iter().enumerate() {
         let n = i + 1;
@@ -92,40 +107,57 @@ fn purdom(args: PurdomArgs) -> Result<()> {
                 "new": generated.new,
                 "sentence": root.render(&cfg),
             });
-            println!("{record}");
+            writeln!(out, "{record}")?;
             continue;
         }
-        println!("# tree {n}: height {}, {} new productions", root.height(), generated.new);
+        writeln!(
+            out,
+            "# tree {n}: height {}, {} new productions",
+            root.height(),
+            generated.new
+        )?;
         if matches!(args.format, Format::Tree | Format::Both) {
-            print!("{}", root.display(&cfg, args.expand_lexical));
+            write!(out, "{}", root.display(&cfg, args.expand_lexical))?;
         }
         if matches!(args.format, Format::Sentence | Format::Both) {
-            println!("{}", root.render(&cfg));
+            writeln!(out, "{}", root.render(&cfg))?;
         }
-        println!();
+        writeln!(out)?;
     }
 
-    if args.format == Format::Jsonl {
+    // jsonl stays machine readable, so it never gets the summary.
+    let summary = (args.summary && args.format != Format::Jsonl) || args.format == Format::Summary;
+    if !summary {
         return Ok(());
     }
     let total = cfg.prods.len();
     let covered = outcome.covered.count_ones(..);
-    println!("# summary");
-    println!("seed {}, max depth {}, start <{}>", args.seed, args.max_depth, args.start);
-    println!("trees: {}", outcome.trees.len());
-    println!("productions covered: {covered} of {total} (desugared: every [..] both ways, every ... once and repeated)");
+    writeln!(out, "# summary")?;
+    writeln!(
+        out,
+        "seed {}, max depth {}, start <{}>",
+        args.seed, args.max_depth, args.start
+    )?;
+    writeln!(out, "trees: {}", outcome.trees.len())?;
+    writeln!(
+        out,
+        "productions covered: {covered} of {total} (desugared: every [..] both ways, every ... once and repeated)"
+    )?;
 
     let mut by_reason: BTreeMap<&str, Vec<String>> = BTreeMap::new();
     for &(p, reason) in &outcome.uncovered {
         let (key, line) = match reason {
             Reason::Unreachable => ("unreachable from start", describe(&cfg, p)),
             Reason::Unproductive => ("no finite derivation", describe(&cfg, p)),
-            Reason::NeedsDepth(d) => ("needs a deeper tree", format!("{} (depth {d})", describe(&cfg, p))),
+            Reason::NeedsDepth(d) => (
+                "needs a deeper tree",
+                format!("{} (depth {d})", describe(&cfg, p)),
+            ),
         };
         by_reason.entry(key).or_default().push(line);
     }
     for (reason, lines) in by_reason {
-        println!("{reason}: {}", lines.len());
+        writeln!(out, "{reason}: {}", lines.len())?;
         // Unreachable productions are mostly the lexical layer (whitespace, comments), which
         // is reachable from <token> instead. Group those by ISO definition to keep it short.
         if reason == "unreachable from start" {
@@ -137,9 +169,16 @@ fn purdom(args: PurdomArgs) -> Result<()> {
                 }
             }
             let names: Vec<String> = defs.keys().map(|d| format!("<{d}>")).collect();
-            println!("  in {} definitions: {}", names.len(), names.join(", "));
+            writeln!(
+                out,
+                "  in {} definitions: {}",
+                names.len(),
+                names.join(", ")
+            )?;
         } else {
-            lines.iter().for_each(|l| println!("  {l}"));
+            for l in lines {
+                writeln!(out, "  {l}")?;
+            }
         }
     }
     Ok(())

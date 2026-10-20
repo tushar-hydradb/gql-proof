@@ -26,6 +26,10 @@ pub fn describe(cfg: &Cfg, p: ProdId) -> String {
             },
         })
         .collect();
-    let rhs = if rhs.is_empty() { "ε".to_string() } else { rhs.join(" ") };
+    let rhs = if rhs.is_empty() {
+        "ε".to_string()
+    } else {
+        rhs.join(" ")
+    };
     format!("<{}> ::= {rhs}", cfg.name(prod.lhs))
 }

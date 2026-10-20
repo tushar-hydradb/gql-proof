@@ -11,7 +11,7 @@ roadmap:
 ## purdom
 
 ```
-cargo run --release -- purdom --seed 1 --max-depth 50
+cargo run --release -- purdom --seed 1 --max-depth 50 --format sentence
 ```
 
 builds a set of derivation trees from `<GQL-program>` that together use every production at least once. the grammar is desugared first, so every `[..]` is seen both present and absent and every `...` both once and repeated
@@ -20,6 +20,7 @@ builds a set of derivation trees from `<GQL-program>` that together use every pr
 - `--max-depth` caps tree height. each `[..]`, `{..|..}` and `...` adds a level after desugaring, so 46 is the smallest cap that covers everything reachable from `<GQL-program>`. productions that need more are listed with the depth they need
 - `--max-new-per-tree` stops a tree chasing new productions after that many, for smaller trees
 - `--format tree|sentence|both|summary|jsonl`, `--tree N` for one tree, `--expand-lexical` to show identifiers and literals down to characters
+- `--summary` adds the coverage summary after the trees, off by default
 - `--start` picks another start symbol, e.g. `token` for the lexical layer
 
 the 23 definitions the standard gives in prose ("!! See the Syntax Rules") are filled by `StubProvider` in `src/leaf.rs`. three are left as `<name>` on purpose since they are implementation defined or have no sensible default

@@ -9,8 +9,14 @@ use std::sync::LazyLock;
 static ISO: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&bnf::parse(ISO_BNF_XML).unwrap()));
 
 fn run(cfg: &Cfg, start: &str, seed: u64, max_depth: u32, max_new: Option<usize>) -> Outcome {
-    let config = Config { seed, max_depth, max_new_per_tree: max_new };
-    Generator::new(cfg, config, StubProvider).run(cfg.require(start).unwrap()).unwrap()
+    let config = Config {
+        seed,
+        max_depth,
+        max_new_per_tree: max_new,
+    };
+    Generator::new(cfg, config, StubProvider)
+        .run(cfg.require(start).unwrap())
+        .unwrap()
 }
 
 fn toy(defs: &str) -> Cfg {
@@ -47,15 +53,18 @@ fn iso_grammar_parses_completely() {
 
 #[test]
 fn dangling_reference_is_an_error() {
-    let err = bnf::parse(r#"<grammar><BNFdef name="s"><rhs><BNF name="t"/></rhs></BNFdef></grammar>"#)
-        .unwrap_err();
+    let err =
+        bnf::parse(r#"<grammar><BNFdef name="s"><rhs><BNF name="t"/></rhs></BNFdef></grammar>"#)
+            .unwrap_err();
     assert!(err.to_string().contains("<t> in <s>"), "{err}");
 }
 
 #[test]
 fn desugars_opt_group_and_repeat() {
     let cfg = toy(ARITH);
-    let prods: Vec<String> = (0..cfg.prods.len() as u32).map(|p| describe(&cfg, p)).collect();
+    let prods: Vec<String> = (0..cfg.prods.len() as u32)
+        .map(|p| describe(&cfg, p))
+        .collect();
     assert_eq!(
         prods,
         [
@@ -100,17 +109,18 @@ fn different_seeds_same_coverage() {
 #[test]
 fn depth_cap_reports_what_does_not_fit() {
     // <s> needs height 5 to reach `z`: s -> t -> u -> v -> z.
-    let cfg = toy(
-        r#"
+    let cfg = toy(r#"
         <BNFdef name="s"><rhs><alt><kw>a</kw></alt><alt><BNF name="t"/></alt></rhs></BNFdef>
         <BNFdef name="t"><rhs><BNF name="u"/></rhs></BNFdef>
         <BNFdef name="u"><rhs><BNF name="v"/></rhs></BNFdef>
         <BNFdef name="v"><rhs><kw>z</kw></rhs></BNFdef>
-        <BNFdef name="orphan"><rhs><kw>o</kw></rhs></BNFdef>"#,
-    );
+        <BNFdef name="orphan"><rhs><kw>o</kw></rhs></BNFdef>"#);
     let outcome = run(&cfg, "s", 0, 3, None);
-    let reasons: Vec<(String, Reason)> =
-        outcome.uncovered.iter().map(|&(p, r)| (describe(&cfg, p), r)).collect();
+    let reasons: Vec<(String, Reason)> = outcome
+        .uncovered
+        .iter()
+        .map(|&(p, r)| (describe(&cfg, p), r))
+        .collect();
     assert_eq!(
         reasons,
         [

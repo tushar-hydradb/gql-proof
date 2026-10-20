@@ -30,11 +30,16 @@ impl Node {
     /// Checks that each node's children spell out the right hand side of its production.
     pub fn validate(&self, cfg: &Cfg) -> Result<(), String> {
         let Sym::Nt(nt) = self.sym else { return Ok(()) };
-        let p = self.prod.ok_or_else(|| format!("<{}> has no production", cfg.name(nt)))?;
+        let p = self
+            .prod
+            .ok_or_else(|| format!("<{}> has no production", cfg.name(nt)))?;
         let prod = cfg.prod(p);
         let syms: Vec<Sym> = self.children.iter().map(|c| c.sym).collect();
         if prod.lhs != nt || prod.rhs != syms {
-            return Err(format!("<{}> children do not match production {p}", cfg.name(nt)));
+            return Err(format!(
+                "<{}> children do not match production {p}",
+                cfg.name(nt)
+            ));
         }
         self.children.iter().try_for_each(|c| c.validate(cfg))
     }
@@ -67,7 +72,9 @@ impl Node {
     /// `expand_lexical` is set.
     pub fn display(&self, cfg: &Cfg, expand_lexical: bool) -> termtree::Tree<String> {
         let label = self.label(cfg);
-        let Sym::Nt(nt) = self.sym else { return termtree::Tree::new(label) };
+        let Sym::Nt(nt) = self.sym else {
+            return termtree::Tree::new(label);
+        };
         if cfg.nts[nt as usize].lexical && !expand_lexical {
             return termtree::Tree::new(format!("{label} {:?}", self.concat()));
         }

@@ -127,7 +127,11 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
         let uncovered = self.classify(start);
         let mut covered = self.unused.clone();
         covered.toggle_range(..);
-        Ok(Outcome { trees, covered, uncovered })
+        Ok(Outcome {
+            trees,
+            covered,
+            uncovered,
+        })
     }
 
     /// Cheapest extra yield length for a tree of height at most `r` rooted at `nt` that uses
@@ -160,7 +164,9 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
         let mut best = None;
         for sym in &cfg.prods[p as usize].rhs {
             if let Sym::Nt(child) = *sym {
-                let via = self.cost(child, r - 1).map(|c| len - self.nt_len[child as usize] + c);
+                let via = self
+                    .cost(child, r - 1)
+                    .map(|c| len - self.nt_len[child as usize] + c);
                 best = min_opt(best, via);
             }
         }
@@ -186,9 +192,12 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
         let p = match chosen {
             Some(p) => p,
             None => {
-                let shortest: Vec<(ProdId, u32)> =
-                    fitting.iter().map(|&p| (p, self.prod_len[p as usize])).collect();
-                self.pick(&shortest).expect("caller checked a production fits")
+                let shortest: Vec<(ProdId, u32)> = fitting
+                    .iter()
+                    .map(|&p| (p, self.prod_len[p as usize]))
+                    .collect();
+                self.pick(&shortest)
+                    .expect("caller checked a production fits")
             }
         };
         if self.unused.contains(p as usize) {
@@ -205,13 +214,22 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
                 Sym::Lit(l) => self.literal(l),
             })
             .collect();
-        Node { sym: Sym::Nt(nt), prod: Some(p), text: None, children }
+        Node {
+            sym: Sym::Nt(nt),
+            prod: Some(p),
+            text: None,
+            children,
+        }
     }
 
     /// The lowest scoring production, ties broken by the seeded rng.
     fn pick(&mut self, scored: &[(ProdId, u32)]) -> Option<ProdId> {
         let low = scored.iter().map(|&(_, c)| c).min()?;
-        let ties: Vec<ProdId> = scored.iter().filter(|&&(_, c)| c == low).map(|&(p, _)| p).collect();
+        let ties: Vec<ProdId> = scored
+            .iter()
+            .filter(|&&(_, c)| c == low)
+            .map(|&(p, _)| p)
+            .collect();
         ties.choose(&mut self.rng).copied()
     }
 
@@ -221,7 +239,12 @@ impl<'g, L: LeafProvider> Generator<'g, L> {
             Lit::Term(t) => t.clone(),
             Lit::Opaque(name) => self.leaf.leaf(name, &mut self.rng),
         };
-        Node { sym: Sym::Lit(l), prod: None, text: Some(text), children: Vec::new() }
+        Node {
+            sym: Sym::Lit(l),
+            prod: None,
+            text: Some(text),
+            children: Vec::new(),
+        }
     }
 
     fn classify(&self, start: NtId) -> Vec<(ProdId, Reason)> {

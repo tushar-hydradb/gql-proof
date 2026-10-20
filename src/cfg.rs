@@ -95,7 +95,8 @@ impl Cfg {
     }
 
     pub fn require(&self, name: &str) -> Result<NtId> {
-        self.nt(name).ok_or_else(|| anyhow!("no definition named <{name}>"))
+        self.nt(name)
+            .ok_or_else(|| anyhow!("no definition named <{name}>"))
     }
 
     pub fn name(&self, nt: NtId) -> &str {
@@ -130,7 +131,13 @@ impl Cfg {
     fn add_nt(&mut self, name: String, synthetic: bool, origin: String) -> NtId {
         let id = self.nts.len() as NtId;
         self.by_name.insert(name.clone(), id);
-        self.nts.push(Nonterminal { name, synthetic, lexical: false, origin, prods: Vec::new() });
+        self.nts.push(Nonterminal {
+            name,
+            synthetic,
+            lexical: false,
+            origin,
+            prods: Vec::new(),
+        });
         id
     }
 
@@ -157,7 +164,10 @@ impl Cfg {
     /// Lowers `e` to the symbol sequence that replaces it, adding fresh nonterminals as needed.
     fn lower(&mut self, e: &Ebnf, def: &str, fresh: &mut u32) -> Vec<Sym> {
         match e {
-            Ebnf::Seq(items) => items.iter().flat_map(|i| self.lower(i, def, fresh)).collect(),
+            Ebnf::Seq(items) => items
+                .iter()
+                .flat_map(|i| self.lower(i, def, fresh))
+                .collect(),
             Ebnf::Ref(name) => vec![Sym::Nt(self.by_name[name])],
             Ebnf::Kw(k) => vec![self.lit(Lit::Kw(k.clone()))],
             Ebnf::Term(t) => vec![self.lit(Lit::Term(t.clone()))],

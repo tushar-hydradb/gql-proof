@@ -40,23 +40,37 @@ impl Bnf {
 }
 
 pub fn parse(xml: &str) -> Result<Bnf> {
-    let opts = roxmltree::ParsingOptions { allow_dtd: true, ..Default::default() };
+    let opts = roxmltree::ParsingOptions {
+        allow_dtd: true,
+        ..Default::default()
+    };
     let doc = roxmltree::Document::parse_with_options(xml, opts).context("parsing grammar xml")?;
     let mut defs = Vec::new();
-    for def in doc.root_element().children().filter(|n| n.has_tag_name("BNFdef")) {
-        let name = def.attribute("name").ok_or_else(|| anyhow!("BNFdef without a name"))?;
+    for def in doc
+        .root_element()
+        .children()
+        .filter(|n| n.has_tag_name("BNFdef"))
+    {
+        let name = def
+            .attribute("name")
+            .ok_or_else(|| anyhow!("BNFdef without a name"))?;
         let rhs = elements(def)
             .find(|n| n.has_tag_name("rhs"))
             .ok_or_else(|| anyhow!("<{name}> has no rhs"))?;
         let rhs = container(rhs, name).with_context(|| format!("in <{name}>"))?;
-        defs.push(Def { name: name.to_string(), rhs });
+        defs.push(Def {
+            name: name.to_string(),
+            rhs,
+        });
     }
     let bnf = Bnf { defs };
     check_refs(&bnf)?;
     Ok(bnf)
 }
 
-fn elements<'a, 'i>(node: roxmltree::Node<'a, 'i>) -> impl Iterator<Item = roxmltree::Node<'a, 'i>> {
+fn elements<'a, 'i>(
+    node: roxmltree::Node<'a, 'i>,
+) -> impl Iterator<Item = roxmltree::Node<'a, 'i>> {
     node.children().filter(|n| n.is_element())
 }
 
@@ -71,13 +85,19 @@ fn container(node: roxmltree::Node, def: &str) -> Result<Ebnf> {
             "opt" => seq.push(Ebnf::Opt(Box::new(container(child, def)?))),
             "group" => seq.push(container(child, def)?),
             "BNF" => {
-                let name = child.attribute("name").ok_or_else(|| anyhow!("BNF without a name"))?;
+                let name = child
+                    .attribute("name")
+                    .ok_or_else(|| anyhow!("BNF without a name"))?;
                 seq.push(Ebnf::Ref(name.to_string()));
             }
-            "kw" | "bold" => seq.push(Ebnf::Kw(child.text().unwrap_or_default().trim().to_string())),
+            "kw" | "bold" => seq.push(Ebnf::Kw(
+                child.text().unwrap_or_default().trim().to_string(),
+            )),
             "terminalsymbol" => seq.push(Ebnf::Term(terminal(child)?)),
             "repeat" => {
-                let last = seq.pop().ok_or_else(|| anyhow!("repeat with nothing before it"))?;
+                let last = seq
+                    .pop()
+                    .ok_or_else(|| anyhow!("repeat with nothing before it"))?;
                 seq.push(Ebnf::Repeat(Box::new(last)));
             }
             "seeTheRules" => seq.push(Ebnf::Opaque(def.to_string())),
@@ -98,7 +118,11 @@ fn container(node: roxmltree::Node, def: &str) -> Result<Ebnf> {
 }
 
 fn simplify(mut seq: Vec<Ebnf>) -> Ebnf {
-    if seq.len() == 1 { seq.pop().unwrap() } else { Ebnf::Seq(seq) }
+    if seq.len() == 1 {
+        seq.pop().unwrap()
+    } else {
+        Ebnf::Seq(seq)
+    }
 }
 
 /// The `unicode` attribute is exact (comma separated code points); the text is a fallback.
