@@ -27,7 +27,7 @@
 use crate::MatchModeDefault;
 use crate::cfg::{Cfg, Lit, Nonterminal, NtId, ProdId, Production, Sym};
 use crate::verify::Plain;
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// A fact a rule tracks about a subtree or its context.
@@ -365,7 +365,7 @@ fn step_all(
 
 /// Above this many child-state combinations for one production, refinement gives up rather
 /// than build an unreasonable grammar.
-const MAX_TUPLES: usize = 1 << 16;
+const MAX_TUPLES: usize = 1 << 20;
 
 /// The refined grammar and its start symbol.
 pub struct Refined {
@@ -479,6 +479,14 @@ pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined
             if let Some(s) = state_of(*p, inh, &children) {
                 found.push(s);
             }
+        })
+        .with_context(|| {
+            let sizes: Vec<String> = opts.iter().map(|o| o.len().to_string()).collect();
+            format!(
+                "in {} (states per position: {})",
+                crate::describe(cfg, *p),
+                sizes.join(" x ")
+            )
         })?;
         let mut grew = false;
         for s in found {
