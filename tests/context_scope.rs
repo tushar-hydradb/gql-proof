@@ -285,3 +285,64 @@ fn corpus_uses_are_emitted() {
     assert!(mp.is_empty(), "productions missing: {mp:?}");
     assert!(mq.is_empty(), "pairs missing: {mq:?}");
 }
+
+/// What the emitted grammar covers at caps 1 to `GQL_MAX_SLOTS` (default 3): productions,
+/// cdrc pairs and two-step chains, and what each cap adds over the one before. Where a cap
+/// adds nothing, raising it covers nothing more of these.
+#[test]
+#[ignore]
+fn coverage_by_cap() {
+    use gql_proof::context::scope::Caps;
+    let start = BASE.require("GQL-program").unwrap();
+    let max: usize = std::env::var("GQL_MAX_SLOTS").map_or(3, |s| s.parse().unwrap());
+    let mut before: Option<Uses> = None;
+    for slots in 1..=max {
+        let t = Instant::now();
+        let scope = Scope {
+            caps: Caps {
+                slots,
+                references: slots,
+            },
+        };
+        let built = build(
+            &BASE,
+            &scope,
+            start,
+            "x",
+            &Options {
+                progress: false,
+                ..Options::default()
+            },
+        )
+        .unwrap();
+        let u = grammar_uses(&built.cfg);
+        let added = |a: usize, b: Option<usize>| b.map_or(a as i64, |b| a as i64 - b as i64);
+        eprintln!(
+            "slots {slots}: productions {} (+{}), pairs {} (+{}), chains {} (+{}), {:?}",
+            u.prods.len(),
+            added(u.prods.len(), before.as_ref().map(|b| b.prods.len())),
+            u.pairs.len(),
+            added(u.pairs.len(), before.as_ref().map(|b| b.pairs.len())),
+            u.chains.len(),
+            added(u.chains.len(), before.as_ref().map(|b| b.chains.len())),
+            t.elapsed()
+        );
+        if let Some(b) = &before {
+            for p in u.prods.difference(&b.prods).take(5) {
+                eprintln!("  new production: {}", gql_proof::describe(&BASE, *p));
+            }
+            for (o, p) in u.pairs.difference(&b.pairs).take(5) {
+                eprintln!(
+                    "  new pair: in <{}> {}",
+                    BASE.occs[*o as usize].owner,
+                    gql_proof::describe(&BASE, *p)
+                );
+            }
+            assert!(
+                b.prods.is_subset(&u.prods) && b.pairs.is_subset(&u.pairs),
+                "a larger cap lost something"
+            );
+        }
+        before = Some(u);
+    }
+}
