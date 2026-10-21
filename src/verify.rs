@@ -11,6 +11,7 @@
 
 mod conformance;
 pub mod scope;
+pub mod types;
 
 use crate::MatchModeDefault;
 use crate::bnf::Ebnf;
@@ -72,6 +73,8 @@ pub struct Verifier<'b> {
     conformance: Vec<Forbidden>,
     /// Check the scoping of binding variables (`scope`).
     scope: bool,
+    /// Check the static types of value expressions (`types`).
+    types: bool,
 }
 
 impl<'b> Verifier<'b> {
@@ -85,12 +88,19 @@ impl<'b> Verifier<'b> {
             syntax_rules: None,
             conformance: Vec::new(),
             scope: false,
+            types: false,
         }
     }
 
     /// Also check that variables are referenced in scope and declared new.
     pub fn with_scope(mut self) -> Self {
         self.scope = true;
+        self
+    }
+
+    /// Also check that value expressions are typed.
+    pub fn with_types(mut self) -> Self {
+        self.types = true;
         self
     }
 
@@ -128,6 +138,9 @@ impl<'b> Verifier<'b> {
         }
         if self.scope {
             out.extend(scope::check(tree));
+        }
+        if self.types {
+            out.extend(types::check(tree));
         }
         for f in self.broken_conformance(tree) {
             out.push(Violation {

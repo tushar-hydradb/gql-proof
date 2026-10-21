@@ -34,7 +34,7 @@ use crate::MatchModeDefault;
 use crate::cfg::{Cfg, Lit, Nonterminal, NtId, ProdId, Production, Sym};
 use crate::verify::Plain;
 use anyhow::{Result, bail};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 /// A fact a rule tracks about a subtree or its context.
 pub type Fact = u32;
@@ -435,9 +435,15 @@ struct Refiner<'c, 'r> {
     contexts: Vec<Ctx>,
     prods: Vec<Vec<ProdId>>,
     states: Vec<BTreeSet<State>>,
+    /// The same states in the order they were found.
+    found: Vec<Vec<State>>,
     users: Vec<BTreeSet<(usize, usize)>>,
     work: Vec<(usize, usize)>,
     queued: BTreeSet<(usize, usize)>,
+    /// For each production in a context, how many states of each child context it has
+    /// already combined: a revisit only builds the combinations with a newer one
+    /// (semi-naive evaluation).
+    seen: HashMap<(usize, usize), HashMap<usize, usize>>,
 }
 
 /// A production's children in one context: the context of each nonterminal position, and
@@ -456,10 +462,20 @@ impl<'c, 'r> Refiner<'c, 'r> {
             contexts: Vec::new(),
             prods: Vec::new(),
             states: Vec::new(),
+            found: Vec::new(),
             users: Vec::new(),
             work: Vec::new(),
             queued: BTreeSet::new(),
+            seen: HashMap::new(),
         }
+    }
+
+    fn add_state(&mut self, x: usize, s: State) -> bool {
+        let new = self.states[x].insert(s.clone());
+        if new {
+            self.found[x].push(s);
+        }
+        new
     }
 
     fn node(&self, p: ProdId) -> Node<'_> {
@@ -494,27 +510,39 @@ impl<'c, 'r> Refiner<'c, 'r> {
         self.contexts.push(ctx);
         self.prods.push(kept);
         self.states.push(BTreeSet::new());
+        self.found.push(Vec::new());
         self.users.push(BTreeSet::new());
         x
     }
 
     /// Every combination of child states production `slot` of context `x` can take with the
     /// states found so far, left to right, each child in the context its left siblings give
-    /// it. Registers `(x, slot)` as a reader of every context it looks at. Ordered with the
-    /// first position varying fastest.
-    fn tuples(&mut self, x: usize, slot: usize) -> Result<Vec<Tuple>> {
+    /// it; with `fresh`, only those holding a state it has not combined yet. Registers
+    /// `(x, slot)` as a reader of every context it looks at. Ordered with the first position
+    /// varying fastest.
+    fn tuples(&mut self, x: usize, slot: usize, fresh: bool) -> Result<Vec<Tuple>> {
         let p = self.prods[x][slot];
         let inh = self.contexts[x].1.clone();
         let rhs = self.cfg.prods[p as usize].rhs.clone();
-        // Each partial tuple keeps the index of every state in its context's set, to order by.
-        type Partial = (Vec<Option<usize>>, Vec<State>, Vec<usize>);
-        let mut partial: Vec<Partial> = vec![(Vec::new(), Vec::new(), Vec::new())];
+        // A first visit is all new, children or not.
+        let first = !self.seen.contains_key(&(x, slot));
+        let old = if fresh {
+            self.seen.remove(&(x, slot)).unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+        let mut now: HashMap<usize, usize> = HashMap::new();
+        let last = rhs.iter().rposition(|s| matches!(s, Sym::Nt(_)));
+        // Each partial tuple keeps the index of every state in the order its context found
+        // them, to order by, and whether it holds a new one.
+        type Partial = (Vec<Option<usize>>, Vec<State>, Vec<usize>, bool);
+        let mut partial: Vec<Partial> = vec![(Vec::new(), Vec::new(), Vec::new(), !fresh || first)];
         for (pos, sym) in rhs.iter().enumerate() {
             let mut next = Vec::new();
-            for (kids, states, order) in partial {
+            for (kids, states, order, new) in partial {
                 match *sym {
                     Sym::Lit(_) => {
-                        let mut t = (kids, states, order);
+                        let mut t = (kids, states, order, new);
                         t.0.push(None);
                         t.1.push(State::default());
                         t.2.push(0);
@@ -524,8 +552,17 @@ impl<'c, 'r> Refiner<'c, 'r> {
                         let inh_c = down_all(self.rules, &self.node(p), &inh, pos, &states);
                         let k = self.intern((c, inh_c));
                         self.users[k].insert((x, slot));
-                        for (i, s) in self.states[k].iter().enumerate() {
-                            let mut t = (kids.clone(), states.clone(), order.clone());
+                        now.insert(k, self.found[k].len());
+                        let seen = old.get(&k).copied().unwrap_or(0);
+                        // At the last child, a tuple with nothing new yet takes a new state.
+                        let from = if Some(pos) == last && !new { seen } else { 0 };
+                        for (i, s) in self.found[k].iter().enumerate().skip(from) {
+                            let mut t = (
+                                kids.clone(),
+                                states.clone(),
+                                order.clone(),
+                                new || i >= seen,
+                            );
                             t.0.push(Some(k));
                             t.1.push(s.clone());
                             t.2.push(i);
@@ -571,8 +608,12 @@ impl<'c, 'r> Refiner<'c, 'r> {
             }
             partial = next;
         }
+        if fresh {
+            self.seen.insert((x, slot), now);
+        }
+        partial.retain(|t| t.3);
         partial.sort_by(|a, b| a.2.iter().rev().cmp(b.2.iter().rev()));
-        Ok(partial.into_iter().map(|(k, s, _)| (k, s)).collect())
+        Ok(partial.into_iter().map(|(k, s, _, _)| (k, s)).collect())
     }
 
     fn state_of(&self, p: ProdId, inh: &State, children: &[State]) -> BTreeSet<State> {
@@ -601,11 +642,11 @@ pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined
     while let Some((x, slot)) = r.work.pop() {
         r.queued.remove(&(x, slot));
         let p = r.prods[x][slot];
-        let found = r.tuples(x, slot)?;
+        let found = r.tuples(x, slot, true)?;
         let mut grew = false;
         for (_, children) in found {
             for s in r.state_of(p, &r.contexts[x].1.clone(), &children) {
-                grew |= r.states[x].insert(s);
+                grew |= r.add_state(x, s);
             }
         }
         if grew {
@@ -656,7 +697,7 @@ pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined
         for slot in 0..r.prods[x].len() {
             let p = r.prods[x][slot];
             let prod = &cfg.prods[p as usize];
-            for (kids, children) in r.tuples(x, slot)? {
+            for (kids, children) in r.tuples(x, slot, false)? {
                 for s in r.state_of(p, &inh, &children) {
                     let key = (
                         prod.context,

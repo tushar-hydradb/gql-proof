@@ -320,8 +320,9 @@ pub struct Generator<'a, 'g, L> {
     rng: ChaCha8Rng,
     lengths: Lengths,
     unused: FixedBitSet,
-    /// The productions sharing each production's context: using one uses them all.
-    mates: Vec<Vec<ProdId>>,
+    /// The productions sharing each context: using one uses them all. Kept once per context,
+    /// since bookkeeping copies make some contexts large.
+    mates: HashMap<u32, Vec<ProdId>>,
     /// `cost(nt, r)` memo, tagged with the `generation` it was computed in.
     memo: Vec<(u32, Option<u32>)>,
     generation: u32,
@@ -336,19 +337,10 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
         let mut unused = FixedBitSet::with_capacity(a.cfg.prods.len());
         unused.insert_range(..);
         let slots = a.cfg.nts.len() * (config.max_depth as usize + 1);
-        let mut by_context: HashMap<u32, Vec<ProdId>> = HashMap::new();
+        let mut mates: HashMap<u32, Vec<ProdId>> = HashMap::new();
         for (p, prod) in a.cfg.prods.iter().enumerate() {
-            by_context
-                .entry(prod.context)
-                .or_default()
-                .push(p as ProdId);
+            mates.entry(prod.context).or_default().push(p as ProdId);
         }
-        let mates = a
-            .cfg
-            .prods
-            .iter()
-            .map(|prod| by_context[&prod.context].clone())
-            .collect();
         Generator {
             a,
             cfg: a.cfg,
@@ -571,7 +563,7 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
 
     fn mark_used(&mut self, p: ProdId) {
         if self.unused.contains(p as usize) {
-            for &q in &self.mates[p as usize] {
+            for &q in &self.mates[&self.cfg.prods[p as usize].context] {
                 self.unused.set(q as usize, false);
             }
             self.generation += 1;
