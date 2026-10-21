@@ -24,6 +24,7 @@
 //! `research/context-generation-2026-10-21.md`.
 
 pub mod live;
+pub mod pair;
 pub mod scope;
 pub mod stats;
 
