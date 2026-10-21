@@ -27,6 +27,7 @@ pub mod live;
 pub mod pair;
 pub mod scope;
 pub mod stats;
+pub mod types;
 
 pub use live::{FactSpec, Masks};
 
@@ -823,6 +824,11 @@ impl<'a, C: Context> Analyzed<'a, C> {
     /// What the run has spent so far.
     pub fn stats(&self) -> Stats {
         self.e.stats.borrow().clone()
+    }
+
+    /// The labels nonterminal `nt` has at the fixed point.
+    pub fn labels(&self, nt: NtId) -> impl Iterator<Item = &C::Label> {
+        self.e.labels[nt as usize].keys()
     }
 
     /// Scans production `p` once more, alone, with fresh counters.

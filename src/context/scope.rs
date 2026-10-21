@@ -246,6 +246,36 @@ impl Label {
     fn has(&self, f: u32) -> bool {
         self.flags & f != 0
     }
+
+    /// How many variables it holds.
+    pub fn width(&self) -> usize {
+        self.vars.len()
+    }
+
+    /// What a rule running under scope (`context::pair`) reads of slot `s`.
+    pub fn view(&self, s: usize) -> View {
+        let v = &self.vars[s];
+        View {
+            need: v.need,
+            out: v.out,
+            decl: v.decl,
+            column: v.column,
+            new: v.has(vf::NEW),
+            aliased: v.has(vf::ALIASED),
+        }
+    }
+}
+
+/// One variable of a label, read only: what it needs, binds, declares or returns as, and
+/// whether it is a new name (LET, FOR, a procedure's YIELD) or a return item's alias.
+#[derive(Clone, Copy, Debug)]
+pub struct View {
+    pub need: Option<Kind>,
+    pub out: Option<Kind>,
+    pub decl: Option<Kind>,
+    pub column: Option<Kind>,
+    pub new: bool,
+    pub aliased: bool,
 }
 
 /// A label being built: its variables (`None` once closed), flags, and where each input slot

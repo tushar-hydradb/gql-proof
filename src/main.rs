@@ -88,11 +88,13 @@ struct ContextArgs {
     no_single_pass: bool,
 }
 
-#[derive(Clone, Copy, ValueEnum)]
+#[derive(Clone, Copy, PartialEq, ValueEnum)]
 enum ContextRule {
     /// No context: what the engine costs by itself.
     None,
     Scope,
+    /// Scope with value expression types under it.
+    Types,
 }
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, ValueEnum)]
@@ -338,18 +340,21 @@ fn context(args: ContextArgs) -> Result<()> {
         live: !args.no_live,
         single_pass: !args.no_single_pass,
     };
+    let scope = gql_proof::context::scope::Scope {
+        caps: gql_proof::context::scope::Caps {
+            slots: args.slots,
+            references: args.references.unwrap_or(args.slots),
+        },
+    };
     match args.rule {
         ContextRule::None => {
             context_run(&base, start, &gql_proof::context::Nothing, &options, &args)
         }
-        ContextRule::Scope => {
-            let scope = gql_proof::context::scope::Scope {
-                caps: gql_proof::context::scope::Caps {
-                    slots: args.slots,
-                    references: args.references.unwrap_or(args.slots),
-                },
-            };
-            context_run(&base, start, &scope, &options, &args)
+        ContextRule::Scope => context_run(&base, start, &scope, &options, &args),
+        ContextRule::Types => {
+            let types = gql_proof::context::types::Types::new(&base);
+            let pair = gql_proof::context::pair::Typed::new(scope, types);
+            context_run(&base, start, &pair, &options, &args)
         }
     }
 }
@@ -392,7 +397,7 @@ fn context_run<C: gql_proof::context::Context>(
             let names: Vec<String> = ["x", "y", "z", "w"].iter().map(|s| s.to_string()).collect();
             let analysis = Analysis::new(&built.cfg, &StubProvider);
             let height = analysis.reference_height(built.start);
-            let (mut trees, mut failed) = (0, 0);
+            let (mut trees, mut failed, mut untyped) = (0, 0, 0);
             // The smallest failing tree, with its labels, for `GQL_SHOW_FAIL`.
             let mut smallest: Option<(usize, String)> = None;
             for seed in 0..args.seeds {
@@ -406,10 +411,19 @@ fn context_run<C: gql_proof::context::Context>(
                     let mut root = t.root;
                     built.name(&mut root, &names, |nt, s| analysis.spell(nt, s))?;
                     trees += 1;
-                    let violations = gql_proof::verify::scope::check(&root.export(&built.cfg));
+                    let plain = root.export(&built.cfg);
+                    let mut violations = gql_proof::verify::scope::check(&plain);
+                    let scoped = violations.is_empty();
+                    if args.rule == ContextRule::Types {
+                        violations.extend(gql_proof::verify::types::check(&plain));
+                    }
                     if !violations.is_empty() {
-                        failed += 1;
-                        if failed <= 5 {
+                        if scoped {
+                            untyped += 1;
+                        } else {
+                            failed += 1;
+                        }
+                        if failed + untyped <= 5 {
                             eprintln!("{}\n  {violations:?}", root.render(&built.cfg));
                         }
                         let sentence = root.render(&built.cfg);
@@ -428,7 +442,10 @@ fn context_run<C: gql_proof::context::Context>(
             stats
                 .phases
                 .insert("generate".into(), began.elapsed().as_nanos() as u64);
-            eprintln!("generated {trees} trees, {failed} fail the scope checker");
+            eprintln!(
+                "generated {trees} trees, {failed} fail the scope checker, {untyped} only the \
+                 types checker"
+            );
             if let Some((_, shown)) = smallest {
                 eprintln!("smallest failing tree:\n{shown}");
             }
