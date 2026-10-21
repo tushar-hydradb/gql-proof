@@ -8,6 +8,7 @@ pub mod leaf;
 pub mod parse;
 pub mod purdom;
 pub mod refine;
+pub mod scope;
 pub mod tokens;
 pub mod tree;
 pub mod verify;

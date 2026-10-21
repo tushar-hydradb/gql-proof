@@ -9,6 +9,7 @@ use gql_proof::features::{
 use gql_proof::leaf::StubProvider;
 use gql_proof::purdom::{Analysis, Config, Generator, Length, Reason, TargetReason};
 use gql_proof::refine::{all_rules, refine};
+use gql_proof::scope::Scope;
 use gql_proof::tokens::{Grammar, Report};
 use gql_proof::verify::Verifier;
 use gql_proof::{EDITION, MatchModeDefault};
@@ -57,6 +58,11 @@ struct CoverArgs {
     /// Targets to list per difference between two files.
     #[arg(long, default_value_t = 10)]
     show: usize,
+    /// Also judge scoping twice, by the automaton `refine` compiles (`scope`, with the
+    /// sentence's own names) and by the independent checker (`verify::scope`), and report
+    /// where they disagree.
+    #[arg(long)]
+    scope: bool,
 }
 
 #[derive(Parser)]
@@ -103,6 +109,9 @@ struct PurdomArgs {
     /// the grammar, so every query satisfies them.
     #[arg(long, value_enum, default_value_t = Rules::All)]
     rules: Rules,
+    /// The names variables are spelled from, comma separated (`scope`).
+    #[arg(long, default_value = "x,y")]
+    names: String,
     /// The match mode a graph pattern without one gets (ID086). `portable` assumes neither,
     /// so queries are valid on any engine.
     #[arg(long, value_enum, default_value_t = Id086::Portable)]
@@ -160,7 +169,10 @@ struct PurdomArgs {
 
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum Rules {
+    /// The syntax rules, the claim's conformance rules and scoping.
     All,
+    /// The syntax rules and the claim's conformance rules, without scoping.
+    Syntax,
     None,
 }
 
@@ -291,25 +303,33 @@ fn purdom(args: PurdomArgs) -> Result<()> {
     let conformance = Conformance::load(CONFORMANCE_JSON)?;
     let claim = Claim::parse(&args.claim, &conformance)?;
     let forbidden = conformance.forbidden(&claim);
+    let names: Vec<&str> = args.names.split(',').collect();
     let mut rules = match args.rules {
-        Rules::All => all_rules(id086),
+        Rules::All | Rules::Syntax => all_rules(id086),
         Rules::None => Vec::new(),
     };
     let mut verifier = match args.rules {
-        Rules::All => Verifier::new(grammar).with_syntax_rules(id086),
+        Rules::All | Rules::Syntax => Verifier::new(grammar).with_syntax_rules(id086),
         Rules::None => Verifier::new(grammar),
     };
     let start = base.require(&args.start)?;
-    if args.rules == Rules::All {
+    if args.rules != Rules::None {
         rules.push(Box::new(ClaimRules::new(&base, start, &forbidden, &[])?));
         verifier = verifier.with_conformance(forbidden.clone());
     }
+    if args.rules == Rules::All {
+        rules.push(Box::new(Scope::new(&base, &names)));
+        verifier = verifier.with_scope();
+    }
     // What the grammar allows under every claim, to tell productions the claim excludes from
     // ones nothing allows.
-    let everything = if args.rules == Rules::All && claim != Claim::parse("all", &conformance)? {
+    let everything = if args.rules != Rules::None && claim != Claim::parse("all", &conformance)? {
         let mut all = all_rules(id086);
         let devices = conformance.forbidden(&Claim::parse("all", &conformance)?);
         all.push(Box::new(ClaimRules::new(&base, start, &devices, &[])?));
+        if args.rules == Rules::All {
+            all.push(Box::new(Scope::new(&base, &names)));
+        }
         Some(refine(&base, &all, start)?)
     } else {
         None
@@ -948,6 +968,20 @@ struct Covered {
     ambiguous: usize,
     prods: BTreeSet<u32>,
     targets: BTreeSet<Target>,
+    /// Per parsed sentence with `--scope`: the automaton's rejection and the checker's first
+    /// violation, if any.
+    scope: Vec<(String, Option<String>, Option<String>)>,
+}
+
+/// The names a sentence's variables and columns could have: its binding variables and
+/// identifiers.
+fn names_in(p: &gql_proof::verify::Plain, out: &mut BTreeSet<String>) {
+    if let gql_proof::verify::Plain::Def { name, children, .. } = p {
+        if name == "binding variable" || name == "identifier" {
+            out.insert(p.text());
+        }
+        children.iter().for_each(|c| names_in(c, out));
+    }
 }
 
 fn read_sentences(path: &PathBuf) -> Result<Vec<String>> {
@@ -994,7 +1028,8 @@ fn cover(args: CoverArgs) -> Result<()> {
         let pool = rayon::ThreadPoolBuilder::new()
             .stack_size(1 << 30)
             .build()?;
-        type Read = (Option<String>, bool, Vec<u32>, BTreeSet<Target>);
+        type Verdicts = Option<(Option<String>, Option<String>)>;
+        type Read = (Option<String>, bool, Vec<u32>, BTreeSet<Target>, Verdicts);
         let parsed: Vec<(String, Result<Read>)> = pool.install(|| {
             distinct
                 .par_iter()
@@ -1021,7 +1056,20 @@ fn cover(args: CoverArgs) -> Result<()> {
                                     .first()
                                     .map_or(String::new(), |v| format!("{}: {}", v.rule, v.detail))
                             });
-                            (violation, p.ambiguous, prods, targets)
+                            let verdicts = args.scope.then(|| {
+                                let plain = p.tree.export(&cfg);
+                                let mut names = BTreeSet::new();
+                                names_in(&plain, &mut names);
+                                let names: Vec<&str> = names.iter().map(String::as_str).collect();
+                                let rules: Vec<Box<dyn gql_proof::refine::Rule>> =
+                                    vec![Box::new(Scope::new(&cfg, &names[..names.len().min(32)]))];
+                                let automaton = gql_proof::refine::accepts(&rules, &plain).err();
+                                let checker = gql_proof::verify::scope::check(&plain)
+                                    .first()
+                                    .map(|v| format!("{}: {}", v.rule, v.detail));
+                                (automaton, checker)
+                            });
+                            (violation, p.ambiguous, prods, targets, verdicts)
                         });
                         (s.to_string(), covered)
                     },
@@ -1035,11 +1083,15 @@ fn cover(args: CoverArgs) -> Result<()> {
             ambiguous: 0,
             prods: BTreeSet::new(),
             targets: BTreeSet::new(),
+            scope: Vec::new(),
         };
         for (s, p) in parsed {
             match p {
                 Err(e) => c.unparsed.push((s, e.to_string())),
-                Ok((violation, ambiguous, prods, targets)) => {
+                Ok((violation, ambiguous, prods, targets, verdicts)) => {
+                    if let Some((automaton, checker)) = verdicts {
+                        c.scope.push((s.clone(), automaton, checker));
+                    }
                     if let Some(v) = violation {
                         c.unverified.push((s, v));
                     }
@@ -1061,6 +1113,9 @@ fn cover(args: CoverArgs) -> Result<()> {
             c.ambiguous
         )?;
         write_coverage(&mut out, &cfg, &c.prods, &c.targets, &all_targets)?;
+        if args.scope {
+            write_scope(&mut out, &c.scope, args.show)?;
+        }
         let mut rules: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
         for (s, v) in &c.unverified {
             rules
@@ -1140,6 +1195,60 @@ fn cover(args: CoverArgs) -> Result<()> {
             if only.len() > args.show {
                 writeln!(out, "  ...")?;
             }
+        }
+    }
+    Ok(())
+}
+
+/// The automaton against the checker: where the automaton accepts what the checker refuses,
+/// one of them is wrong; where only the checker accepts, the automaton forbids more than ISO
+/// (its readings).
+fn write_scope(
+    out: &mut impl Write,
+    verdicts: &[(String, Option<String>, Option<String>)],
+    show: usize,
+) -> io::Result<()> {
+    let count = |a: bool, c: bool| {
+        verdicts
+            .iter()
+            .filter(|(_, x, y)| x.is_none() == a && y.is_none() == c)
+            .count()
+    };
+    writeln!(
+        out,
+        "scoping: both accept {}, both reject {}, only the checker accepts {}, only the automaton accepts {}",
+        count(true, true),
+        count(false, false),
+        count(false, true),
+        count(true, false)
+    )?;
+    let mut unsound: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    let mut strict: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for (s, a, c) in verdicts {
+        match (a, c) {
+            (None, Some(c)) => unsound
+                .entry(c.split(": ").next().unwrap_or(c))
+                .or_default()
+                .push(s),
+            (Some(a), None) => strict.entry(a.as_str()).or_default().push(s),
+            _ => {}
+        }
+    }
+    for (title, groups) in [
+        ("only the automaton accepts, by the checker's rule", unsound),
+        (
+            "only the checker accepts, by where the automaton refuses",
+            strict,
+        ),
+    ] {
+        if groups.is_empty() {
+            continue;
+        }
+        writeln!(out, "{title}:")?;
+        let mut groups: Vec<_> = groups.into_iter().collect();
+        groups.sort_by_key(|(_, v)| std::cmp::Reverse(v.len()));
+        for (key, ss) in groups.iter().take(show) {
+            writeln!(out, "  {:>5}  {key}  e.g. {:?}", ss.len(), ss[0])?;
         }
     }
     Ok(())

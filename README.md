@@ -72,9 +72,19 @@ readings we chose, where the text is open:
 
 with the rules on and every feature claimed (the default, seed 1): reference height 49, reference length 104, 382 sentences, 2133 iso productions covered (4 fewer than without rules: the conformance rules every claim keeps, below), and 2366 of 2898 productions covered in context, i.e. each production in each state the rules tell apart
 
-the automata have two passes: a state inherited from the parent and one synthesized from the children. a state is a set of facts
+the automata have two passes: a state inherited from the parent and one synthesized from the children. a state is a set of facts. a child's inherited state may also read the synthesized states of the children left of it (an l-attributed grammar, still finite, still context-free once multiplied out), a rule may allow a node several states, so it can choose, and it may fix the text of a copy
 
-not checked yet: binding, typing and scoping. that is the context provider's job
+## scoping
+
+`src/scope.rs` is the first slice of the context provider: binding variables, compiled into the grammar like the syntax rules. variables come from a pool of names (`--names x,y`), which `<binding variable>`, return aliases and yield names choose from and spell. every reference names something in scope of the right kind (20.12 SR 8), statements chain left to right (14.3), a pattern variable already bound is a join of the same kind (16.3, 16.4), LET, FOR, CALL results and yield aliases are new (10.3 SR 7, 14.8, 15.1 SR 9 as cor 1 has it), RETURN replaces the table and keeps the record (14.11), ORDER BY after it sees its columns (14.10 SR 4), NEXT passes the record and the result (9.2 SR 12), set operations return the same columns and do not finish (14.2), aggregates are a return item's own (20.1 SR 7), and the data-modifying statements reference what they change
+
+it is sound, not complete: where a rule is hard to keep finite it forbids more than iso, each such reading listed in the module doc. the ones that cost most: names bound outside a CALL body, a subquery or a graph pattern are not referenced inside it (no correlation), nothing is nested in a graph pattern that declares names (subqueries, `LET ... IN`), no element variable is declared under a union, `?` or quantifier, group variables are never referenced. none of them loses a cdrc or k-path target, since those are counted on occurrences: with `--cdrc --k 3`, cdrc 3380 of 3416 and 3-paths 6922 of 6956 (3408 and 6928 without scoping)
+
+`verify/scope.rs` is the check, written separately from the iso text with every name, on parsed sentences too. `purdom` prints nothing unless every tree passes it. `cover --scope` runs both on any sentences, the automaton with each sentence's own names; on turbolay#261's 11,493 queries (`just corpus-261 <worktree>`) the automaton never accepts what the checker refuses, and the 715 the checker accepts and the automaton refuses are the readings above
+
+every feature claimed, two names: 2124 of 2658 productions (2133 without scoping). the 9 lost are lists of three or more items, which need three distinct names, and a select item without an alias, which we always ask for
+
+not checked yet: types (slice 2) and the catalog (slice 3)
 
 ## cdrc and k-paths
 
@@ -153,6 +163,7 @@ just turbolay ~/code/turbolay-x  # the probe test in a turbolay worktree, report
 with the committed claims (seed 1, short sentences, empty graphs):
 - neo4j 2026.09, `EXPLAIN`: 79 of 491 accepted (76 of 559 on the 2024 text; before deviations, short sentences and the order rules: 12 of 2977). most of the rest is meaning, the context provider's job: unbound variables (`DELETE a`), types (`DELETE EXISTS { ( ) }`), `USE` taking a graph name, `CALL a ( )` with no such procedure
 - turbolay #243: 322 of 803 run (316 of 825 on the 2024 text, 6 of 446 before). 145 more fail at run time with a type error (`22G03`, `RETURN SESSION_USER / SESSION_USER`), again meaning. to look at: `CALL ( ) { FINISH }` is refused with `0A000`, `RETURN ٣` (an `<other digit>`) and `RETURN LIST [ ]` with `42001`
+- turbolay #243 with scoping: 272 of 795. invalid references (`42002`) fall from 34 to 9, all of them `$b`, an undeclared parameter (the catalog's job), and `42000` from 30 to 13. fewer run because a bare `RETURN <expr>` now needs an alias, so the shortest sentence for an expression is often `FILTER <expr> FINISH`, and type errors grow from 145 to 225 (`FILTER "" FINISH`): types are the next slice. neo4j not rerun yet
 
 ## negatives
 

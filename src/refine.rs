@@ -507,8 +507,8 @@ impl<'c, 'r> Refiner<'c, 'r> {
         let inh = self.contexts[x].1.clone();
         let rhs = self.cfg.prods[p as usize].rhs.clone();
         // Each partial tuple keeps the index of every state in its context's set, to order by.
-        let mut partial: Vec<(Vec<Option<usize>>, Vec<State>, Vec<usize>)> =
-            vec![(Vec::new(), Vec::new(), Vec::new())];
+        type Partial = (Vec<Option<usize>>, Vec<State>, Vec<usize>);
+        let mut partial: Vec<Partial> = vec![(Vec::new(), Vec::new(), Vec::new())];
         for (pos, sym) in rhs.iter().enumerate() {
             let mut next = Vec::new();
             for (kids, states, order) in partial {
@@ -535,9 +535,38 @@ impl<'c, 'r> Refiner<'c, 'r> {
                 }
             }
             if next.len() > MAX_TUPLES {
+                // The states of each position for the first tuple, and the facts that tell
+                // the most numerous position's states apart.
+                let first = &next[0];
+                let sizes: Vec<String> = first
+                    .0
+                    .iter()
+                    .map(|k| k.map_or(1, |k| self.states[k].len()).to_string())
+                    .collect();
+                let widest = first
+                    .0
+                    .iter()
+                    .flatten()
+                    .max_by_key(|&&k| self.states[k].len())
+                    .copied();
+                let varying: BTreeSet<Fact> = widest.map_or_else(BTreeSet::new, |k| {
+                    let all: Vec<&State> = self.states[k].iter().collect();
+                    all.iter()
+                        .flat_map(|s| s.facts())
+                        .filter(|f| !all.iter().all(|s| s.has(*f)))
+                        .collect()
+                });
+                let labels: BTreeMap<Fact, String> =
+                    self.rules.iter().flat_map(|r| r.labels()).collect();
+                let varying: Vec<&str> = varying
+                    .iter()
+                    .map(|f| labels.get(f).map_or("?", String::as_str))
+                    .collect();
                 bail!(
-                    "refinement would need more than {MAX_TUPLES} child-state combinations in {}",
-                    crate::describe(self.cfg, p)
+                    "refinement would need more than {MAX_TUPLES} child-state combinations in {} (states per position: {}; facts that vary: {})",
+                    crate::describe(self.cfg, p),
+                    sizes.join(" x "),
+                    varying.join(", ")
                 );
             }
             partial = next;

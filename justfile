@@ -62,3 +62,20 @@ turbolay worktree claim="claims/turbolay.claim":
     out=$PWD/target/engines
     (cd {{worktree}} && GQL_PROOF_IN=$out/turbolay-sentences.jsonl GQL_PROOF_OUT=$out/turbolay-results.jsonl cargo test --release -q -p hydradb-cypher-engine --test zz_gql_proof >/dev/null)
     python3 -I tools/engines/report.py target/engines/turbolay-results.jsonl
+
+# Every query turbolay#261's generators build, read with the iso grammar, scoping judged by
+# the automaton and the checker. The dump is appended to the worktree's test file for one
+# run and removed again.
+# turbolay#261's generated queries as a corpus for `cover --scope`
+corpus-261 worktree:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    test=crates/cypher-engine/tests/gql_rule_properties.rs
+    grep -q '^serde_json' {{worktree}}/crates/cypher-engine/Cargo.toml || { echo "add serde_json = { workspace = true } to [dev-dependencies] of {{worktree}}/crates/cypher-engine/Cargo.toml" >&2; exit 1; }
+    git -C {{worktree}} diff --quiet -- $test || { echo "{{worktree}}/$test has local changes" >&2; exit 1; }
+    mkdir -p target/engines
+    out=$PWD/target/engines/corpus-261.jsonl
+    cat tools/engines/pr261_dump.rs >> {{worktree}}/$test
+    trap 'git -C {{worktree}} checkout -- '$test EXIT
+    (cd {{worktree}} && GQL_PROOF_OUT=$out cargo test --release -q -p hydradb-cypher-engine --test gql_rule_properties zz_gql_proof_dump >/dev/null)
+    cargo run --release -q -- cover --scope $out

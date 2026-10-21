@@ -10,6 +10,7 @@
 //!   lexical definitions, which `tokens::Grammar::check` proves are single tokens
 
 mod conformance;
+pub mod scope;
 
 use crate::MatchModeDefault;
 use crate::bnf::Ebnf;
@@ -69,6 +70,8 @@ pub struct Verifier<'b> {
     syntax_rules: Option<MatchModeDefault>,
     /// Conformance rules in force: no tree may contain a match of any of their patterns.
     conformance: Vec<Forbidden>,
+    /// Check the scoping of binding variables (`scope`).
+    scope: bool,
 }
 
 impl<'b> Verifier<'b> {
@@ -81,7 +84,14 @@ impl<'b> Verifier<'b> {
             reserved,
             syntax_rules: None,
             conformance: Vec::new(),
+            scope: false,
         }
+    }
+
+    /// Also check that variables are referenced in scope and declared new.
+    pub fn with_scope(mut self) -> Self {
+        self.scope = true;
+        self
     }
 
     /// Also check 16.4 SR 6, 16.4 SR 14 and 13.1 SR 5.
@@ -115,6 +125,9 @@ impl<'b> Verifier<'b> {
         self.walk(tree, &mut Vec::new(), &mut out);
         if let Some(id086) = self.syntax_rules {
             syntax_rules(tree, id086, &mut Vec::new(), &mut out);
+        }
+        if self.scope {
+            out.extend(scope::check(tree));
         }
         for f in self.broken_conformance(tree) {
             out.push(Violation {
