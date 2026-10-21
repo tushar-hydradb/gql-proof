@@ -34,6 +34,19 @@ features: grammar
 test: features
     cargo test --release
 
+# how the context engine grows: `gql-proof context` over parts of the grammar and caps on
+# variables, smallest first, rows into target/context/sweep.csv, then the growth table.
+# arguments go to `tools/context_sweep.py run` (`--slots 1 2`, `--starts "value expression"`)
+context-sweep *args:
+    cargo build --release
+    python3 -I tools/context_sweep.py run {{args}}
+    python3 -I tools/context_sweep.py report
+
+# a cpu profile of one context run, opened in the firefox profiler (`cargo install samply`)
+context-profile *args:
+    cargo build --release
+    samply record ./target/release/gql-proof context {{args}}
+
 # a throwaway neo4j with an empty database on localhost:17474
 neo4j-up:
     #!/usr/bin/env bash

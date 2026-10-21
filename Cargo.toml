@@ -9,6 +9,7 @@ chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 clap = { version = "4.6.7", features = ["derive"] }
 fixedbitset = "0.5.7"
 marpa-asf = "0.4.0"
+petgraph = { version = "0.8.3", default-features = false }
 rand = "0.10.3"
 rand_chacha = "0.10.0"
 rayon = "1.12.0"
@@ -16,6 +17,9 @@ roxmltree = "0.21.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 termtree = "1.0.0"
+tracing = "0.1.44"
+tracing-chrome = "0.7.2"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 unicode-general-category = "1.1.0"
 unicode-ident = "1.0.27"
 

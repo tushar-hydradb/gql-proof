@@ -41,6 +41,65 @@ enum Cmd {
     /// Parse sentences from elsewhere (another suite, an engine's tests) with the ISO grammar,
     /// verify them, and measure their coverage like ours. Two files are also compared.
     Cover(CoverArgs),
+    /// Run the context engine alone on a part of the grammar and report where its time and
+    /// labels went (`GQL_TRACE` filters logs, `--trace` writes a chrome trace).
+    Context(ContextArgs),
+}
+
+#[derive(Parser)]
+struct ContextArgs {
+    /// The nonterminal to start from; below the program every label of it counts as whole.
+    #[arg(long, default_value = "GQL-program")]
+    start: String,
+    #[arg(long, value_enum, default_value_t = ContextRule::Scope)]
+    rule: ContextRule,
+    /// The most variables one label holds.
+    #[arg(long, default_value_t = 3)]
+    slots: usize,
+    /// The most variables a label of references alone holds; `--slots` if not given.
+    #[arg(long)]
+    references: Option<usize>,
+    #[arg(long, value_enum, default_value_t = ContextPhase::Emit)]
+    phase: ContextPhase,
+    /// Stop after this many seconds in a phase, printing what was spent.
+    #[arg(long)]
+    deadline: Option<u64>,
+    /// Write a chrome trace (open in perfetto) of every span.
+    #[arg(long)]
+    trace: Option<PathBuf>,
+    /// Write every counter as json.
+    #[arg(long)]
+    stats: Option<PathBuf>,
+    /// After the fixed point, measure one production alone: its id, or text of its
+    /// description.
+    #[arg(long)]
+    production: Option<String>,
+    /// Rows per table in the summary.
+    #[arg(long, default_value_t = 12)]
+    top: usize,
+    /// Seeds to generate with, for `--phase generate`.
+    #[arg(long, default_value_t = 2)]
+    seeds: u64,
+    /// Keep every fact in every label, even ones nothing above reads.
+    #[arg(long)]
+    no_live: bool,
+    /// Emit with a backward pass per parent label, as before.
+    #[arg(long)]
+    no_single_pass: bool,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum ContextRule {
+    /// No context: what the engine costs by itself.
+    None,
+    Scope,
+}
+
+#[derive(Clone, Copy, PartialEq, PartialOrd, ValueEnum)]
+enum ContextPhase {
+    Fixpoint,
+    Emit,
+    Generate,
 }
 
 #[derive(Parser)]
@@ -109,9 +168,14 @@ struct PurdomArgs {
     /// the grammar, so every query satisfies them.
     #[arg(long, value_enum, default_value_t = Rules::All)]
     rules: Rules,
-    /// The names variables are spelled from, comma separated (`scope`).
-    #[arg(long, default_value = "x,y")]
+    /// The names variables are spelled from, in the order they are given out, comma
+    /// separated; numbered ones follow (`scope`).
+    #[arg(long, default_value = "x,y,z,w")]
     names: String,
+    /// The most variables one subtree's label holds (`scope`): every tree with at most this
+    /// many variables live at once is generated.
+    #[arg(long, default_value_t = 3)]
+    slots: usize,
     /// The match mode a graph pattern without one gets (ID086). `portable` assumes neither,
     /// so queries are valid on any engine.
     #[arg(long, value_enum, default_value_t = Id086::Portable)]
@@ -223,6 +287,7 @@ fn main() -> Result<()> {
         Cmd::Negatives(args) => negatives(args),
         Cmd::Features(args) => features(args),
         Cmd::Cover(args) => cover(args),
+        Cmd::Context(args) => context(args),
     };
     // A closed pipe (`| head`) is the reader being done, not an error.
     match result {
@@ -234,6 +299,146 @@ fn main() -> Result<()> {
         }
         other => other,
     }
+}
+
+fn context(args: ContextArgs) -> Result<()> {
+    use tracing_subscriber::prelude::*;
+    use tracing_subscriber::{EnvFilter, fmt};
+    // Logs as `GQL_TRACE` says (off unless asked), the chrome trace with every span the
+    // engine opens at debug and above.
+    let logs = fmt::layer().with_writer(io::stderr).with_filter(
+        EnvFilter::try_from_env("GQL_TRACE").unwrap_or_else(|_| EnvFilter::new("warn")),
+    );
+    let (chrome, _guard) = match &args.trace {
+        Some(path) => {
+            let (layer, guard) = tracing_chrome::ChromeLayerBuilder::new()
+                .file(path)
+                .include_args(true)
+                .build();
+            (
+                Some(layer.with_filter(EnvFilter::new("gql_proof=debug"))),
+                Some(guard),
+            )
+        }
+        None => (None, None),
+    };
+    tracing_subscriber::registry()
+        .with(logs)
+        .with(chrome)
+        .init();
+
+    let bnf = bnf::parse(ISO_BNF_XML)?;
+    let base = Cfg::from_bnf(&bnf);
+    let start = base.require(&args.start)?;
+    let options = gql_proof::context::Options {
+        progress: true,
+        deadline: args.deadline.map(std::time::Duration::from_secs),
+        any_top: args.start != "GQL-program",
+        reads_all: (args.start != "GQL-program").then_some(start),
+        live: !args.no_live,
+        single_pass: !args.no_single_pass,
+    };
+    match args.rule {
+        ContextRule::None => {
+            context_run(&base, start, &gql_proof::context::Nothing, &options, &args)
+        }
+        ContextRule::Scope => {
+            let scope = gql_proof::context::scope::Scope {
+                caps: gql_proof::context::scope::Caps {
+                    slots: args.slots,
+                    references: args.references.unwrap_or(args.slots),
+                },
+            };
+            context_run(&base, start, &scope, &options, &args)
+        }
+    }
+}
+
+fn context_run<C: gql_proof::context::Context>(
+    base: &Cfg,
+    start: u32,
+    ctx: &C,
+    options: &gql_proof::context::Options,
+    args: &ContextArgs,
+) -> Result<()> {
+    let analyzed = gql_proof::context::analyze(base, ctx, options)?;
+    if let Some(which) = &args.production {
+        let p = match which.parse::<u32>() {
+            Ok(p) => p,
+            Err(_) => (0..base.prods.len() as u32)
+                .find(|&p| describe(base, p).contains(which.as_str()))
+                .ok_or_else(|| anyhow::anyhow!("no production like {which:?}"))?,
+        };
+        let profile = analyzed.profile(p);
+        eprintln!("{}", describe(base, p));
+        eprintln!("  labels per position: {:?}", profile.children);
+        eprintln!(
+            "  partial labels after each position: {:?}",
+            profile.partials
+        );
+        eprint!("{}", profile.stats.summary(args.top));
+    }
+    let mut stats = analyzed.stats();
+    if args.phase >= ContextPhase::Emit {
+        let built = analyzed.emit(start, "x")?;
+        stats = built.stats.clone();
+        eprintln!(
+            "emitted {} nonterminals, {} productions",
+            built.cfg.nts.len(),
+            built.cfg.prods.len()
+        );
+        if args.phase == ContextPhase::Generate {
+            let began = std::time::Instant::now();
+            let names: Vec<String> = ["x", "y", "z", "w"].iter().map(|s| s.to_string()).collect();
+            let analysis = Analysis::new(&built.cfg, &StubProvider);
+            let height = analysis.reference_height(built.start);
+            let (mut trees, mut failed) = (0, 0);
+            // The smallest failing tree, with its labels, for `GQL_SHOW_FAIL`.
+            let mut smallest: Option<(usize, String)> = None;
+            for seed in 0..args.seeds {
+                let config = Config {
+                    seed,
+                    max_depth: height,
+                    length: Length::Reference,
+                };
+                let outcome = Generator::new(&analysis, config, StubProvider).run(built.start)?;
+                for t in outcome.trees {
+                    let mut root = t.root;
+                    built.name(&mut root, &names, |nt, s| analysis.spell(nt, s))?;
+                    trees += 1;
+                    let violations = gql_proof::verify::scope::check(&root.export(&built.cfg));
+                    if !violations.is_empty() {
+                        failed += 1;
+                        if failed <= 5 {
+                            eprintln!("{}\n  {violations:?}", root.render(&built.cfg));
+                        }
+                        let sentence = root.render(&built.cfg);
+                        if std::env::var("GQL_SHOW_FAIL").is_ok()
+                            && smallest.as_ref().is_none_or(|(n, _)| sentence.len() < *n)
+                        {
+                            let shown = format!(
+                                "{sentence}\n{violations:?}\n{}",
+                                root.display(&built.cfg, false)
+                            );
+                            smallest = Some((sentence.len(), shown));
+                        }
+                    }
+                }
+            }
+            stats
+                .phases
+                .insert("generate".into(), began.elapsed().as_nanos() as u64);
+            eprintln!("generated {trees} trees, {failed} fail the scope checker");
+            if let Some((_, shown)) = smallest {
+                eprintln!("smallest failing tree:\n{shown}");
+            }
+        }
+    }
+    eprint!("{}", stats.summary(args.top));
+    if let Some(path) = &args.stats {
+        std::fs::write(path, serde_json::to_string_pretty(&stats)?)?;
+    }
+    Ok(())
 }
 
 fn read_grammar(path: &Option<PathBuf>) -> Result<bnf::Bnf> {
@@ -318,7 +523,6 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         verifier = verifier.with_conformance(forbidden.clone());
     }
     if args.rules == Rules::All {
-        rules.push(Box::new(Scope::new(&base, &names)));
         verifier = verifier.with_scope();
     }
     // What the grammar allows under every claim, to tell productions the claim excludes from
@@ -327,9 +531,6 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         let mut all = all_rules(id086);
         let devices = conformance.forbidden(&Claim::parse("all", &conformance)?);
         all.push(Box::new(ClaimRules::new(&base, start, &devices, &[])?));
-        if args.rules == Rules::All {
-            all.push(Box::new(Scope::new(&base, &names)));
-        }
         Some(refine(&base, &all, start)?)
     } else {
         None
@@ -338,7 +539,32 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         .as_ref()
         .map(|r| reachable_copies(&r.cfg, r.start));
     let refined = refine(&base, &rules, start)?;
-    let (cfg, start) = (refined.cfg, refined.start);
+    // Scoping: the context engine over the grammar the syntax rules and the claim refined.
+    let built = if args.rules == Rules::All {
+        let scope = gql_proof::context::scope::Scope {
+            caps: gql_proof::context::scope::Caps {
+                slots: args.slots,
+                references: args.slots,
+            },
+        };
+        let options = gql_proof::context::Options {
+            progress: false,
+            ..Default::default()
+        };
+        Some(gql_proof::context::build(
+            &refined.cfg,
+            &scope,
+            refined.start,
+            names[0],
+            &options,
+        )?)
+    } else {
+        None
+    };
+    let (cfg, start) = match &built {
+        Some(b) => (b.cfg.clone(), b.start),
+        None => (refined.cfg, refined.start),
+    };
     let analysis = Analysis::new(&cfg, &StubProvider);
     let reference_height = analysis.reference_height(start);
     let max_depth = args.max_depth.unwrap_or(reference_height);
@@ -353,11 +579,18 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         lexical: args.k_lexical,
     };
     let generator = Generator::new(&analysis, config, StubProvider);
-    let outcome = if args.short {
+    let mut outcome = if args.short {
         generator.run_short(start, &base, criteria)?
     } else {
         generator.run_with(start, &base, criteria)?
     };
+    // Variables get their names once each tree is built.
+    if let Some(built) = &built {
+        let names: Vec<String> = names.iter().map(|s| s.to_string()).collect();
+        for generated in &mut outcome.trees {
+            built.name(&mut generated.root, &names, |nt, s| analysis.spell(nt, s))?;
+        }
+    }
 
     // Nothing is printed unless every tree passes the independent checker.
     let mut failed = 0;

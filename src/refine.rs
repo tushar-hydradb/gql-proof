@@ -745,7 +745,8 @@ pub fn refine(cfg: &Cfg, rules: &[Box<dyn Rule>], start: NtId) -> Result<Refined
     })
 }
 
-fn items_of<'c>(cfg: &'c Cfg, p: &Production) -> Vec<Item<'c>> {
+/// A production's right hand side as the rules see it.
+pub fn items_of<'c>(cfg: &'c Cfg, p: &Production) -> Vec<Item<'c>> {
     p.rhs
         .iter()
         .map(|&sym| match sym {

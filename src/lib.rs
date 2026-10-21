@@ -2,6 +2,7 @@
 
 pub mod bnf;
 pub mod cfg;
+pub mod context;
 pub mod coverage;
 pub mod features;
 pub mod leaf;

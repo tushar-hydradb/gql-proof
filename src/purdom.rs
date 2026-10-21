@@ -189,6 +189,16 @@ impl<'g> Analysis<'g> {
         self.nt_height[nt as usize]
     }
 
+    /// A derivation of `text` from `nt`, as templates are derived (the name `context` gives a
+    /// variable after generation).
+    pub fn spell(&self, nt: NtId, text: &str) -> Option<Node> {
+        let chars: Vec<char> = text.chars().collect();
+        derive(self.cfg, &self.fillable, nt, &chars, 0, 0)
+            .into_iter()
+            .find(|(_, end)| *end == chars.len())
+            .map(|(node, _)| node)
+    }
+
     /// Whether `nt`'s productions may contain `child` in a tree, given a remaining height for
     /// `nt`. A templated definition only ever yields its template, never a path elsewhere.
     fn propagates(&self, nt: NtId) -> bool {
