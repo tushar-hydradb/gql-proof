@@ -275,6 +275,11 @@ impl Label {
     pub fn vars(&self) -> &[Entry] {
         &self.vars
     }
+
+    /// While a production is scanned: its children's classes so far.
+    pub fn kids(&self) -> &[Option<Ty>] {
+        &self.kids
+    }
 }
 
 /// What a simple CASE's operand may be (reading, to keep labels few).

@@ -190,6 +190,185 @@ fn census() {
     }
 }
 
+/// How much of a production scan a sideways filter could skip, at one variable. One full scan
+/// per production with two or more child nonterminals, over the fixed point's labels: pairs
+/// tried (partial label, child label), pairs the push keeps, and pairs that lead to some
+/// finished label (what a perfect filter would keep). For the comparison, also the pairs a
+/// comparability-family key keeps, and whether it ever drops a useful one. `cargo test
+/// --release --test context_types pair_waste -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn pair_waste() {
+    use gql_proof::cfg::Sym;
+    use gql_proof::context::Context;
+    use gql_proof::context::scope::Caps;
+    use gql_proof::context::types::{Class, Ty};
+    use gql_proof::refine::{Node, items_of};
+    use std::collections::BTreeMap;
+    type L = <Typed<Scope, Types> as Context>::Label;
+    let rule = Typed::new(
+        Scope {
+            caps: Caps {
+                slots: 1,
+                references: 1,
+            },
+        },
+        Types::new(&BASE),
+    );
+    let options = Options {
+        progress: false,
+        ..Options::default()
+    };
+    let analyzed = gql_proof::context::analyze(&BASE, &rule, &options).unwrap();
+    let labels: Vec<Vec<L>> = (0..BASE.nts.len() as u32)
+        .map(|nt| analyzed.labels(nt).cloned().collect())
+        .collect();
+    // Comparability family of a class; `None` for a wildcard (null, dynamic, deferred).
+    let family = |t: Option<Ty>| -> Option<u8> {
+        match t? {
+            Ty::Slot(..) => None,
+            Ty::Is(c) => match c {
+                Class::Null | Class::Dynamic => None,
+                Class::Exact | Class::Approx => Some(0),
+                Class::List | Class::Record | Class::Path => Some(1),
+                c => Some(10 + c as u8),
+            },
+        }
+    };
+    struct Row {
+        name: String,
+        tried: u64,
+        kept: u64,
+        useful: u64,
+    }
+    let mut rows = Vec::new();
+    let (mut keyed, mut keyed_dropped_useful) = (0u64, 0u64);
+    for (p, prod) in BASE.prods.iter().enumerate() {
+        let children = prod.rhs.iter().filter(|s| matches!(s, Sym::Nt(_))).count();
+        if children < 2 {
+            continue;
+        }
+        let items = items_of(&BASE, prod);
+        let lhs = &BASE.nts[prod.lhs as usize];
+        let node = Node {
+            def: &lhs.base,
+            group: lhs.synthetic,
+            items: &items,
+            text: None,
+        };
+        let comparison = lhs.base == "comparison predicate";
+        // Layers of partial labels, and per position each push: (partial, child, outputs).
+        let mut layer: Vec<L> = vec![rule.empty(&node)];
+        let mut pushes: Vec<Vec<(usize, usize, Vec<usize>)>> = Vec::new();
+        let mut layers: Vec<Vec<L>> = Vec::new();
+        for (pos, sym) in prod.rhs.iter().enumerate() {
+            let mut next: BTreeMap<L, usize> = BTreeMap::new();
+            let mut here = Vec::new();
+            for (i, partial) in layer.iter().enumerate() {
+                let opts: Vec<Option<&L>> = match sym {
+                    Sym::Nt(c) => labels[*c as usize].iter().map(Some).collect(),
+                    Sym::Lit(_) => vec![None],
+                };
+                for (ci, opt) in opts.into_iter().enumerate() {
+                    let outs: Vec<usize> = rule
+                        .push(&node, pos, partial, opt)
+                        .into_iter()
+                        .map(|(q, _)| {
+                            let n = next.len();
+                            *next.entry(q).or_insert(n)
+                        })
+                        .collect();
+                    here.push((i, ci, outs));
+                }
+            }
+            let mut ordered: Vec<(L, usize)> = next.into_iter().collect();
+            ordered.sort_by_key(|(_, i)| *i);
+            layers.push(std::mem::take(&mut layer));
+            layer = ordered.into_iter().map(|(l, _)| l).collect();
+            pushes.push(here);
+        }
+        // Live partials, backward from the ones that finish.
+        let mut live: Vec<bool> = layer
+            .iter()
+            .map(|l| !rule.finish(&node, l).is_empty())
+            .collect();
+        let (mut tried, mut kept, mut useful) = (0u64, 0u64, 0u64);
+        for pos in (0..prod.rhs.len()).rev() {
+            let nt_pos = matches!(prod.rhs[pos], Sym::Nt(_));
+            let mut before = vec![false; layers[pos].len()];
+            for (i, ci, outs) in &pushes[pos] {
+                let good = outs.iter().any(|&j| live[j]);
+                if good {
+                    before[*i] = true;
+                }
+                if nt_pos && pos > 0 {
+                    tried += 1;
+                    kept += !outs.is_empty() as u64;
+                    useful += good as u64;
+                    if comparison {
+                        let left = layers[pos][*i].1.kids().first().copied().flatten();
+                        let Sym::Nt(c) = prod.rhs[pos] else {
+                            unreachable!()
+                        };
+                        let right = labels[c as usize][*ci].1.class();
+                        let pass = match (family(left), family(right)) {
+                            (Some(a), Some(b)) => a == b,
+                            _ => true,
+                        };
+                        keyed += pass as u64;
+                        keyed_dropped_useful += (!pass && good) as u64;
+                    }
+                }
+            }
+            live = before;
+        }
+        if tried > 0 {
+            let name = format!(
+                "<{}> ::= {}",
+                lhs.name,
+                prod.rhs
+                    .iter()
+                    .map(|s| match s {
+                        Sym::Nt(n) => format!("<{}>", BASE.nts[*n as usize].name),
+                        Sym::Lit(_) => "tok".into(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
+            rows.push(Row {
+                name,
+                tried,
+                kept,
+                useful,
+            });
+            let _ = p;
+        }
+    }
+    rows.sort_by(|a, b| b.tried.cmp(&a.tried));
+    let total: u64 = rows.iter().map(|r| r.tried).sum();
+    let kept: u64 = rows.iter().map(|r| r.kept).sum();
+    let useful: u64 = rows.iter().map(|r| r.useful).sum();
+    eprintln!(
+        "all productions: {total} pairs tried, {kept} kept by the push ({:.1}%), {useful} useful ({:.2}%)",
+        100.0 * kept as f64 / total as f64,
+        100.0 * useful as f64 / total as f64
+    );
+    eprintln!("     tried       kept     useful  useful%  production");
+    for r in rows.iter().take(25) {
+        eprintln!(
+            "{:>10} {:>10} {:>10} {:>7.2}%  {}",
+            r.tried,
+            r.kept,
+            r.useful,
+            100.0 * r.useful as f64 / r.tried.max(1) as f64,
+            r.name
+        );
+    }
+    eprintln!(
+        "comparison with a family key: {keyed} pairs tried, {keyed_dropped_useful} useful pairs dropped"
+    );
+}
+
 /// Every tree generated at one variable passes both checkers.
 #[test]
 fn generated_trees_pass_the_checkers() {
