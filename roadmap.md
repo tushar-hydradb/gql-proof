@@ -52,6 +52,35 @@ valid programs only and claims bugs found, not conformance
   context provider slice 1, scoping (`src/scope.rs`), sound against an
   independent checker (`verify/scope.rs`) on every generated tree and on #261's
   corpus
+- the context engine (`src/context.rs`): the product grammar blew up (three
+  names never finished), so rules became synthesized labels over the unchanged
+  grammar, a lazy fixed point scanned left to right in rounds (raptor's idea),
+  with static liveness of label facts. `algorithm.md`,
+  `research/context-generation-2026-10-21.md`
+- scope ported to the engine (`src/context/scope.rs`) and types under it
+  (`src/context/types.rs`, `src/context/pair.rs`): every reference meets its
+  binder, every expression typed, value variables keep their definition's class.
+  checked against `verify::scope` and `verify::types` on every generated tree
+- the cost under control: entries as sets of allowed classes, joins in the fixed
+  point (answer subsumption), join keys at pairing sites, the check at an
+  expression's last child, per-target extraction straight from the fixed point
+  with no grammar emitted. typed at 2 variables in about 11 minutes.
+  `research/complexity-2026-10-22.md`, `research/pruning-2026-10-22.md`
+- the arguments: totality at a fixed cap (`research/totality-2026-10-21.md`);
+  the variable cutoff by bernot's regularity, 3 for productions and 4 for cdrc
+  pairs, measured to 4 (`research/cutoff-2026-10-21.md`); 2 typed variables
+  suffice (`research/types-cutoff-2026-10-22.md`)
+- the syntax rule inventory (piece 3 below): all 1,025 rules of the 2024 text
+  classified. of 426 constraint and type rules, 249 kept as written, 91 by a
+  stricter reading, 6 checked only, 80 open, some of them reachable, so static
+  semantics is not sound yet.
+  `research/static-semantics-inventory-2026-10-22.md`, `tools/inventory/`
+- engine runs on the typed set: turbolay #243 accepts 1,174 of 2,243, 80% of the
+  valid sentences outside its documented deviations; 488 refusals are our own
+  invalid sentences (`tools/engines/breakdown.py`,
+  `research/progress-2026-10-22.md`). findings in the linear docs of query
+  problems and of keeping the proof valid while turbolay gets fast. generated
+  sets cached in `sentences/`
 
 ## pieces left, in the order they block the claim
 
@@ -75,17 +104,22 @@ valid programs only and claims bugs found, not conformance
      SR 11 and 12, 14.10 SR 4 on aggregates in sort keys, 14.11 SR 10, 15.1 SR 8
      and 9, 16.8 SR 4) and for the exception tables (the 2202F, 2202E, 2202M,
      2201Z and 22G03 changes in 20.x and 22.10)
-2. **context provider (static semantics).** the biggest piece. scoping is done
-   (slice 1, readings in `src/scope.rs`; correlation in subqueries and patterns,
-   declarations under unions and quantifiers, and three-item lists are what it
-   leaves out). left: the type each expression slot expects (slice 2), a catalog
-   (graphs, graph types, labels, properties, procedures), parameters. bound
-   names are unbounded, but a finite abstraction of the environment is not:
-   typed variable slots up to a bound and the expected type of each slot. that
-   goes into the same product construction as the syntax rules, so purdom, cdrc
-   and k-paths keep working unchanged, and targets no well-typed query reaches
-   are reported as infeasible (no prior work does this, they count over invalid
-   trees or drop what they cannot finish). on top:
+2. **context provider (static semantics).** the biggest piece. now: scoping and
+   types run in the context engine at 2 variables. left, in order
+   (`research/static-semantics-handoff-2026-10-22.md`): the 80 open syntax
+   rules, first the two families behind most of our invalid sentences (statement
+   composition, path pattern minimums), then leaf values, typing gaps, graph
+   type bodies; a catalog (graphs, graph types, labels, properties, procedures)
+   and parameters; 3 variables, the bound coverage needs
+   (`research/follow-ups-2026-10-22.md`); and as its own track the dynamic
+   errors that can be classified statically (use after delete, typestate). the
+   rest of this item is the original plan, partly superseded by the engine.
+   bound names are unbounded, but a finite abstraction of the environment is
+   not: typed variable slots up to a bound and the expected type of each slot.
+   that goes into the same product construction as the syntax rules, so purdom,
+   cdrc and k-paths keep working unchanged, and targets no well-typed query
+   reaches are reported as infeasible (no prior work does this, they count over
+   invalid trees or drop what they cannot finish). on top:
    - concrete names assigned late, with xsmith's lifting (create the missing
      declaration upstream) instead of discarding the tree
    - dinkel's split between scoped query state and the persistent schema, one
@@ -101,18 +135,19 @@ valid programs only and claims bugs found, not conformance
    - without it most sentences are rejected for semantic reasons, e.g.
      `SESSION SET GRAPH X''` + newline + `'B  e  '` (11.1 SR 3 a ii wants a
      graph reference)
-3. **syntax rule inventory.** classify every syntax rule in the pdf once:
-   structural (compile into the grammar), binding or typing (context provider),
-   implementation-defined (a parameter, like ID086), or not syntax at all
-   (general rules). gives a coverage number for the rules we honour
-4. **data.** a minimal graph per query and partition built by a solver from the
-   context provider's obligations record (xdata, qagen, qex style, with z3),
-   plus hand-picked shapes under the small scope hypothesis: self-loops,
-   parallel edges, short cycles, disconnected parts, nulls, multi-labels.
-   sqlfpc's mc/dc, null included, as the adequacy criterion. consistent with the
-   context provider's catalog. no graph data generator meets a coverage goal
-   today, gdsmith and dinkel only avoid empty results
-5. **oracle.** in tiers, each test tagged with the tier that backs it:
+3. **syntax rule inventory.** done, see above
+4. **data.** the per-query plan (witness, near misses, small exhaustive graphs,
+   solver built later) is in `research/oracle-2026-10-22.md`. a minimal graph
+   per query and partition built by a solver from the context provider's
+   obligations record (xdata, qagen, qex style, with z3), plus hand-picked
+   shapes under the small scope hypothesis: self-loops, parallel edges, short
+   cycles, disconnected parts, nulls, multi-labels. sqlfpc's mc/dc, null
+   included, as the adequacy criterion. consistent with the context provider's
+   catalog. no graph data generator meets a coverage goal today, gdsmith and
+   dinkel only avoid empty results
+5. **oracle.** phases and how results are compared:
+   `research/oracle-2026-10-22.md`. in tiers, each test tagged with the tier
+   that backs it:
    - expected status for negative tests, known by construction
    - witnesses, known by construction: the graph was built so that a binding
      satisfies the query, so that row must be in the result. a partial oracle
@@ -166,14 +201,14 @@ valid programs only and claims bugs found, not conformance
 
 ## order
 
-1. parse-level and syntax-rule negatives, labelled
-2. context provider phase 1: the finite environment abstraction in the product
-   grammar, scoping, binding and a small type system for the read-only core
-   (`MATCH`, `RETURN`, `WHERE`, expressions), and the obligations record. cdrc
-   and k-paths on the typed grammar with infeasible targets reported
-3. solver-built graphs from the obligations record with witnesses as the first
-   oracle, then mgql and gpml-conformance for that core and exception condition
-   tables for it
-4. the claim for that core in bernot's terms: features F, bound k, hypotheses H1
+1. static semantics sound: the open syntax rules our sentences break (statement
+   composition, path pattern minimums, leaf values), each closed by a rule so it
+   holds under every witness, not by luck
+2. 3 variables: the reachability closure as a worklist, then parallel scans
+3. witness graphs and phase 1 oracles (partial, metamorphic) on the cached sets
+4. parse-level and syntax-rule negatives, labelled
+5. a reference evaluator for the read-only core, exception conditions for it,
+   the dynamic must raise classification
+6. the claim for that core in bernot's terms: features F, bound k, hypotheses H1
    to H5 and what discharges each
-5. grow outward: data modification, the syntax rule inventory, value partitions
+7. grow outward: the catalog, data modification, value partitions
