@@ -781,3 +781,21 @@ fn pruning_is_exact() {
     }
     assert_eq!(differ, 0, "{differ} nonterminals differ");
 }
+
+/// With joins, a label a join replaced keeps its made labels: kept layers still hold it as
+/// the option it was when scanned, and grounding reads its parts (`Engine::add`).
+#[test]
+fn subsumed_options_keep_their_parts() {
+    let rule = rule();
+    let options = Options {
+        progress: false,
+        join: true,
+        keys: true,
+        ..Options::default()
+    };
+    let analyzed = gql_proof::context::analyze(&BASE, &rule, &options).unwrap();
+    let (subsumed, orphaned) = analyzed.orphaned_options();
+    eprintln!("{subsumed} subsumed options in kept layers, {orphaned} without parts");
+    assert!(subsumed > 0, "the census found nothing to check");
+    assert_eq!(orphaned, 0);
+}

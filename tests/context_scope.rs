@@ -346,3 +346,203 @@ fn coverage_by_cap() {
         before = Some(u);
     }
 }
+
+/// The scope rule's verdict on one sentence at a cap: `GQL_TEXT='...' GQL_SLOTS=2 cargo test
+/// --release --test context_scope explain_at -- --ignored --nocapture`, with every node's
+/// labels traced.
+#[test]
+#[ignore]
+fn explain_at() {
+    use gql_proof::context::scope::{Caps, Scope};
+    use gql_proof::parse::Parser;
+    use gql_proof::tokens::Grammar;
+    use gql_proof::verify::Verifier;
+    tracing_subscriber::fmt()
+        .with_env_filter("gql_proof::context=trace")
+        .with_writer(std::io::stderr)
+        .init();
+    let text = std::env::var("GQL_TEXT").unwrap();
+    let slots: usize = std::env::var("GQL_SLOTS").ok().and_then(|s| s.parse().ok()).unwrap_or(2);
+    let rule = Scope {
+        caps: Caps {
+            slots,
+            references: slots,
+        },
+    };
+    let tokens = Grammar::new(&ISO);
+    let verifier = Verifier::new(Grammar::new(&ISO));
+    let mut parser = Parser::new(&BASE, &tokens, "GQL-program").unwrap();
+    parser.limit = 8192;
+    let trees = std::cell::RefCell::new(Vec::new());
+    let _ = parser.parse(&text, |n| {
+        if verifier.verify(&n.export(&BASE), &n.render(&BASE)).is_empty() {
+            trees.borrow_mut().push(n.export(&BASE));
+        }
+        false
+    });
+    for t in trees.borrow().iter() {
+        eprintln!("verdict: {:?}", gql_proof::context::accepts(&rule, t));
+    }
+}
+
+/// Per-target extraction covers exactly the productions and cdrc pairs the emitted grammar
+/// can derive, outside the lexical layer, at a cap (`GQL_SLOTS`, 1 by default): the same
+/// fixed point read two ways. Also every extracted sentence passes the scope checker and
+/// the rule itself.
+#[test]
+#[ignore]
+fn extraction_matches_emission() {
+    use gql_proof::cfg::Sym;
+    use gql_proof::context::scope::Caps;
+    use gql_proof::coverage::Criteria;
+    use std::collections::BTreeSet;
+    let slots: usize = std::env::var("GQL_SLOTS").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
+    let start = BASE.require("GQL-program").unwrap();
+    let rule = Scope {
+        caps: Caps {
+            slots,
+            references: slots,
+        },
+    };
+    let options = Options {
+        progress: false,
+        ..Options::default()
+    };
+    // Productions and (occurrence, production) pairs the emitted grammar derives, outside
+    // the lexical layer (the generators fix those tokens' text, so trees never vary there).
+    let analyzed = gql_proof::context::analyze(&BASE, &rule, &options).unwrap();
+    let built = analyzed.emit(start, "x").unwrap();
+    let lexical = |p: u32| BASE.nts[BASE.prods[p as usize].lhs as usize].lexical;
+    // A spelled name is derived from its text in both paths, never chosen: pairs below one
+    // are not something a sentence can cover either way.
+    let spelled = |base: &str| matches!(base, "identifier" | "binding variable");
+    // A production with a prose leaf the provider cannot fill, or a child no production
+    // fills, is never generated either way.
+    let mut fillable: Vec<bool> = BASE
+        .prods
+        .iter()
+        .map(|prod| {
+            prod.rhs.iter().all(|s| match s {
+                Sym::Lit(l) => match &BASE.lits[*l as usize] {
+                    gql_proof::cfg::Lit::Opaque(name) => {
+                        gql_proof::leaf::LeafProvider::supports(&StubProvider, name)
+                    }
+                    _ => true,
+                },
+                Sym::Nt(_) => true,
+            })
+        })
+        .collect();
+    loop {
+        let before = fillable.clone();
+        for (p, prod) in BASE.prods.iter().enumerate() {
+            if fillable[p]
+                && prod.rhs.iter().any(|s| {
+                    matches!(s, Sym::Nt(c) if BASE.nts[*c as usize].prods.iter().all(|&q| !fillable[q as usize]))
+                })
+            {
+                fillable[p] = false;
+            }
+        }
+        if fillable == before {
+            break;
+        }
+    }
+    let fillable = |p: u32| fillable[p as usize];
+    let (mut e_prods, mut e_pairs) = (BTreeSet::new(), BTreeSet::new());
+    for q in &built.cfg.prods {
+        if lexical(q.unrefined) || !fillable(q.unrefined) {
+            continue;
+        }
+        e_prods.insert(q.unrefined);
+        for (i, sym) in q.rhs.iter().enumerate() {
+            let Sym::Nt(c) = sym else { continue };
+            if spelled(built.cfg.base(*c)) {
+                continue;
+            }
+            for &p in &built.cfg.nts[*c as usize].prods {
+                let pp = &built.cfg.prods[p as usize];
+                if !lexical(pp.unrefined) && fillable(pp.unrefined) {
+                    e_pairs.insert((q.occ[i], pp.unrefined));
+                }
+            }
+        }
+    }
+    // The same from the extracted trees.
+    let analysis = Analysis::new(&BASE, &StubProvider);
+    let names: Vec<String> = ["x", "y", "z", "w"].iter().map(|s| s.to_string()).collect();
+    let template = |nt: u32| {
+        gql_proof::leaf::LeafProvider::token(&StubProvider, BASE.base(nt))
+            .and_then(|t| analysis.spell(nt, t))
+    };
+    let extractor = analyzed.extractor(start, &StubProvider);
+    let covered = extractor.cover(
+        Criteria {
+            cdrc: true,
+            k: 0,
+            lexical: false,
+        },
+        &names,
+        |nt, s| analysis.spell(nt, s),
+        &template,
+        &mut StubProvider,
+        1,
+        false,
+    );
+    let (mut x_prods, mut x_pairs) = (BTreeSet::new(), BTreeSet::new());
+    fn walk(cfg: &Cfg, n: &gql_proof::tree::Node, prods: &mut BTreeSet<u32>, pairs: &mut BTreeSet<(u32, u32)>) {
+        let Some(p) = n.prod else { return };
+        let lexical = |p: u32| cfg.nts[cfg.prods[p as usize].lhs as usize].lexical;
+        if lexical(p) {
+            return;
+        }
+        prods.insert(p);
+        let prod = &cfg.prods[p as usize];
+        for (i, c) in n.children.iter().enumerate() {
+            let spelled = matches!(c.sym, Sym::Nt(nt) if matches!(cfg.base(nt), "identifier" | "binding variable"));
+            if let Some(cp) = c.prod
+                && !lexical(cp)
+                && !spelled
+            {
+                pairs.insert((prod.occ[i], cp));
+            }
+            walk(cfg, c, prods, pairs);
+        }
+    }
+    let mut bad = 0;
+    for (root, _) in &covered.trees {
+        walk(&BASE, root, &mut x_prods, &mut x_pairs);
+        let plain = root.export(&BASE);
+        let scope = gql_proof::verify::scope::check(&plain);
+        let rule_says = accepts(&rule, &plain);
+        if !scope.is_empty() || rule_says.is_err() {
+            bad += 1;
+            if bad <= 5 {
+                eprintln!("{}\n  checker: {scope:?}\n  rule: {rule_says:?}", root.render(&BASE));
+            }
+        }
+    }
+    eprintln!(
+        "cap {slots}: emission {} productions, {} pairs; extraction {} trees, {} productions, {} pairs; {bad} bad trees",
+        e_prods.len(),
+        e_pairs.len(),
+        covered.trees.len(),
+        x_prods.len(),
+        x_pairs.len()
+    );
+    for p in e_prods.difference(&x_prods).take(10) {
+        eprintln!("  only emission: {}", gql_proof::describe(&BASE, *p));
+    }
+    for p in x_prods.difference(&e_prods).take(10) {
+        eprintln!("  only extraction: {}", gql_proof::describe(&BASE, *p));
+    }
+    for (o, p) in e_pairs.difference(&x_pairs).take(10) {
+        eprintln!("  pair only emission: occ {o} {}", gql_proof::describe(&BASE, *p));
+    }
+    for (o, p) in x_pairs.difference(&e_pairs).take(10) {
+        eprintln!("  pair only extraction: occ {o} {}", gql_proof::describe(&BASE, *p));
+    }
+    assert_eq!(e_prods, x_prods);
+    assert_eq!(e_pairs, x_pairs);
+    assert_eq!(bad, 0);
+}

@@ -83,6 +83,12 @@ struct ContextArgs {
     /// Seeds to generate with, for `--phase generate`.
     #[arg(long, default_value_t = 2)]
     seeds: u64,
+    /// With `--phase cover`: every production of X used at every place X occurs.
+    #[arg(long)]
+    cdrc: bool,
+    /// With `--phase cover`: print the sentences, not only the tally.
+    #[arg(long)]
+    sentences: bool,
     /// Keep every fact in every label, even ones nothing above reads.
     #[arg(long)]
     no_live: bool,
@@ -112,6 +118,8 @@ enum ContextRule {
 #[derive(Clone, Copy, PartialEq, PartialOrd, ValueEnum)]
 enum ContextPhase {
     Fixpoint,
+    /// One tree per coverage target straight from the fixed point, no grammar emitted.
+    Cover,
     Emit,
     Generate,
 }
@@ -295,14 +303,22 @@ fn parse_length(s: &str) -> Result<Length, String> {
 }
 
 fn main() -> Result<()> {
-    let result = match Cli::parse().cmd {
-        Cmd::Purdom(args) => purdom(args),
-        Cmd::CheckGrammar(args) => check_grammar(args),
-        Cmd::Negatives(args) => negatives(args),
-        Cmd::Features(args) => features(args),
-        Cmd::Cover(args) => cover(args),
-        Cmd::Context(args) => context(args),
-    };
+    let cmd = Cli::parse().cmd;
+    // The context engine's extraction searches recurse once per tree level and per right
+    // hand side position, deeper than the main thread's stack: run every command on a wide
+    // one.
+    let result = std::thread::Builder::new()
+        .stack_size(1 << 30)
+        .spawn(move || match cmd {
+            Cmd::Purdom(args) => purdom(args),
+            Cmd::CheckGrammar(args) => check_grammar(args),
+            Cmd::Negatives(args) => negatives(args),
+            Cmd::Features(args) => features(args),
+            Cmd::Cover(args) => cover(args),
+            Cmd::Context(args) => context(args),
+        })?
+        .join()
+        .unwrap_or_else(|e| std::panic::resume_unwind(e));
     // A closed pipe (`| head`) is the reader being done, not an error.
     match result {
         Err(e)
@@ -399,6 +415,89 @@ fn context_run<C: gql_proof::context::Context>(
         eprint!("{}", profile.stats.summary(args.top));
     }
     let mut stats = analyzed.stats();
+    if args.phase == ContextPhase::Cover {
+        let began = std::time::Instant::now();
+        let names: Vec<String> = ["x", "y", "z", "w"].iter().map(|s| s.to_string()).collect();
+        let analysis = Analysis::new(base, &StubProvider);
+        let extractor = analyzed.extractor(start, &StubProvider);
+        let criteria = Criteria {
+            cdrc: args.cdrc,
+            k: 0,
+            lexical: false,
+        };
+        let template = |nt: u32| {
+            gql_proof::leaf::LeafProvider::token(&StubProvider, base.base(nt))
+                .and_then(|t| analysis.spell(nt, t))
+        };
+        let covered = extractor.cover(
+            criteria,
+            &names,
+            |nt, s| analysis.spell(nt, s),
+            &template,
+            &mut StubProvider,
+            1,
+            true,
+        );
+        let (mut failed, mut untyped) = (0, 0);
+        for (root, covers) in &covered.trees {
+            let plain = root.export(base);
+            let mut violations = gql_proof::verify::scope::check(&plain);
+            let scoped = violations.is_empty();
+            if args.rule == ContextRule::Types {
+                violations.extend(gql_proof::verify::types::check(&plain));
+            }
+            if let Err(err) = gql_proof::context::accepts(ctx, &plain) {
+                violations.push(gql_proof::verify::Violation {
+                    path: String::new(),
+                    rule: "the rule itself",
+                    detail: err,
+                });
+            }
+            if !violations.is_empty() {
+                if scoped {
+                    untyped += 1;
+                } else {
+                    failed += 1;
+                }
+                if failed + untyped <= 5 {
+                    eprintln!("{}\n  {violations:?}", root.render(base));
+                }
+            }
+            if args.sentences {
+                println!("# {covers}\n{}", root.render(base));
+            }
+        }
+        let s = &covered.stats;
+        eprintln!(
+            "extracted {} trees in {:?}: {} ahead tables ({:.1} s), {} witness searches, {} context searches",
+            covered.trees.len(),
+            began.elapsed(),
+            s.ahead_tables,
+            s.ahead_nanos as f64 / 1e9,
+            s.witness_searches,
+            s.context_searches
+        );
+        eprintln!(
+            "productions: {} of {} covered, {} never; {failed} trees fail the scope checker, {untyped} only the types checker or the rule",
+            covered.productions.covered,
+            covered.productions.total,
+            covered.productions.never.len()
+        );
+        for n in covered.productions.never.iter().take(args.top) {
+            eprintln!("  never: {n}");
+        }
+        if args.cdrc {
+            eprintln!(
+                "cdrc: {} of {} covered, {} never",
+                covered.cdrc.covered,
+                covered.cdrc.total,
+                covered.cdrc.never.len()
+            );
+            for n in covered.cdrc.never.iter().take(args.top) {
+                eprintln!("  never: {n}");
+            }
+        }
+    }
     if args.phase >= ContextPhase::Emit {
         let built = analyzed.emit(start, "x")?;
         stats = built.stats.clone();

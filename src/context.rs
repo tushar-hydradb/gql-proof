@@ -23,6 +23,7 @@
 //! the start, so generation and coverage run unchanged. See
 //! `research/context-generation-2026-10-21.md`.
 
+pub mod extract;
 pub mod live;
 pub mod pair;
 pub mod scope;
@@ -196,7 +197,7 @@ impl Default for Options {
 /// How an emitted production's slots are linked: the slot count of each partial label
 /// (before the first child, then after each), each step's link, and the finishing link.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct Shape {
+pub(crate) struct Shape {
     partial: Vec<usize>,
     links: Vec<Link>,
     finish: Link,
@@ -329,7 +330,9 @@ impl<'a, C: Context> Engine<'a, C> {
                 return false;
             }
             self.subsumed[nt].insert(m.clone());
-            parts.extend(self.parts[nt].remove(&m).unwrap_or_default());
+            // The subsumed label keeps its own parts: a kept layer may still hold it as the
+            // option it was when scanned, and grounding it reads them.
+            parts.extend(self.parts[nt].get(&m).cloned().unwrap_or_default());
             size = size.min(m_size);
             cur = j;
             self.stats.get_mut().joined += 1;
@@ -340,9 +343,36 @@ impl<'a, C: Context> Engine<'a, C> {
         }
         self.labels[nt].insert(cur.clone(), size);
         self.keyed[nt].entry(key).or_default().push(cur.clone());
-        self.parts[nt].entry(cur.clone()).or_default().extend(parts);
+        let own = self.parts[nt].entry(cur.clone()).or_default();
+        own.extend(parts);
+        own.sort();
+        own.dedup();
         self.order[nt].push(cur);
         true
+    }
+
+    /// For measuring: over every production's kept layers, the options in back pointers that
+    /// are labels a join replaced, and among them the ones with no `parts` entry (which
+    /// grounding could only over-approximate).
+    fn orphaned_options(&self) -> (usize, usize) {
+        let (mut subsumed, mut orphaned) = (0, 0);
+        let cache = self.cache.borrow();
+        for (&p, kept) in cache.iter() {
+            let rhs = &self.cfg.prods[p as usize].rhs;
+            for (pos, layer) in kept.layers.iter().enumerate().skip(1) {
+                let Sym::Nt(c) = rhs[pos - 1] else { continue };
+                for (_, back) in layer.values() {
+                    let Some((_, Opt::Label(l), _)) = back else { continue };
+                    if !self.live(c as usize, l) {
+                        subsumed += 1;
+                        if !self.parts[c as usize].contains_key(l) {
+                            orphaned += 1;
+                        }
+                    }
+                }
+            }
+        }
+        (subsumed, orphaned)
     }
 
     /// Whether label `l` of `nt` is still pushed (not replaced by a join).
@@ -867,21 +897,32 @@ impl<'a, C: Context> Engine<'a, C> {
         made.sort();
         made.into_iter().find_map(|(_, r)| {
             let instance = self.smallest(p, layers, ends, r)?;
-            let (ground, _) = self.ground(p, &instance, None, &|l| self.ctx.within(target, l))?;
+            let (ground, _) = self.ground(
+                p,
+                &instance,
+                None,
+                &|l| self.ctx.within(target, l),
+                &|_, _| true,
+                &[false, true],
+            )?;
             Some(ground)
         })
     }
 
     /// `instance` of `p` with every child label one of its grounds (the option `fixed` names
-    /// at its position), linked as the instance is, giving a label `accept` takes; with that
-    /// label. A joined label is valid for each of its grounds, but an emitted nonterminal must
-    /// make one choice, or a tree could pair one child's choice with another's.
+    /// at its position, and only ones `child_ok` takes), linked as the instance is, giving a
+    /// label `accept` takes; with that label. A joined label is valid for each of its grounds,
+    /// but an emitted nonterminal must make one choice, or a tree could pair one child's
+    /// choice with another's. `modes` says which searches to run: narrow (false, the
+    /// instance's own options made ground), wide (true, every option at every position)
     fn ground(
         &self,
         p: ProdId,
         (opts, shape): &Instance<C::Label>,
         fixed: Option<(usize, &Opt<C::Label>)>,
         accept: &dyn Fn(&C::Label) -> bool,
+        child_ok: &dyn Fn(usize, &Opt<C::Label>) -> bool,
+        modes: &[bool],
     ) -> Option<(Instance<C::Label>, C::Label)> {
         let node = self.node(p);
         // First the instance's own options, made ground; failing that, any option at the
@@ -897,7 +938,7 @@ impl<'a, C: Context> Engine<'a, C> {
             }
             stats.emit.ground_nanos += began.elapsed().as_nanos() as u64;
         };
-        for wide in [false, true] {
+        for &wide in modes {
             let walk = Walk {
                 p,
                 node: &node,
@@ -905,6 +946,7 @@ impl<'a, C: Context> Engine<'a, C> {
                 shape,
                 fixed,
                 accept,
+                child_ok,
                 wide,
                 failed: RefCell::new(BTreeSet::new()),
             };
@@ -963,6 +1005,9 @@ impl<'a, C: Context> Engine<'a, C> {
             _ => self.ground_options(sym, &w.opts[pos]),
         };
         for candidate in candidates {
+            if !(w.child_ok)(pos, &candidate) {
+                continue;
+            }
             for (q, link) in self.push(w.p, w.node, pos, &partial, &candidate) {
                 if !w.wide && link != w.shape.links[pos] {
                     continue;
@@ -991,7 +1036,6 @@ impl<'a, C: Context> Engine<'a, C> {
         target: impl Fn(&C::Label) -> bool,
         open: impl Fn(usize, &Opt<C::Label>) -> bool,
     ) -> Vec<Found<C::Label>> {
-        let node = self.node(p);
         let rhs = &self.cfg.prods[p as usize].rhs;
         let n = rhs.len();
         let wanted: Vec<Vec<(Opt<C::Label>, u64)>> = (0..n)
@@ -1008,10 +1052,31 @@ impl<'a, C: Context> Engine<'a, C> {
         }
         self.stats.borrow_mut().emit.backward_runs += 1;
         let _span = tracing::debug_span!("instances", p).entered();
-        // The cheapest way from each partial label to `target`, backwards.
-        type Ahead<L> = BTreeMap<L, (u64, Option<(Opt<L>, L, Link)>, Link)>;
+        let table = self.ahead(p, layers, target);
+        let mut out = Vec::new();
+        for (pos, options) in wanted.into_iter().enumerate() {
+            for (o, size) in options {
+                if let Some((end, instance)) = self.taking(p, layers, &table, pos, &o, size) {
+                    out.push(((pos, o), end, instance));
+                }
+            }
+        }
+        out
+    }
+
+    /// The cheapest way from each partial label of `p` at each position to a finished label
+    /// `target` takes, backwards; and the label each complete partial label ends in. One full
+    /// product over the layers; keyed.
+    fn ahead(
+        &self,
+        p: ProdId,
+        layers: &Layers<C::Label>,
+        target: impl Fn(&C::Label) -> bool,
+    ) -> AheadTable<C::Label> {
+        let node = self.node(p);
+        let rhs = &self.cfg.prods[p as usize].rhs;
+        let n = rhs.len();
         let mut ahead: Vec<Ahead<C::Label>> = vec![BTreeMap::new(); n + 1];
-        // The label each complete partial label ends in.
         let mut ends: BTreeMap<C::Label, C::Label> = BTreeMap::new();
         for q in layers[n].keys() {
             let end = self
@@ -1047,56 +1112,76 @@ impl<'a, C: Context> Engine<'a, C> {
             }
             ahead[pos] = here;
         }
-        let mut out = Vec::new();
-        for (pos, options) in wanted.into_iter().enumerate() {
-            for (o, size) in options {
-                let key = match &o {
-                    Opt::Label(l) if self.options.keys => self.ctx.child_key(&node, pos, l),
-                    _ => 0,
-                };
-                // The best (partial before, step) taking `o` here.
-                let mut best: Option<(u64, C::Label, C::Label, Link)> = None;
-                for (partial, (cost, _)) in &layers[pos] {
-                    if key != 0
-                        && !self.ctx.compatible(
-                            &node,
-                            pos,
-                            self.ctx.partial_key(&node, pos, partial),
-                            key,
-                        )
-                    {
-                        continue;
-                    }
-                    for (q, link) in self.push(p, &node, pos, partial, &o) {
-                        let Some((rest, _, _)) = ahead[pos + 1].get(&q) else {
-                            continue;
-                        };
-                        let c = cost + size + rest;
-                        if best.as_ref().is_none_or(|b| c < b.0) {
-                            best = Some((c, partial.clone(), q, link));
-                        }
-                    }
-                }
-                let Some((_, before, after, link)) = best else {
+        AheadTable { ahead, ends }
+    }
+
+    /// The cheapest instance of `p` taking option `o` (of size `size`) at `pos` and ending in
+    /// a label `table` was built for, with that label: the partial labels before `pos` tried
+    /// against `o`, the rest read off the table.
+    fn taking(
+        &self,
+        p: ProdId,
+        layers: &Layers<C::Label>,
+        table: &AheadTable<C::Label>,
+        pos: usize,
+        o: &Opt<C::Label>,
+        size: u64,
+    ) -> Option<(C::Label, Instance<C::Label>)> {
+        let node = self.node(p);
+        let n = self.cfg.prods[p as usize].rhs.len();
+        let key = match o {
+            Opt::Label(l) if self.options.keys => self.ctx.child_key(&node, pos, l),
+            _ => 0,
+        };
+        // The best (partial before, step) taking `o` here.
+        let mut best: Option<(u64, C::Label, C::Label, Link)> = None;
+        for (partial, (cost, _)) in &layers[pos] {
+            if key != 0
+                && !self.ctx.compatible(
+                    &node,
+                    pos,
+                    self.ctx.partial_key(&node, pos, partial),
+                    key,
+                )
+            {
+                continue;
+            }
+            for (q, link) in self.push(p, &node, pos, partial, o) {
+                let Some((rest, _, _)) = table.ahead[pos + 1].get(&q) else {
                     continue;
                 };
-                // Back to the start along the smallest steps, then on to the end.
-                let mut steps = Self::back(layers, pos, before);
-                steps.push((o.clone(), link, after.clone()));
-                let mut at = after;
-                for layer in &ahead[pos + 1..n] {
-                    let (_, next, _) = &layer[&at];
-                    let (o, q, l) = next.clone().unwrap();
-                    steps.push((o, l, q.clone()));
-                    at = q;
+                let c = cost + size + rest;
+                if best.as_ref().is_none_or(|b| c < b.0) {
+                    best = Some((c, partial.clone(), q, link));
                 }
-                let finish = ahead[n][&at].2.clone();
-                let end = ends[&at].clone();
-                out.push(((pos, o), end, self.instance(&node, steps, finish)));
             }
         }
-        out
+        let (_, before, after, link) = best?;
+        // Back to the start along the smallest steps, then on to the end.
+        let mut steps = Self::back(layers, pos, before);
+        steps.push((o.clone(), link, after.clone()));
+        let mut at = after;
+        for layer in &table.ahead[pos + 1..n] {
+            let (_, next, _) = &layer[&at];
+            let (o, q, l) = next.clone().unwrap();
+            steps.push((o, l, q.clone()));
+            at = q;
+        }
+        let finish = table.ahead[n][&at].2.clone();
+        let end = table.ends[&at].clone();
+        Some((end, self.instance(&node, steps, finish)))
     }
+}
+
+/// Per partial label at a position: the cost of the cheapest completion, the step it takes
+/// (option, partial label after, link), and at the last position the finishing link.
+type Ahead<L> = BTreeMap<L, (u64, Option<(Opt<L>, L, Link)>, Link)>;
+
+/// [`Engine::ahead`]'s result: the table per position, and the label each complete partial
+/// label ends in.
+struct AheadTable<L> {
+    ahead: Vec<Ahead<L>>,
+    ends: BTreeMap<L, L>,
 }
 
 /// The partial labels after each position of a production, with the step that reached each.
@@ -1139,6 +1224,9 @@ struct Walk<'w, L> {
     shape: &'w Shape,
     fixed: Option<(usize, &'w Opt<L>)>,
     accept: &'w dyn Fn(&L) -> bool,
+    /// Whether a ground candidate may be tried at a position at all (extraction: it has a
+    /// witness). Decided per position, so the failure memo below stays valid.
+    child_ok: &'w dyn Fn(usize, &Opt<L>) -> bool,
     /// Any option at the other positions, not only the instance's, and any links.
     wide: bool,
     /// Partial labels at a position no completion was found from.
@@ -1191,6 +1279,12 @@ impl<'a, C: Context> Analyzed<'a, C> {
     /// The labels nonterminal `nt` has at the fixed point.
     pub fn labels(&self, nt: NtId) -> impl Iterator<Item = &C::Label> {
         self.e.labels[nt as usize].keys()
+    }
+
+    /// With `join`: options held in kept layers that a join replaced, and among them the ones
+    /// whose made labels are lost (must be none; see `Engine::add`).
+    pub fn orphaned_options(&self) -> (usize, usize) {
+        self.e.orphaned_options()
     }
 
     /// Scans production `p` once more, alone, with fresh counters.
@@ -1327,7 +1421,14 @@ impl<'a, C: Context> Analyzed<'a, C> {
                                         // With no ground instance at all, no tree takes
                                         // this choice here: it is no choice to cover.
                                         let Some((ground, made)) =
-                                            e.ground(p, &instance, Some((pos, &g)), &|_| true)
+                                            e.ground(
+                                                p,
+                                                &instance,
+                                                Some((pos, &g)),
+                                                &|_| true,
+                                                &|_, _| true,
+                                                &[false, true],
+                                            )
                                         else {
                                             continue;
                                         };
@@ -1471,7 +1572,14 @@ impl<'a, C: Context> Analyzed<'a, C> {
                             .collect();
                         for g in wanted {
                             let Some((ground, made)) =
-                                e.ground(p, &instance, Some((pos, &g)), &fits)
+                                e.ground(
+                                    p,
+                                    &instance,
+                                    Some((pos, &g)),
+                                    &fits,
+                                    &|_, _| true,
+                                    &[false, true],
+                                )
                             else {
                                 continue;
                             };
@@ -1621,127 +1729,217 @@ impl Built {
         names: &[String],
         spell: impl Fn(NtId, &str) -> Option<tree::Node>,
     ) -> Result<()> {
-        // Every slot of every partial and final label in the tree, linked as the steps say.
-        let mut pairs: Vec<(usize, usize)> = Vec::new();
-        let mut count = 0;
-        let mut spelling: Vec<(Vec<usize>, usize)> = Vec::new();
-        self.walk(root, &mut Vec::new(), &mut count, &mut pairs, &mut spelling)?;
-        let mut sets = UnionFind::<usize>::new(count);
-        for (a, b) in pairs {
-            sets.union(a, b);
+        let linking = link_slots(&BuiltNode {
+            built: self,
+            node: root,
+        })?;
+        assign_names(root, linking, names, spell, |nt| self.cfg.name(nt).to_string())
+    }
+}
+
+/// A node of a tree of the emitted grammar, with the tables its slots are read from.
+struct BuiltNode<'a> {
+    built: &'a Built,
+    node: &'a tree::Node,
+}
+
+impl Linked for BuiltNode<'_> {
+    fn slots(&self) -> usize {
+        match self.node.sym {
+            Sym::Nt(nt) => self.built.slots[nt as usize],
+            Sym::Lit(_) => 0,
         }
-        let mut given: BTreeMap<usize, String> = BTreeMap::new();
-        for (path, slot) in &spelling {
-            let class = sets.find(*slot);
-            let k = given.len();
-            let name = given
-                .entry(class)
-                .or_insert_with(|| fresh(names, k))
-                .clone();
-            let mut node = &mut *root;
-            for &i in path {
-                node = &mut node.children[i];
-            }
-            let Sym::Nt(nt) = node.sym else {
-                unreachable!()
-            };
-            let Some(spelt) = spell(nt, &name) else {
-                bail!("{name:?} does not derive from <{}>", self.cfg.name(nt));
-            };
-            *node = spelt;
-        }
-        Ok(())
     }
 
-    /// Numbers the slots of `node`'s labels from `count`, records which are linked and which
-    /// nodes spell a slot. Returns the first slot of `node`'s own label.
-    fn walk(
-        &self,
-        node: &tree::Node,
-        path: &mut Vec<usize>,
-        count: &mut usize,
-        pairs: &mut Vec<(usize, usize)>,
-        spelling: &mut Vec<(Vec<usize>, usize)>,
-    ) -> Result<usize> {
-        let (Sym::Nt(nt), Some(p)) = (node.sym, node.prod) else {
-            return Ok(*count);
+    fn spells(&self) -> bool {
+        match self.node.sym {
+            Sym::Nt(nt) => self.built.spelled[nt as usize],
+            Sym::Lit(_) => false,
+        }
+    }
+
+    fn shape(&self) -> Option<&Shape> {
+        match (self.node.sym, self.node.prod) {
+            (Sym::Nt(_), Some(p)) => Some(&self.built.shapes[p as usize]),
+            _ => None,
+        }
+    }
+
+    fn children(&self) -> Vec<Kid<'_, Self>> {
+        self.node
+            .children
+            .iter()
+            .map(|c| match c.sym {
+                Sym::Lit(_) => Kid::Lit,
+                Sym::Nt(_) => Kid::Node(BuiltNode {
+                    built: self.built,
+                    node: c,
+                }),
+            })
+            .collect()
+    }
+
+    fn describe(&self) -> String {
+        match self.node.sym {
+            Sym::Nt(nt) => self.built.cfg.name(nt).to_string(),
+            Sym::Lit(_) => "a literal".into(),
+        }
+    }
+}
+
+/// A node whose label's slots can be numbered and linked: a tree of the emitted grammar
+/// ([`BuiltNode`]), or one extracted straight from the fixed point (`extract`).
+pub(crate) trait Linked: Sized {
+    /// The slots of the node's own label.
+    fn slots(&self) -> usize;
+    /// Whether the node spells its one slot's name.
+    fn spells(&self) -> bool;
+    /// How its production's steps link; `None` for a literal, which has no label.
+    fn shape(&self) -> Option<&Shape>;
+    /// Its children, one per right hand side position.
+    fn children(&self) -> Vec<Kid<'_, Self>>;
+    fn describe(&self) -> String;
+}
+
+/// A child of a [`Linked`] node.
+pub(crate) enum Kid<'a, N> {
+    Lit,
+    Node(N),
+    #[allow(dead_code)]
+    Borrowed(&'a N),
+}
+
+/// Every slot of every partial and final label in a tree, linked as the steps say.
+pub(crate) struct Linking {
+    count: usize,
+    pairs: Vec<(usize, usize)>,
+    /// The path and own slot of every node that spells a name.
+    spelling: Vec<(Vec<usize>, usize)>,
+}
+
+pub(crate) fn link_slots<N: Linked>(root: &N) -> Result<Linking> {
+    let mut linking = Linking {
+        count: 0,
+        pairs: Vec::new(),
+        spelling: Vec::new(),
+    };
+    walk_linked(root, &mut Vec::new(), &mut linking)?;
+    Ok(linking)
+}
+
+/// Numbers the slots of `node`'s labels from `linking.count`, records which are linked and
+/// which nodes spell a slot. Returns the first slot of `node`'s own label.
+fn walk_linked<N: Linked>(node: &N, path: &mut Vec<usize>, linking: &mut Linking) -> Result<usize> {
+    let Some(shape) = node.shape() else {
+        return Ok(linking.count);
+    };
+    let own = linking.count;
+    let slots = node.slots();
+    linking.count += slots;
+    if node.spells() {
+        if slots != 1 {
+            bail!("<{}> spells a name but has {slots} slots", node.describe());
+        }
+        linking.spelling.push((path.clone(), own));
+        return Ok(own);
+    }
+    // The partial labels' slots.
+    let mut partial = Vec::new();
+    for &k in &shape.partial {
+        partial.push(linking.count);
+        linking.count += k;
+    }
+    for (i, child) in node.children().into_iter().enumerate() {
+        path.push(i);
+        let (first, child_slots) = match &child {
+            Kid::Lit => (linking.count, 0),
+            Kid::Node(c) => (walk_linked(c, path, linking)?, c.slots()),
+            Kid::Borrowed(c) => (walk_linked(*c, path, linking)?, c.slots()),
         };
-        let shape = &self.shapes[p as usize];
-        let own = *count;
-        *count += self.slots[nt as usize];
-        if self.spelled[nt as usize] {
-            if self.slots[nt as usize] != 1 {
-                bail!(
-                    "<{}> spells a name but has {} slots",
-                    self.cfg.name(nt),
-                    self.slots[nt as usize]
-                );
-            }
-            spelling.push((path.clone(), own));
-            return Ok(own);
-        }
-        // The partial labels' slots.
-        let mut partial = Vec::new();
-        for &k in &shape.partial {
-            partial.push(*count);
-            *count += k;
-        }
-        for (i, child) in node.children.iter().enumerate() {
-            path.push(i);
-            let first = self.walk(child, path, count, pairs, spelling)?;
-            path.pop();
-            let child_slots = match child.sym {
-                Sym::Nt(c) => self.slots[c as usize],
-                Sym::Lit(_) => 0,
-            };
-            let before = shape.partial[i];
-            let mut locals = BTreeMap::new();
-            for (j, to) in shape.links[i].0.iter().enumerate() {
-                let Some(to) = to else { continue };
-                let from = if j < before {
-                    partial[i] + j
-                } else {
-                    debug_assert!(j - before < child_slots);
-                    first + (j - before)
-                };
-                let to = Self::target(
-                    partial[i + 1],
-                    shape.partial[i + 1],
-                    *to,
-                    &mut locals,
-                    count,
-                );
-                pairs.push((from, to));
-            }
-        }
-        let last = *partial.last().unwrap();
+        path.pop();
+        let before = shape.partial[i];
         let mut locals = BTreeMap::new();
-        for (j, to) in shape.finish.0.iter().enumerate() {
-            if let Some(to) = to {
-                let to = Self::target(own, self.slots[nt as usize], *to, &mut locals, count);
-                pairs.push((last + j, to));
-            }
+        for (j, to) in shape.links[i].0.iter().enumerate() {
+            let Some(to) = to else { continue };
+            let from = if j < before {
+                partial[i] + j
+            } else {
+                debug_assert!(j - before < child_slots);
+                first + (j - before)
+            };
+            let to = slot_target(
+                partial[i + 1],
+                shape.partial[i + 1],
+                *to,
+                &mut locals,
+                &mut linking.count,
+            );
+            linking.pairs.push((from, to));
         }
-        Ok(own)
     }
+    let last = *partial.last().unwrap();
+    let mut locals = BTreeMap::new();
+    for (j, to) in shape.finish.0.iter().enumerate() {
+        if let Some(to) = to {
+            let to = slot_target(own, slots, *to, &mut locals, &mut linking.count);
+            linking.pairs.push((last + j, to));
+        }
+    }
+    Ok(own)
+}
 
-    /// Where a link's target slot is: one of the `size` slots from `base`, or a variable
-    /// closed in this step, numbered once per step.
-    fn target(
-        base: usize,
-        size: usize,
-        to: Slot,
-        locals: &mut BTreeMap<Slot, usize>,
-        count: &mut usize,
-    ) -> usize {
-        if (to as usize) < size {
-            return base + to as usize;
-        }
-        *locals.entry(to).or_insert_with(|| {
-            *count += 1;
-            *count - 1
-        })
+/// Where a link's target slot is: one of the `size` slots from `base`, or a variable
+/// closed in this step, numbered once per step.
+fn slot_target(
+    base: usize,
+    size: usize,
+    to: Slot,
+    locals: &mut BTreeMap<Slot, usize>,
+    count: &mut usize,
+) -> usize {
+    if (to as usize) < size {
+        return base + to as usize;
     }
+    *locals.entry(to).or_insert_with(|| {
+        *count += 1;
+        *count - 1
+    })
+}
+
+/// One name per variable of `root`, in the order they first appear, `names` first and then
+/// numbered ones; every spelling node is replaced by `spell` of its nonterminal and name.
+pub(crate) fn assign_names(
+    root: &mut tree::Node,
+    linking: Linking,
+    names: &[String],
+    spell: impl Fn(NtId, &str) -> Option<tree::Node>,
+    name_of: impl Fn(NtId) -> String,
+) -> Result<()> {
+    let mut sets = UnionFind::<usize>::new(linking.count);
+    for (a, b) in linking.pairs {
+        sets.union(a, b);
+    }
+    let mut given: BTreeMap<usize, String> = BTreeMap::new();
+    for (path, slot) in &linking.spelling {
+        let class = sets.find(*slot);
+        let k = given.len();
+        let name = given
+            .entry(class)
+            .or_insert_with(|| fresh(names, k))
+            .clone();
+        let mut node = &mut *root;
+        for &i in path {
+            node = &mut node.children[i];
+        }
+        let Sym::Nt(nt) = node.sym else {
+            unreachable!()
+        };
+        let Some(spelt) = spell(nt, &name) else {
+            bail!("{name:?} does not derive from <{}>", name_of(nt));
+        };
+        *node = spelt;
+    }
+    Ok(())
 }
 
 /// The `k`th name: from `names`, then numbered.
@@ -1766,8 +1964,16 @@ pub fn accepts<C: Context>(ctx: &C, tree: &Plain) -> Result<(), String> {
 type Named<L> = (L, Vec<Option<String>>);
 
 /// Applies `link` to the names of its inputs: `None` if two slots that are one variable have
-/// different names, or two variables share one.
-fn relink(link: &Link, inputs: &[Option<String>], slots: usize) -> Option<Vec<Option<String>>> {
+/// different names, or two variables share one. Two surviving slots may share a name in a
+/// partial label (a YIELD item or a WHERE beside the declaration it names: one variable the
+/// finish makes one slot), not in a `finished` one, and a closed variable never shares its
+/// name with one that goes on.
+fn relink(
+    link: &Link,
+    inputs: &[Option<String>],
+    slots: usize,
+    finished: bool,
+) -> Option<Vec<Option<String>>> {
     // Local slots, past the label's, are variables closed in this step: checked, then dropped.
     let size = link
         .0
@@ -1787,10 +1993,15 @@ fn relink(link: &Link, inputs: &[Option<String>], slots: usize) -> Option<Vec<Op
             _ => out[*to as usize] = Some(name.clone()),
         }
     }
+    let surviving: BTreeSet<&String> = out[..slots].iter().flatten().collect();
+    if out[slots..].iter().flatten().any(|n| surviving.contains(n)) {
+        return None;
+    }
+    if finished && surviving.len() != out[..slots].iter().flatten().count() {
+        return None;
+    }
     out.truncate(slots);
-    let named: Vec<&String> = out.iter().flatten().collect();
-    let distinct: BTreeSet<&String> = named.iter().copied().collect();
-    (distinct.len() == named.len()).then_some(out)
+    Some(out)
 }
 
 /// A node's possible labels, each with its slots' names, and the text it spells.
@@ -1849,7 +2060,7 @@ fn run<C: Context>(ctx: &C, node: &Plain) -> Result<Run<C::Label>, String> {
             for (cl, cn) in options {
                 for (q, link) in ctx.push(&node, pos, l, cl) {
                     let inputs: Vec<Option<String>> = names.iter().chain(cn).cloned().collect();
-                    if let Some(out) = relink(&link, &inputs, ctx.slots(&q)) {
+                    if let Some(out) = relink(&link, &inputs, ctx.slots(&q), false) {
                         next.insert((q, out));
                     }
                 }
@@ -1860,7 +2071,7 @@ fn run<C: Context>(ctx: &C, node: &Plain) -> Result<Run<C::Label>, String> {
     let mut out = BTreeSet::new();
     for (l, names) in &partial {
         for (f, link) in ctx.finish(&node, l) {
-            let Some(mut named) = relink(&link, names, ctx.slots(&f)) else {
+            let Some(mut named) = relink(&link, names, ctx.slots(&f), true) else {
                 continue;
             };
             if ctx.spells(name, &f) && named.len() == 1 {
