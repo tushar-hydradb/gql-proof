@@ -154,11 +154,14 @@ pub fn all_rules(id086: MatchModeDefault) -> Vec<Box<dyn Rule>> {
         Box::new(UnboundedNeedsGuard { id086 }),
         Box::new(KeepWithoutSearch),
         Box::new(DataModifyingModifies),
+        Box::new(PathMinimums),
+        Box::new(SimplifiedShape),
+        Box::new(SelectiveAlone { id086 }),
     ]
 }
 
 /// Facts at or above this are free for rules built at run time, such as feature claims.
-pub const FIRST_FREE_FACT: Fact = 12;
+pub const FIRST_FREE_FACT: Fact = 32;
 
 /// 16.4 SR 14: every unbounded quantifier needs a guard.
 pub struct UnboundedNeedsGuard {
@@ -373,6 +376,309 @@ impl Rule for DataModifyingModifies {
             d if SPINE.contains(&d) => Some(s),
             _ => Some(s.without(MODIFIES)),
         }
+    }
+}
+
+/// 16.7 SR 8, 16 and 20: a path pattern matches at least one node, so does a parenthesized
+/// expression with a subpath variable, and what a quantifier or `?` repeats has a positive
+/// minimum path length.
+///
+/// The minimums of 16.7 SR 7 and 15 only matter as "at least one", so each path node ends in
+/// one of NODES / NO_NODES and one of LEN / NO_LEN, exhaustive so that a union's "every
+/// operand" reads as "no child has NO_NODES" under the union of children, and a
+/// concatenation's "some operand" as "a child has NODES". Computed after SR 14's transform: an
+/// edge pattern under a quantifier or `?` is parenthesized, and a bare edge pattern in a path
+/// term gets implicit node patterns on both sides, so a bare `<-` counts two nodes and `(<-)?`
+/// none. A simplified expression is read through 16.12 SR 5-6: a label, negation, conjunction
+/// or direction override is one edge pattern, a concatenation two in one term, a union or
+/// alternation one per operand, a quantifier or `?` applies to the parenthesized edge.
+///
+/// A quantifier's lower bound (16.11 SR 2: `*` 0, `+` 1, `{n}` n, a missing bound 0) is zero or
+/// not, read off the digit tokens of the `<unsigned integer>`; an `<other digit>` counts as
+/// nonzero (the generator spells U+0663). The integer subtree carries that fact only where a
+/// bound asks for it (inherited WANT), so numbers elsewhere are not copied. 16.11 SR 3 a i (an
+/// upper bound is not 0) rides on the same fact; SR 3 a ii (upper below lower) does not.
+pub struct PathMinimums;
+
+const NODES: Fact = 12;
+const NO_NODES: Fact = 13;
+const LEN: Fact = 14;
+const NO_LEN: Fact = 15;
+/// A bare edge pattern, still to get its implicit node patterns or its parentheses.
+const EDGE: Fact = 16;
+const SUBPATH: Fact = 17;
+const LB_ZERO: Fact = 18;
+const LB_PRESENT: Fact = 19;
+const NONZERO: Fact = 20;
+/// Inherited: this integer is a quantifier bound, say whether it is zero.
+const WANT: Fact = 21;
+const MINIMUMS: [Fact; 9] = [
+    NODES, NO_NODES, LEN, NO_LEN, EDGE, SUBPATH, LB_ZERO, LB_PRESENT, NONZERO,
+];
+
+/// The state with exactly these minimums.
+fn minima(s: State, nodes: bool, len: bool) -> State {
+    let mut s = s.without_all(&[NODES, NO_NODES, LEN, NO_LEN]);
+    s.set(if nodes { NODES } else { NO_NODES }, true);
+    s.set(if len { LEN } else { NO_LEN }, true);
+    s
+}
+
+const BOUNDS: [&str; 3] = ["lower bound", "upper bound", "fixed quantifier"];
+
+impl Rule for PathMinimums {
+    fn name(&self) -> &str {
+        "path pattern minimums"
+    }
+
+    fn cite(&self) -> &str {
+        "16.7 SR 8, 16, 20: a quantified or questioned primary has a positive minimum path length, a path pattern and a named subpath a positive minimum node count; 16.11 SR 3: an upper bound is not 0"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[
+            (NODES, "nodes"),
+            (NO_NODES, "no-nodes"),
+            (LEN, "len"),
+            (NO_LEN, "no-len"),
+            (EDGE, "edge"),
+            (SUBPATH, "subpath"),
+            (LB_ZERO, "lb-zero"),
+            (LB_PRESENT, "lb"),
+            (NONZERO, "nonzero"),
+            (WANT, "want"),
+        ])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn down(&self, node: &Node, inh: &State, pos: usize, _left: &[State], out: &mut State) {
+        let asks = BOUNDS.contains(&node.def) && node.items[pos] == Item::Def("unsigned integer");
+        if asks || inh.has(WANT) {
+            out.set(WANT, true);
+        }
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if inh.has(WANT) {
+            // Inside a bound's integer: a digit token other than 0, or a non-ASCII digit.
+            let nonzero = node.items.iter().any(|i| match i {
+                Item::Token(t) => {
+                    t.len() == 1 && *t != "0" && t.chars().all(|c| c.is_ascii_alphanumeric())
+                }
+                Item::Prose("other digit") => true,
+                _ => false,
+            });
+            return Some(if nonzero { s.with(NONZERO) } else { s });
+        }
+        if node.group {
+            return Some(s);
+        }
+        let rhs = node.items;
+        Some(match node.def {
+            // --- the bound's value, consumed by the quantifier ---
+            "lower bound" => {
+                let zero = !s.has(NONZERO);
+                let s = s.without(NONZERO).with(LB_PRESENT);
+                if zero { s.with(LB_ZERO) } else { s }
+            }
+            "fixed quantifier" => {
+                let zero = !s.has(NONZERO);
+                let s = s.without(NONZERO);
+                if zero { s.with(LB_ZERO) } else { s }
+            }
+            "upper bound" => {
+                if !s.has(NONZERO) {
+                    return None;
+                }
+                s.without(NONZERO)
+            }
+            "general quantifier" => {
+                let zero = !s.has(LB_PRESENT) || s.has(LB_ZERO);
+                let mut s = s.without(LB_PRESENT);
+                s.set(LB_ZERO, zero);
+                s
+            }
+            "graph pattern quantifier" if rhs == [Item::Def("asterisk")] => s.with(LB_ZERO),
+            // --- element patterns and factors ---
+            "node pattern" => minima(s.without(EDGE), true, false),
+            "edge pattern" => minima(s, false, true).with(EDGE),
+            // SR 14 c-d: a bare edge in a term gets a node pattern on each side.
+            "path factor" if rhs == [Item::Def("path primary")] && s.has(EDGE) => {
+                minima(s.without(EDGE), true, true)
+            }
+            // SR 14 a parenthesizes an edge first, so it brings its implicit nodes along.
+            "quantified path primary" | "simplified quantified" => {
+                if !s.has(LEN) {
+                    return None;
+                }
+                let positive = !s.has(LB_ZERO);
+                let nodes = (s.has(NODES) || s.has(EDGE)) && positive;
+                minima(s.without(EDGE).without(LB_ZERO), nodes, positive)
+            }
+            "questioned path primary" | "simplified questioned" => {
+                if !s.has(LEN) {
+                    return None;
+                }
+                minima(s.without(EDGE), false, false)
+            }
+            "path concatenation" | "simplified concatenation" => {
+                let (nodes, len) = (s.has(NODES), s.has(LEN));
+                minima(s, nodes, len)
+            }
+            "path pattern union"
+            | "path multiset alternation"
+            | "simplified path union"
+            | "simplified multiset alternation" => {
+                let (nodes, len) = (!s.has(NO_NODES), !s.has(NO_LEN));
+                minima(s, nodes, len)
+            }
+            "subpath variable declaration" => s.with(SUBPATH),
+            "parenthesized path pattern expression" => {
+                if s.has(SUBPATH) && !s.has(NODES) {
+                    return None;
+                }
+                s.without(SUBPATH).without(EDGE)
+            }
+            // 16.12 SR 6: one edge pattern, in a term that gives it its implicit nodes.
+            "simplified primary" if rhs == [Item::Def("label name")] => minima(s, true, true),
+            "simplified negation" | "simplified conjunction" | "simplified direction override" => {
+                minima(s, true, true)
+            }
+            "path pattern" => {
+                if !s.has(NODES) {
+                    return None;
+                }
+                s.without_all(&MINIMUMS)
+            }
+            // Nothing crosses a WHERE, a filler or a depth of matching.
+            "element pattern filler"
+            | "parenthesized path pattern where clause"
+            | "graph pattern" => s.without_all(&MINIMUMS),
+            // A number that is not a bound carries nothing.
+            _ => s.without(NONZERO),
+        })
+    }
+}
+
+/// 16.12 SR 1-4: a simplified negation, conjunction or direction override holds no
+/// concatenation, quantifier, `?` or multiset alternation, and an override no other override.
+pub struct SimplifiedShape;
+
+const S_COMPLEX: Fact = 22;
+const S_OVERRIDE: Fact = 23;
+
+impl Rule for SimplifiedShape {
+    fn name(&self) -> &str {
+        "simplified pattern shape"
+    }
+
+    fn cite(&self) -> &str {
+        "16.12 SR 1-4: a <simplified negation>, <simplified direction override> or <simplified conjunction> contains no concatenation, quantifier, ? or multiset alternation; an override no override"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(S_COMPLEX, "complex"), (S_OVERRIDE, "override")])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn step(&self, node: &Node, _inh: &State, _children: &[State], s: State) -> Option<State> {
+        if node.group {
+            return Some(s);
+        }
+        Some(match node.def {
+            "simplified concatenation"
+            | "simplified quantified"
+            | "simplified questioned"
+            | "simplified multiset alternation" => s.with(S_COMPLEX),
+            "simplified negation" | "simplified conjunction" if s.has(S_COMPLEX) => return None,
+            "simplified direction override" => {
+                if s.has(S_COMPLEX) || s.has(S_OVERRIDE) {
+                    return None;
+                }
+                s.with(S_OVERRIDE)
+            }
+            "simplified path pattern expression" => s.without_all(&[S_COMPLEX, S_OVERRIDE]),
+            _ => s,
+        })
+    }
+}
+
+/// 16.4 SR 12: under DIFFERENT EDGES, a selective path pattern is alone in its list.
+///
+/// Reading: 16.6 SR 4 makes a path pattern selective by the search prefix it simply contains,
+/// so a KEEP clause's prefix does not count here.
+pub struct SelectiveAlone {
+    pub id086: MatchModeDefault,
+}
+
+const SEARCH: Fact = 24;
+const SELECTIVE_PATTERN: Fact = 25;
+const ONE: Fact = 26;
+const MANY: Fact = 27;
+const DIFF: Fact = 28;
+const MODE: Fact = 29;
+const SR12: [Fact; 6] = [SEARCH, SELECTIVE_PATTERN, ONE, MANY, DIFF, MODE];
+
+impl Rule for SelectiveAlone {
+    fn name(&self) -> &str {
+        "selective path pattern alone under DIFFERENT EDGES"
+    }
+
+    fn cite(&self) -> &str {
+        "16.4 SR 12: under <different edges match mode>, a selective <path pattern> is the only one in its <path pattern list>"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[
+            (SEARCH, "search"),
+            (SELECTIVE_PATTERN, "selective-pattern"),
+            (ONE, "one"),
+            (MANY, "many"),
+            (DIFF, "diff"),
+            (MODE, "mode"),
+        ])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn step(&self, node: &Node, _inh: &State, children: &[State], s: State) -> Option<State> {
+        if node.group {
+            return Some(s);
+        }
+        Some(match node.def {
+            "path search prefix" if node.items != [Item::Def("all path search")] => s.with(SEARCH),
+            "keep clause" => s.without(SEARCH),
+            "path pattern" => {
+                let selective = s.has(SEARCH);
+                let mut s = s.without(SEARCH).with(ONE);
+                s.set(SELECTIVE_PATTERN, selective);
+                s
+            }
+            "path pattern list" => {
+                let many = children.iter().filter(|c| c.has(ONE)).count() >= 2;
+                let mut s = s.without(ONE);
+                s.set(MANY, many);
+                s
+            }
+            "different edges match mode" => s.with(DIFF),
+            "match mode" => s.with(MODE),
+            "graph pattern" => {
+                let default = !s.has(MODE) && self.id086 == MatchModeDefault::DifferentEdges;
+                if (s.has(DIFF) || default) && s.has(SELECTIVE_PATTERN) && s.has(MANY) {
+                    return None;
+                }
+                s.without_all(&SR12)
+            }
+            _ => s,
+        })
     }
 }
 
