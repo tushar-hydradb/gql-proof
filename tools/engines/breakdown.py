@@ -23,6 +23,7 @@ OURS = [
     ("a VALUE subquery returns at most one row", "20.6 SR 10: VALUE body not one row"),
     ("quantified primaries do not nest", "16.7 SR 9: quantifier directly under a quantifier"),
     ("a quantifier's upper bound is greater than 0", "16.11 SR 3: upper bound 0"),
+    ("minimum exceeds maximum", "16.11 SR 3: upper bound below lower"),
 ]
 
 
@@ -35,8 +36,8 @@ def bucket(r):
             return "ours: invalid sentence", why
     if re.search(r"\bEXISTS\s*\{\s*FINISH\s*\}", s):
         return "ours: invalid sentence", "19.4 SR 5: EXISTS body is FINISH (empty type)"
-    if "$@" in s and st == "42001":
-        return "ours: invalid sentence", "21.3 SR 4: empty identifier in a parameter"
+    if '@""' in s or "@``" in s:
+        return "ours: invalid sentence", "21.3 SR 4: empty delimited identifier"
     if "NULL . " in s:
         return "ours: invalid sentence", "20.11: property of NULL"
     if "bounds are at most" in m:
