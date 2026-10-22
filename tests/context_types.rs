@@ -786,7 +786,16 @@ fn pruning_is_exact() {
 /// the option it was when scanned, and grounding reads its parts (`Engine::add`).
 #[test]
 fn subsumed_options_keep_their_parts() {
-    let rule = rule();
+    use gql_proof::context::scope::Caps;
+    let rule = Typed::new(
+        Scope {
+            caps: Caps {
+                slots: 1,
+                references: 1,
+            },
+        },
+        Types::new(&BASE),
+    );
     let options = Options {
         progress: false,
         join: true,
@@ -799,3 +808,29 @@ fn subsumed_options_keep_their_parts() {
     assert!(subsumed > 0, "the census found nothing to check");
     assert_eq!(orphaned, 0);
 }
+
+/// Per-target extraction against the emitted grammar, typed, without joins, at a cap
+/// (`GQL_SLOTS`, 1 by default): see `common::extraction_matches_emission`.
+#[test]
+#[ignore]
+fn extraction_matches_emission() {
+    use gql_proof::context::scope::Caps;
+    let slots: usize = std::env::var("GQL_SLOTS").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
+    let rule = Typed::new(
+        Scope {
+            caps: Caps {
+                slots,
+                references: slots,
+            },
+        },
+        Types::new(&BASE),
+    );
+    let options = Options {
+        progress: false,
+        keys: true,
+        ..Options::default()
+    };
+    common::extraction_matches_emission(&BASE, &rule, &options, true);
+}
+
+mod common;

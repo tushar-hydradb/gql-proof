@@ -127,6 +127,7 @@ type Key<L> = (bool, NtId, L);
 
 impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
     pub(super) fn new(e: &'e Engine<'a, C>, start: NtId, leaf: &dyn LeafProvider) -> Self {
+        let began = Instant::now();
         let cfg = e.cfg;
         let fillable: Vec<bool> = cfg
             .prods
@@ -158,6 +159,14 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             for r in pre.ends.keys() {
                 makers[lhs].entry(r.clone()).or_default().push(p as ProdId);
             }
+        }
+        if e.options.progress {
+            eprintln!(
+                "extraction: layers and made labels of {} productions ({} made labels) in {:?}",
+                prepared.len(),
+                prepared.iter().map(|p| p.ends.len()).sum::<usize>(),
+                began.elapsed()
+            );
         }
         Extractor {
             e,
