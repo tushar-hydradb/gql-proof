@@ -369,6 +369,145 @@ fn pair_waste() {
     );
 }
 
+/// An estimate of entries as principal typings, without building them: at one variable,
+/// labels that differ only in what they ask of the variable are merged after the fact (a
+/// typing would hold them as one), and every production is scanned once more counting the
+/// distinct merged pairs (partial, child) it would try. `cargo test --release --test
+/// context_types typing_estimate -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn typing_estimate() {
+    use gql_proof::cfg::Sym;
+    use gql_proof::context::Context;
+    use gql_proof::context::scope::Caps;
+    use gql_proof::refine::{Node, items_of};
+    use std::collections::{BTreeMap, HashMap, HashSet};
+    type L = <Typed<Scope, Types> as Context>::Label;
+    let merged = |l: &L| (l.0.clone(), l.1.without_needs());
+    let slots: usize = std::env::var("GQL_SLOTS").map_or(1, |s| s.parse().unwrap());
+    let rule = Typed::new(
+        Scope {
+            caps: Caps {
+                slots,
+                references: slots,
+            },
+        },
+        Types::new(&BASE),
+    );
+    let options = Options {
+        progress: false,
+        ..Options::default()
+    };
+    let analyzed = gql_proof::context::analyze(&BASE, &rule, &options).unwrap();
+    let labels: Vec<Vec<L>> = (0..BASE.nts.len() as u32)
+        .map(|nt| analyzed.labels(nt).cloned().collect())
+        .collect();
+    // Labels per nonterminal, before and after the merge, and each label's merged id.
+    let mut ids: Vec<Vec<u32>> = Vec::new();
+    let (mut before, mut after, mut safe) = (0usize, 0usize, 0usize);
+    let mut widest: Vec<(usize, usize, usize, String)> = Vec::new();
+    for (nt, ls) in labels.iter().enumerate() {
+        let mut seen: HashMap<_, u32> = HashMap::new();
+        let mut rows: Vec<Vec<Vec<gql_proof::context::types::Entry>>> = Vec::new();
+        let id: Vec<u32> = ls
+            .iter()
+            .map(|l| {
+                let n = seen.len() as u32;
+                let i = *seen.entry(merged(l)).or_insert(n);
+                if i as usize == rows.len() {
+                    rows.push(Vec::new());
+                }
+                rows[i as usize].push(l.1.vars().to_vec());
+                i
+            })
+            .collect();
+        // A merged group one typing holds exactly: per-slot sets (a rectangle), or one set
+        // shared by every slot (an equality group). Any other keeps all its labels.
+        let exact: usize = rows
+            .iter()
+            .map(|group| {
+                let width = group[0].len();
+                let columns: Vec<HashSet<_>> = (0..width)
+                    .map(|s| group.iter().map(|r| r[s]).collect())
+                    .collect();
+                let rectangle = columns.iter().map(HashSet::len).product::<usize>()
+                    == group.iter().collect::<HashSet<_>>().len();
+                let diagonal = group.iter().all(|r| r.iter().all(|e| *e == r[0]));
+                if rectangle || diagonal { 1 } else { group.len() }
+            })
+            .sum();
+        before += ls.len();
+        after += seen.len();
+        safe += exact;
+        widest.push((ls.len(), seen.len(), exact, BASE.nts[nt].name.clone()));
+        ids.push(id);
+    }
+    widest.sort_unstable_by(|a, b| b.cmp(a));
+    eprintln!(
+        "{slots} variable(s), labels: {before} -> {after} with every need forgotten, {safe} \
+         counting only groups one typing holds exactly"
+    );
+    for (b, a, s, name) in widest.iter().take(10) {
+        eprintln!("  {b:>7} -> {a:>6} / {s:>6}  <{name}>");
+    }
+    // Pairs a scan tries, and distinct merged pairs.
+    let mut rows: Vec<(u64, u64, String)> = Vec::new();
+    for prod in &BASE.prods {
+        if prod.rhs.iter().filter(|s| matches!(s, Sym::Nt(_))).count() < 2 {
+            continue;
+        }
+        let items = items_of(&BASE, prod);
+        let lhs = &BASE.nts[prod.lhs as usize];
+        let node = Node {
+            def: &lhs.base,
+            group: lhs.synthetic,
+            items: &items,
+            text: None,
+        };
+        let mut layer: Vec<L> = vec![rule.empty(&node)];
+        let (mut tried, mut distinct) = (0u64, 0u64);
+        for (pos, sym) in prod.rhs.iter().enumerate() {
+            let mut next: BTreeMap<L, ()> = BTreeMap::new();
+            let mut pids: HashMap<_, u32> = HashMap::new();
+            let mut pairs: HashSet<(u32, u32)> = HashSet::new();
+            for partial in &layer {
+                let n = pids.len() as u32;
+                let p = *pids.entry(merged(partial)).or_insert(n);
+                match sym {
+                    Sym::Nt(c) => {
+                        for (ci, child) in labels[*c as usize].iter().enumerate() {
+                            if pos > 0 {
+                                tried += 1;
+                                pairs.insert((p, ids[*c as usize][ci]));
+                            }
+                            for (q, _) in rule.push(&node, pos, partial, Some(child)) {
+                                next.insert(q, ());
+                            }
+                        }
+                    }
+                    Sym::Lit(_) => {
+                        for (q, _) in rule.push(&node, pos, partial, None) {
+                            next.insert(q, ());
+                        }
+                    }
+                }
+            }
+            distinct += pairs.len() as u64;
+            layer = next.into_keys().collect();
+        }
+        if tried > 0 {
+            rows.push((tried, distinct, format!("<{}>", lhs.name)));
+        }
+    }
+    rows.sort_unstable_by(|a, b| b.cmp(a));
+    let t: u64 = rows.iter().map(|r| r.0).sum();
+    let d: u64 = rows.iter().map(|r| r.1).sum();
+    eprintln!("pairs tried: {t} -> {d} merged ({:.1}x fewer)", t as f64 / d as f64);
+    for (t, d, name) in rows.iter().take(12) {
+        eprintln!("  {t:>9} -> {d:>8}  {:>5.1}x  {name}", *t as f64 / *d as f64);
+    }
+}
+
 /// Every tree generated at one variable passes both checkers.
 #[test]
 fn generated_trees_pass_the_checkers() {

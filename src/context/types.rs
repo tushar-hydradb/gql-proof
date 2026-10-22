@@ -276,6 +276,20 @@ impl Label {
         &self.vars
     }
 
+    /// For measuring: the label with what it asks of its variables forgotten (a definition's
+    /// class kept). At one variable, labels equal here are the ones a principal typing would
+    /// hold as one ("x in the union of their sets").
+    pub fn without_needs(&self) -> Label {
+        Label {
+            vars: self
+                .vars
+                .iter()
+                .map(|e| if matches!(e, Has(_)) { *e } else { Free })
+                .collect(),
+            ..self.clone()
+        }
+    }
+
     /// While a production is scanned: its children's classes so far.
     pub fn kids(&self) -> &[Option<Ty>] {
         &self.kids
