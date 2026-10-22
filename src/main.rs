@@ -59,6 +59,9 @@ struct ContextArgs {
     /// The most variables a label of references alone holds; `--slots` if not given.
     #[arg(long)]
     references: Option<usize>,
+    /// With `--rule types`: the most variables one label holds a type constraint on.
+    #[arg(long, default_value_t = 2)]
+    typed: usize,
     #[arg(long, value_enum, default_value_t = ContextPhase::Emit)]
     phase: ContextPhase,
     /// Stop after this many seconds in a phase, printing what was spent.
@@ -352,7 +355,7 @@ fn context(args: ContextArgs) -> Result<()> {
         }
         ContextRule::Scope => context_run(&base, start, &scope, &options, &args),
         ContextRule::Types => {
-            let types = gql_proof::context::types::Types::new(&base);
+            let types = gql_proof::context::types::Types::with_typed(&base, args.typed);
             let pair = gql_proof::context::pair::Typed::new(scope, types);
             context_run(&base, start, &pair, &options, &args)
         }

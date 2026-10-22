@@ -514,6 +514,9 @@ const CHOOSE: &[&str] = &["element variable reference"];
 pub struct Types {
     /// Definitions and groups of the expression grammar, where classes flow up.
     expressions: HashSet<String>,
+    /// The most variables a label holds a type constraint on
+    /// (`research/types-cutoff-2026-10-22.md`).
+    typed: usize,
 }
 
 /// Where each input slot of a step went: its output slot, or the entry it closed with.
@@ -636,7 +639,38 @@ impl Types {
                 }
             }
         }
-        Types { expressions: seen }
+        Types {
+            expressions: seen,
+            typed: 2,
+        }
+    }
+
+    /// With at most `typed` variables typed in one label.
+    pub fn with_typed(cfg: &Cfg, typed: usize) -> Types {
+        Types {
+            typed,
+            ..Types::new(cfg)
+        }
+    }
+
+    /// The typed cap: past it, definitions' classes are forgotten (an opaque value is
+    /// accepted in fewer places, so this only loses trees), then the label is rejected if
+    /// uses still ask of too many variables.
+    fn cap(&self, vars: &mut [Entry]) -> bool {
+        let typed = |vars: &[Entry]| {
+            vars.iter()
+                .filter(|e| !matches!(e, Free | Has(Opaque)))
+                .count()
+        };
+        if typed(vars) <= self.typed {
+            return true;
+        }
+        for e in vars.iter_mut() {
+            if let Has(_) = e {
+                *e = Has(Opaque);
+            }
+        }
+        typed(vars) <= self.typed
     }
 
     fn expression(&self, def: &str) -> bool {
@@ -1365,7 +1399,7 @@ impl Under<Scope> for Types {
         let class = child.and_then(|c| r.ty(partial.vars.len(), c.class));
         out.kids
             .push(if self.reads(node.def) { class } else { None });
-        if !reconcile(&mut out.vars, a.out) {
+        if !reconcile(&mut out.vars, a.out) || !self.cap(&mut out.vars) {
             return vec![];
         }
         vec![out]
@@ -1424,7 +1458,7 @@ impl Under<Scope> for Types {
                 l.class = None;
             }
         }
-        out.retain_mut(|l| reconcile(&mut l.vars, a.out));
+        out.retain_mut(|l| reconcile(&mut l.vars, a.out) && self.cap(&mut l.vars));
         out
     }
 

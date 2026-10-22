@@ -99,6 +99,9 @@ fn typed_sentences_pass() {
         "MATCH (x), (y) FILTER x = y RETURN x",
         "RETURN 1 AS x NEXT RETURN x + 1 AS y",
         "MATCH (x) RETURN x ORDER BY x.k",
+        // Past the typed cap the definitions' classes are forgotten, not the sentence.
+        "LET x = 1, y = 2, z = 3 RETURN x AS w",
+        "LET x = 1, y = 'a' RETURN x + 1 AS w",
     ]
     .into_iter()
     .filter_map(|ok| verdict(ok).err().map(|e| format!("{ok:?}: {e:.300}")))
@@ -433,7 +436,11 @@ fn typing_estimate() {
                 let rectangle = columns.iter().map(HashSet::len).product::<usize>()
                     == group.iter().collect::<HashSet<_>>().len();
                 let diagonal = group.iter().all(|r| r.iter().all(|e| *e == r[0]));
-                if rectangle || diagonal { 1 } else { group.len() }
+                if rectangle || diagonal {
+                    1
+                } else {
+                    group.len()
+                }
             })
             .sum();
         before += ls.len();
@@ -502,9 +509,15 @@ fn typing_estimate() {
     rows.sort_unstable_by(|a, b| b.cmp(a));
     let t: u64 = rows.iter().map(|r| r.0).sum();
     let d: u64 = rows.iter().map(|r| r.1).sum();
-    eprintln!("pairs tried: {t} -> {d} merged ({:.1}x fewer)", t as f64 / d as f64);
+    eprintln!(
+        "pairs tried: {t} -> {d} merged ({:.1}x fewer)",
+        t as f64 / d as f64
+    );
     for (t, d, name) in rows.iter().take(12) {
-        eprintln!("  {t:>9} -> {d:>8}  {:>5.1}x  {name}", *t as f64 / *d as f64);
+        eprintln!(
+            "  {t:>9} -> {d:>8}  {:>5.1}x  {name}",
+            *t as f64 / *d as f64
+        );
     }
 }
 
