@@ -1,5 +1,7 @@
 # static semantics: which syntax rules gql-proof models
 
+> for agents: dated working notes, terse on purpose. people start at the [readme](../README.md)
+
 every syntax rule of iso/iec 39075:2024, one by one, marked by what gql-proof
 does with it. the question it answers: can we say static semantics is done? not
 yet, and not only for completeness: some rules nobody models are broken by

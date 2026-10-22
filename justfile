@@ -3,7 +3,8 @@ pdf := "papers/iso/ISO_IEC_39075_2024.pdf"
 cor1 := "papers/iso/ISO_IEC_39075;2024_Cor_1;2026_en.pdf"
 python := ".venv-pdf/bin/python"
 
-# download the iso artifacts into grammar/, skipping ones already there
+# download the iso artifacts into grammar/, skipping ones already there, and check them
+# against grammar/SHA256SUMS: a mismatch means iso changed a file and the tools need a look
 fetch:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -11,6 +12,7 @@ fetch:
         out="grammar/ISO_IEC_39075(en)$f"
         [ -f "$out" ] || curl -fsSL -o "$out" "{{iso}}/ISO_IEC_39075(en)$f"
     done
+    (cd grammar && shasum -a 256 -c --quiet SHA256SUMS)
 
 # python tooling for the pdf
 venv:
@@ -33,6 +35,11 @@ features: grammar
 
 test: features
     cargo test --release
+
+# the standard's text, page by page, for tools/inventory. licensed text: iso-text/ is gitignored
+iso-text:
+    mkdir -p iso-text
+    {{python}} -I tools/pdftext.py "{{pdf}}" iso-text/39075-2024.txt
 
 # how the context engine grows: `gql-proof context` over parts of the grammar and caps on
 # variables, smallest first, rows into target/context/sweep.csv, then the growth table.

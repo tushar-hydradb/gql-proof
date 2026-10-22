@@ -1,5 +1,7 @@
 # time and space of the context engine, and how the factors interact
 
+> for agents: dated working notes, terse on purpose. people start at the [readme](../README.md)
+
 the engine is `src/context.rs` (see `algorithm.md`); the rules are scope
 (`context/scope.rs`) and types under it (`context/types.rs`,
 `context/pair.rs`). this derives the cost of each phase from the code, names

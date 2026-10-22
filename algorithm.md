@@ -1,5 +1,7 @@
 # how generation works, and where context makes it expensive
 
+> for agents: how the pipeline computes and what it costs, terse on purpose. people start at the [readme](README.md)
+
 a high level walk through the pipeline, what each step computes and costs, the
 two ways we tried to add context (scoping, types), and measured numbers. written
 to find where to cut compute

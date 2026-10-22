@@ -3,11 +3,15 @@
 # copyrighted papers and the iso pdf stay local
 /papers/
 
+# the standard's text, extracted from your pdf: `just iso-text`
+/iso-text/
+
 # local tooling
 /.venv-pdf/
 
 # iso artifacts and everything derived from the pdf: `just fetch`, `just features`
 /grammar/*
 !/grammar/README.md
+!/grammar/SHA256SUMS
 
 __pycache__/

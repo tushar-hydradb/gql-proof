@@ -1,5 +1,7 @@
 # cached sentence sets
 
+> for agents: which cached set is which and how each was made. people start at the [readme](../README.md)
+
 generated sentences, kept in the repo because the typed runs take minutes (two
 variables is about 11). run engines and detectors against these instead of
 regenerating; regenerate when the generator changes what it should produce

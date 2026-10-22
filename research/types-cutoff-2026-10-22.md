@@ -1,5 +1,7 @@
 # how many typed variables a coverage target needs
 
+> for agents: dated working notes, terse on purpose. people start at the [readme](../README.md)
+
 `research/cutoff-2026-10-21.md` bounds the variables scope needs: no larger
 cap covers more past `c*` (3 for productions, 4 for cdrc pairs, measured to 4;
 YIELD lists cost two slots per item, so 4 and 6 there). this is the same

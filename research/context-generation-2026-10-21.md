@@ -1,5 +1,7 @@
 # adding context to a grammar generator without growing the grammar
 
+> for agents: dated working notes, terse on purpose. people start at the [readme](../README.md)
+
 the question: who else has made a grammar-based generator emit well-scoped, well-typed sentences, and how did they keep it from blowing up. our slice 1 and 2 compile scope and types into a product grammar (nonterminal × inherited × synthesized state). with two names it takes 5 minutes, with three it never finished in 4 hours. raptor (`papers/raptor/`) makes the same point for transit: the time-expanded graph is too big, so it works in rounds over the timetable itself, keeps pareto bags per stop and rescans only routes through stops that improved
 
 four searches, every citation checked against a publisher, dblp, acl anthology, crossref or the paper itself unless marked unverified

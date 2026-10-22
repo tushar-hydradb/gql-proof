@@ -1,5 +1,7 @@
 # feature tagging: what we collect and how
 
+> for agents: dated working notes, terse on purpose. people start at the [readme](../README.md)
+
 goal: given a set of claimed features, generate only conforming gql for that set, and for every unclaimed feature generate queries the engine must reject. everything is derived from iso's own data, nothing is tagged by hand
 
 ## sources

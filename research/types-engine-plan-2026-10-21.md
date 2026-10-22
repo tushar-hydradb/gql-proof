@@ -1,5 +1,7 @@
 # plan: static types in the context engine
 
+> for agents: dated working notes, terse on purpose. people start at the [readme](../README.md)
+
 written by a planning teammate from the code (no edits), for review before any
 work starts. scope-only numbers it builds on are in
 research/totality-2026-10-21.md

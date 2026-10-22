@@ -1,5 +1,7 @@
 # a subquery body has a binding table type (19.4 SR 5 and kin)
 
+> for agents: dated working notes, terse on purpose. people start at the [readme](../README.md)
+
 the first rule closed from the static semantics handoff
 (`research/static-semantics-handoff-2026-10-22.md`): the largest class of our
 own invalid sentences on turbolay, `EXISTS { FINISH }` (250 of the 488).
@@ -124,5 +126,5 @@ now 97% of what is left on our side: the next rule, in `src/refine.rs`
 - **the next smallest witness.** closing a class makes extraction pick the
   next cheapest body, which may break the next rule (20.6 SR 3 here, caught
   by `generated_trees_pass_the_checkers`). run that test before the long run
-- the standard's text is regenerated from the pdf with the `.venv-pdf` python
-  (pypdfium2) into a scratch file; nothing of it goes in the repo
+- the standard's text comes from the pdf with `just iso-text`, into the
+  gitignored `iso-text/`; nothing of it goes in the repo

@@ -1,5 +1,7 @@
 # the day the checker caught the rule
 
+> for agents: dated working notes, terse on purpose. people start at the [readme](../README.md)
+
 a short account of one bug, kept because it shows why the pipeline has two
 readings of the standard and what each is for. the engine is
 `src/context.rs`, the types rule `src/context/types.rs`, the independent

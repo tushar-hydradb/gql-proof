@@ -1,5 +1,7 @@
 # types in the context engine: where we are
 
+> for agents: dated working notes, terse on purpose. people start at the [readme](../README.md)
+
 working notes for whoever picks this up next (a person or an agent). the plan
 this follows is `research/types-engine-plan-2026-10-21.md`; the engine is
 described in `algorithm.md` and `src/context.rs`. pictures of everything below:

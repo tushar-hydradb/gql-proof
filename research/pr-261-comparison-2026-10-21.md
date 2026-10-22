@@ -1,5 +1,7 @@
 # turbolay#261 against gql-proof
 
+> for agents: dated working notes, terse on purpose. people start at the [readme](../README.md)
+
 hydra-db/turbolay#261 ("complete generated models for all 266 ledger rules", vishal via devin, opened 2026-10-20, base `vishal/gql-procedures`, head 37f5216e) adds generated rule tests to turbolay. this compares the two approaches and measures its queries with our coverage
 
 ## the two approaches

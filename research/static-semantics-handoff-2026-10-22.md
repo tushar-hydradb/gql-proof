@@ -1,5 +1,7 @@
 # static semantics: handoff
 
+> for agents: dated working notes, terse on purpose. people start at the [readme](../README.md)
+
 for the agent picking up static semantics. what is known, where it lives, how to
 measure, and the order to close the gaps in. the progress summary for people is
 `research/progress-2026-10-22.md`; the three variable work (performance) is
@@ -11,8 +13,8 @@ measure, and the order to close the gaps in. the progress summary for people is
   argument and the counts) and `research/static-inventory-2026-10-22.jsonl`
   (every syntax rule: clause, rule number, kind, status, file:line evidence, a
   note in our words). made by `tools/inventory/` from the standard's extracted
-  text, which stays out of the repo (`papers/` is ignored; the text is
-  regenerated locally, see the scripts' headers)
+  text, which stays out of the repo (`just iso-text` writes it to the
+  gitignored `iso-text/` from your pdf)
 - the detectors: `tools/inventory/violations.py <sentences...>` finds concrete
   violations of not enforced rules in a sentence set (text level, so lower
   bounds), plus use after delete (dynamic, 22G11)

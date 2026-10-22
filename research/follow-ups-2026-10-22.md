@@ -1,5 +1,7 @@
 # follow-ups after the two-variable typed sets
 
+> for agents: dated working notes, terse on purpose. people start at the [readme](../README.md)
+
 where the branch `tushar/prune` stands on 2026-10-22, evening, and what is
 queued, in the order i would take it. numbers and reasons are in
 `research/pruning-2026-10-22.md`; the proof's shape in `algorithm.md`

@@ -1,5 +1,9 @@
 """Every Syntax Rule of the standard's text, by subclause and number, as jsonl.
-Reads the extracted text of ISO/IEC 39075:2024; output stays outside the repo."""
+Reads the extracted text of ISO/IEC 39075:2024 (`just iso-text` writes it to iso-text/);
+output stays outside the repo.
+
+    python3 -I tools/inventory/extract.py iso-text/39075-2024.txt <out.jsonl>
+"""
 import json, re, sys
 
 src, dst = sys.argv[1], sys.argv[2]
