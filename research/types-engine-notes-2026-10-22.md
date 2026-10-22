@@ -172,6 +172,24 @@ what it says:
   emission later finds unreachable from the start, so the true oracle is a bit
   smaller
 
+## after the count
+
+- `typing_estimate` (merge today's labels that differ only in what they ask of
+  the variable, at one variable): labels 81,406 → 24,795 (÷3.3, 3.1x scope),
+  pushes 31.2M → 2.45M (÷12.7). so typings beat any filter (≤ ÷6)
+- types at 2 variables: no fixed point in 600 s (354k labels and rising,
+  2.75 GB); scope alone is 26k labels in 0.63 s
+- tushar: the goal is a scaling factor that does not grow with the number of
+  variables, at least not exponentially. answer: exact labels are exponential
+  in the variables they describe at once, in the worst case; the way out is to
+  bound how many are typed at once. `research/types-cutoff-2026-10-22.md`
+  argues a typed cap of 2 loses no production or cdrc pair (Has past the cap
+  degrades to opaque, Need past it is rejected). agreed as the direction
+- `research/complexity-2026-10-22.md`: time and space of fixpoint, emission
+  and generation, the factors and how they multiply (per-variable states of
+  scope and types multiply inside the power; pushes are labels squared at
+  binary productions), checked against the measurements
+
 ## open
 - not done from the plan: `purdom --rules all` with types and
   `Verifier::with_types()`, `cover --types` on the #261 corpus, neo4j and
