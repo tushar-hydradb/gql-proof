@@ -15,11 +15,12 @@ use std::sync::LazyLock;
 static ISO: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static BASE: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO));
 
-const RULES: [&str; 12] = [
+const RULES: [&str; 13] = [
     "16.4 SR 14",
     "16.4 SR 6",
     "13.1 SR 5",
     "16.7 SR 8",
+    "16.7 SR 9",
     "16.7 SR 16",
     "16.7 SR 20",
     "16.11 SR 3",
@@ -653,16 +654,6 @@ fn a_questioned_or_zero_quantified_edge_alone_has_no_node() {
         Some("16.7 SR 16"),
     );
     expect(
-        &one(bare_pattern(factor(quantified(fixed(&["0"]))))),
-        PORTABLE,
-        Some("16.7 SR 16"),
-    );
-    expect(
-        &one(bare_pattern(factor(quantified(fixed(&["0b", "0"]))))),
-        PORTABLE,
-        Some("16.7 SR 16"),
-    );
-    expect(
         &one(bare_pattern(factor(quantified(general(
             None,
             Some(&["8"]),
@@ -751,7 +742,7 @@ fn a_union_takes_the_smallest_operand() {
 fn a_repeated_primary_has_a_positive_length() {
     let zero = d(
         "path primary",
-        vec![parens(Some("TRAIL"), factor(quantified(star())))],
+        vec![parens(None, factor(questioned(edge())))],
     );
     expect(
         &one(path_pattern(None, questioned(zero.clone()))),
@@ -790,7 +781,10 @@ fn a_named_subpath_has_a_node() {
         )
     };
     expect(
-        &one(path_pattern(None, named(factor(quantified(fixed(&["0"])))))),
+        &one(path_pattern(
+            None,
+            named(factor(quantified(general(None, Some(&["8"]))))),
+        )),
         PORTABLE,
         Some("16.7 SR 20"),
     );
@@ -802,7 +796,28 @@ fn a_named_subpath_has_a_node() {
 }
 
 #[test]
+fn a_quantifier_does_not_nest_a_quantifier() {
+    let inner = as_primary(parens(None, factor(quantified(plus()))));
+    expect(
+        &one(trail_pattern(factor(quantified_of(inner, plus())))),
+        PORTABLE,
+        Some("16.7 SR 9"),
+    );
+}
+
+#[test]
 fn an_upper_bound_is_not_zero() {
+    // `{0}` is `{0,0}`.
+    expect(
+        &one(path_pattern(None, quantified(fixed(&["0"])))),
+        PORTABLE,
+        Some("16.11 SR 3"),
+    );
+    expect(
+        &one(path_pattern(None, quantified(fixed(&["0b", "0"])))),
+        PORTABLE,
+        Some("16.11 SR 3"),
+    );
     expect(
         &one(path_pattern(
             None,
@@ -929,6 +944,15 @@ fn simplified_shapes() {
         PORTABLE,
         Some("16.12 SR 1"),
     );
+    // Reading: what becomes a label expression holds no direction override either.
+    let override_in_conjunction = conjunction(label(), override_left(label()));
+    expect(
+        &pattern(override_in_conjunction),
+        PORTABLE,
+        Some("16.12 SR 4"),
+    );
+    let override_in_negation = negation(grouped(override_left(label())));
+    expect(&pattern(override_in_negation), PORTABLE, Some("16.12 SR 1"));
 }
 
 #[test]

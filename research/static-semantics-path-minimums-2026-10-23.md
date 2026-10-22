@@ -74,23 +74,40 @@ states, its repeated operands 15, and `simplified path union ::= term | term
 minimum as operands come (it is associative), and 16.12 became an inherited
 context so nothing is synthesized for it
 
+a third cut came from the first long run: the inherited contexts had gone
+down into everything below a negation or a bound, so the identifier characters
+of a label name and the digits of a number had `^inside` and `^want` copies,
+and the cover phase counts every copy's production as a target (that is how
+copies have always counted: `<general quantifier@unguarded>` was a target of
+its own before). the contexts now stop at the simplified and integer
+nonterminals
+
 ```
-                          before (exists-table)      first version         after the cuts
-refined grammar           2,460 nts  5,264 prods     2,932   11,633        2,809   7,339
-scope, 2 slots            32,406 labels 0.97 s       34,272  2.4 s         33,879  2.5 s
-types, 1 slot             33,923 labels 2.49 s       34,896  3.2 s         34,663  3.7 s
-types, 2 slots, cover     547 s, 1.27 GB             (not run)             RUN2
+                          before (exists-table)      first version         final
+refined grammar           2,460 nts  5,264 prods     2,932   11,633        2,728   7,234
+scope, 2 slots            32,406 labels 0.97 s       34,272  2.4 s         33,796  1.3 s
+types, 1 slot             33,923 labels 2.49 s       34,896  3.2 s         34,580  2.6 s
+types, 2 slots, cover     547 s, 1.27 GB             (not run)             549 s, 1.40 GB, fixpoint 44 s
 ```
 
 what is left of the growth: `path pattern union` and `path multiset
 alternation` at 216 productions each (operands with 3 minimums times the
-older rule's guarded-or-not, cubed), the WANT contexts of the integer subtree
-under a bound, and the path family's 3 to 6 copies. the quick fixed points
-were measured beside a running test suite, so their seconds are upper bounds
+older rule's guarded-or-not, cubed), and the path family's 3 to 6 copies
 
 ## what the regenerated set shows
 
-SET
+`sentences/typed-2vars-turbolay-claim-path-minimums.jsonl`: 3,516 rows, 3,481
+distinct (were 2,278 and 2,243): the automata's copies are coverage targets of
+their own, so the cover phase has 4,132 productions and 6,348 cdrc pairs to
+reach instead of 2,990 and 4,943. the never-covered counts are the measure
+that matters and they did not move: 153 productions and 333 pairs, before and
+after (a diff of target names is no measure here, one tree covers many targets
+and the names carry the copy labels). `violations.py`: the path detectors at
+0 on the new set (61 and 24 on the old), nothing else grew; the two 16.11 SR 3
+hits left are upper-below-lower (`{ 8 , 0o2 }`), the open half of that rule.
+the witnesses moved from `MATCH <- ?` to shapes like `MATCH ( TRAIL <- * ) <-`
+and `MATCH DIFFERENT EDGES <- , ALL <-`: a trailing bare edge brings its
+implicit nodes, ALL is not selective
 
 ## turbolay #243 (484d1a72), by `breakdown.py`
 

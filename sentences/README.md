@@ -29,6 +29,14 @@ and `tools/inventory/violations.py` read them as they are
   nodes by 16.7 SR 14), `VALUE { FINISH }` became `VALUE { RETURN COUNT(*) AS
   x }`. turbolay #243 (484d1a72) results in
   `research/static-semantics-exists-table-2026-10-22.md`
+- `typed-2vars-turbolay-claim-path-minimums.jsonl`: the same command on
+  `tushar/exists-table` (2026-10-23), after the path pattern minimums (16.7 SR
+  8, 16, 20, 16.12 SR 1-4, 16.4 SR 12) as automata in `src/refine.rs`. 3,516
+  rows, 3,481 distinct, 549 s, 1.40 GB: more rows because the automata's copies
+  are targets of their own (4,132 productions and 6,348 cdrc pairs to cover,
+  were 2,990 and 4,943), the never-covered counts unchanged at 153 and 333.
+  turbolay #243 (484d1a72) results in
+  `research/static-semantics-path-minimums-2026-10-23.md`
 - `typed-2vars-whole-grammar-before-258437a.jsonl`: types under scope, 2
   variables, whole grammar (no claim), before extraction took the smallest
   context first. 1,228 distinct, each with the `targets` it covers. kept for

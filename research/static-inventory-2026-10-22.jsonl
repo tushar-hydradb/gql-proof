@@ -400,7 +400,7 @@
 {"clause": "16.7", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "defines fixed length pattern"}
 {"clause": "16.7", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "defines minimum path length"}
 {"clause": "16.7", "sr": 8, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "quantified or questioned primary has minimum path length > 0 (PathMinimums; an edge counts its parentheses, SR 14 a)"}
-{"clause": "16.7", "sr": 9, "kind": "constraint", "status": "not modelled", "where": "", "note": "no quantifier directly nested inside a quantified primary"}
+{"clause": "16.7", "sr": 9, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "no quantified primary directly under a quantified primary at the same depth (PathMinimums, QUANT)"}
 {"clause": "16.7", "sr": 10, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:706", "note": "multiset alternation subpath vars distinct; generator allows one per pattern"}
 {"clause": "16.7", "sr": 11, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:966", "note": "union operand references only own or outside vars; generator declares nothing under unions"}
 {"clause": "16.7", "sr": 12, "kind": "definition", "status": "n/a", "where": "", "note": "element WHERE rewritten as parenthesized WHERE"}
@@ -428,12 +428,12 @@
 {"clause": "16.10", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/scope.rs:810", "note": "element reference names a node or edge (group list if group)"}
 {"clause": "16.11", "sr": 1, "kind": "implementation", "status": "not modelled", "where": "", "note": "upper bound limit is implementation-defined; nothing caps quantifier values"}
 {"clause": "16.11", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "normalizes quantifier forms"}
-{"clause": "16.11", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "upper bound 0 is kept out (PathMinimums, src/refine.rs); upper below lower is not: the automaton knows zero or not, not the value"}
+{"clause": "16.11", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "upper bound 0 is kept out, explicit or as a fixed {0} (PathMinimums, src/refine.rs); upper below lower is not: the automaton knows zero or not, not the value"}
 {"clause": "16.11", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "defines variable quantifier"}
-{"clause": "16.12", "sr": 1, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "simplified negation holds no concatenation, quantifier, ? or multiset alternation (SimplifiedShape)"}
+{"clause": "16.12", "sr": 1, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "simplified negation holds no concatenation, quantifier, ?, multiset alternation, nor (reading, NOTE 257) a direction override (SimplifiedShape)"}
 {"clause": "16.12", "sr": 2, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "no nested simplified direction override (SimplifiedShape)"}
 {"clause": "16.12", "sr": 3, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "simplified direction override holds no concatenation, quantifier, ? or alternation (SimplifiedShape)"}
-{"clause": "16.12", "sr": 4, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "simplified conjunction holds no concatenation, quantifier, ? or alternation (SimplifiedShape)"}
+{"clause": "16.12", "sr": 4, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "simplified conjunction holds no concatenation, quantifier, ?, alternation, nor (reading, NOTE 255) a direction override (SimplifiedShape)"}
 {"clause": "16.12", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "parenthesizes simplified expression"}
 {"clause": "16.12", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "rewrites simplified patterns to full ones"}
 {"clause": "16.12", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "applies 16.7 conformance rules to result"}

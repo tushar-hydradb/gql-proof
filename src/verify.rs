@@ -607,6 +607,20 @@ fn syntax_rules<'t>(
                         "a quantified primary of minimum path length 0".into(),
                     ));
                 }
+                if nests_quantifier(node) {
+                    out.push(violation(
+                        &path,
+                        "16.7 SR 9",
+                        "a quantified primary directly under a quantified primary".into(),
+                    ));
+                }
+            }
+            "fixed quantifier" if bound_value(node) == 0 => {
+                out.push(violation(
+                    &path,
+                    "16.11 SR 3",
+                    "a fixed quantifier of 0, an upper bound of 0".into(),
+                ));
             }
             "questioned path primary" | "simplified questioned" if length_zero(node) => {
                 out.push(violation(
@@ -641,11 +655,13 @@ fn syntax_rules<'t>(
             "upper bound" if bound_value(node) == 0 => {
                 out.push(violation(&path, "16.11 SR 3", "an upper bound of 0".into()));
             }
-            "simplified negation" if complex(node) => {
+            "simplified negation"
+                if complex(node) || contains(node, "simplified direction override") =>
+            {
                 out.push(violation(
                     &path,
                     "16.12 SR 1",
-                    "a concatenation, quantifier, ? or multiset alternation in a negation".into(),
+                    "a concatenation, quantifier, ?, alternation or direction override in a negation".into(),
                 ));
             }
             "simplified direction override" => {
@@ -667,12 +683,13 @@ fn syntax_rules<'t>(
                     ));
                 }
             }
-            "simplified conjunction" if complex(node) => {
+            "simplified conjunction"
+                if complex(node) || contains(node, "simplified direction override") =>
+            {
                 out.push(violation(
                     &path,
                     "16.12 SR 4",
-                    "a concatenation, quantifier, ? or multiset alternation in a conjunction"
-                        .into(),
+                    "a concatenation, quantifier, ?, alternation or direction override in a conjunction".into(),
                 ));
             }
             "graph pattern" => {
@@ -945,6 +962,28 @@ fn factor_of_primary(primary: &Plain) -> Factor {
         Some("edge pattern") => Factor::Edge,
         _ => Factor::Other(minimums(primary)),
     }
+}
+
+/// 16.7 SR 9: a quantified primary below this quantified node at the same depth of graph
+/// pattern matching (not inside a WHERE or a filler, where a nested graph pattern starts
+/// its own).
+fn nests_quantifier(node: &Plain) -> bool {
+    fn below(node: &Plain) -> bool {
+        match node {
+            Plain::Def { name, children, .. } => match name.as_str() {
+                "quantified path primary" | "simplified quantified" => true,
+                "graph pattern"
+                | "element pattern filler"
+                | "parenthesized path pattern where clause" => false,
+                _ => children.iter().any(below),
+            },
+            _ => false,
+        }
+    }
+    let Plain::Def { children, .. } = node else {
+        return false;
+    };
+    children.iter().any(below)
 }
 
 /// 16.7 SR 8: what this quantified or questioned node repeats has minimum path length 0.

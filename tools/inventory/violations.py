@@ -57,9 +57,14 @@ def _(s):
 
 @check("16.12: quantifier or ? beside & or ! or a direction override in a simplified pattern")
 def _(s):
+    # `a & b ?` and `a ? & b` are conjunctions with a questioned operand; `< ( a ? )` and
+    # `! ( a b )` hold one inside; `< a ?` and `! a ?` question the override or negation
+    # itself and are fine.
     for m in re.finditer(r"/(.*?)/", s):
         body = m.group(1)
-        if re.search(r"[&!<>~]\s*\(?\s*\w+\s*[?*+{]", body) or re.search(r"\w+\s*[?*+{][^&]*&", body):
+        if re.search(r"&\s*\(?\s*\w+\s*[?*+{]", body) or re.search(r"\w+\s*[?*+{]\s*\)?\s*&", body):
+            return True
+        if re.search(r"[<>~!]\s*\(\s*[^()]*(?:[?*+{]|\w\s+\w)", body):
             return True
     return False
 

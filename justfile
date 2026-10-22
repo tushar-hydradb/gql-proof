@@ -91,7 +91,7 @@ turbolay-typed worktree slots="2" claim="claims/turbolay.claim":
     set -euo pipefail
     grep -q '^serde_json' {{worktree}}/crates/cypher-engine/Cargo.toml || { echo "add serde_json = { workspace = true } to [dev-dependencies] of {{worktree}}/crates/cypher-engine/Cargo.toml" >&2; exit 1; }
     mkdir -p target/engines
-    cargo run --release -q -- context --rule types --slots {{slots}} --join --keys --phase cover --cdrc --sentences --jsonl --rules all --claim {{claim}} > target/engines/turbolay-typed-sentences.jsonl
+    cargo run --release -q -- context --rule types --slots {{slots}} --join --keys --phase cover --cdrc --sentences --jsonl --rules all --claim {{claim}} --match-mode-default different-edges > target/engines/turbolay-typed-sentences.jsonl
     cp tools/engines/turbolay_probe.rs {{worktree}}/crates/cypher-engine/tests/zz_gql_proof.rs
     out=$PWD/target/engines
     (cd {{worktree}} && GQL_PROOF_IN=$out/turbolay-typed-sentences.jsonl GQL_PROOF_OUT=$out/turbolay-typed-results.jsonl cargo test --release -q -p hydradb-cypher-engine --test zz_gql_proof >/dev/null)

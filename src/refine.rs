@@ -397,7 +397,9 @@ impl Rule for DataModifyingModifies {
 /// not, read off the digit tokens of the `<unsigned integer>`; an `<other digit>` counts as
 /// nonzero (the generator spells U+0663). The integer subtree carries that fact only where a
 /// bound asks for it (inherited WANT), so numbers elsewhere are not copied. 16.11 SR 3 a i (an
-/// upper bound is not 0) rides on the same fact; SR 3 a ii (upper below lower) does not.
+/// upper bound is not 0, and `{0}` is `{0,0}`) rides on the same fact; SR 3 a ii (upper below
+/// lower) does not. 16.7 SR 9 (no quantified primary directly under a quantified primary)
+/// is an inherited context like 16.12's, refused outright.
 pub struct PathMinimums;
 
 const NODES: Fact = 12;
@@ -412,9 +414,18 @@ const LB_PRESENT: Fact = 19;
 const NONZERO: Fact = 20;
 /// Inherited: this integer is a quantifier bound, say whether it is zero.
 const WANT: Fact = 21;
+/// Inherited: under a quantified primary at this depth of matching (16.7 SR 9).
+const IN_QUANT: Fact = 30;
 const MINIMUMS: [Fact; 9] = [
     NODES, NO_NODES, LEN, NO_LEN, EDGE, SUBPATH, LB_ZERO, LB_PRESENT, NONZERO,
 ];
+/// Where a depth of graph pattern matching ends: a nested graph pattern starts its own.
+const DEPTH_ENDS: [&str; 3] = [
+    "graph pattern",
+    "element pattern filler",
+    "parenthesized path pattern where clause",
+];
+const QUANTIFIED: [&str; 2] = ["quantified path primary", "simplified quantified"];
 
 /// The state with exactly these minimums.
 fn minima(s: State, nodes: bool, len: bool) -> State {
@@ -426,7 +437,7 @@ fn minima(s: State, nodes: bool, len: bool) -> State {
 
 const BOUNDS: [&str; 3] = ["lower bound", "upper bound", "fixed quantifier"];
 /// The integer subtree a bound's WANT reaches into, and no further.
-const INTEGERS: [&str; 10] = [
+const INTEGERS: [&str; 11] = [
     "unsigned integer",
     "unsigned decimal integer",
     "unsigned hexadecimal integer",
@@ -434,6 +445,7 @@ const INTEGERS: [&str; 10] = [
     "unsigned binary integer",
     "digit",
     "standard digit",
+    "other digit",
     "hex digit",
     "octal digit",
     "binary digit",
@@ -460,7 +472,7 @@ impl Rule for PathMinimums {
     }
 
     fn cite(&self) -> &str {
-        "16.7 SR 8, 16, 20: a quantified or questioned primary has a positive minimum path length, a path pattern and a named subpath a positive minimum node count; 16.11 SR 3: an upper bound is not 0"
+        "16.7 SR 8, 9, 16, 20: a quantified or questioned primary has a positive minimum path length and no quantified primary inside, a path pattern and a named subpath a positive minimum node count; 16.11 SR 3: an upper bound is not 0"
     }
 
     fn labels(&self) -> Vec<(Fact, String)> {
@@ -475,6 +487,7 @@ impl Rule for PathMinimums {
             (LB_PRESENT, "lb"),
             (NONZERO, "nonzero"),
             (WANT, "want"),
+            (IN_QUANT, "in-quant"),
         ])
     }
 
@@ -489,9 +502,23 @@ impl Rule for PathMinimums {
         if asks || within {
             out.set(WANT, true);
         }
+        // 16.7 SR 9: what a quantifier repeats, to the end of this depth of matching.
+        let repeats = QUANTIFIED.contains(&node.def)
+            && matches!(child, Some("path primary" | "simplified tertiary"));
+        let below = inh.has(IN_QUANT) && !child.is_some_and(|c| DEPTH_ENDS.contains(&c));
+        if repeats || below {
+            out.set(IN_QUANT, true);
+        }
+    }
+
+    fn rejects(&self, node: &Node, inh: &State) -> bool {
+        inh.has(IN_QUANT) && QUANTIFIED.contains(&node.def)
     }
 
     fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if self.rejects(node, inh) {
+            return None;
+        }
         if inh.has(WANT) {
             // Inside a bound's integer: a digit token other than 0, or a non-ASCII digit.
             let nonzero = node.items.iter().any(|i| match i {
@@ -522,10 +549,12 @@ impl Rule for PathMinimums {
                 let s = s.without(NONZERO).with(LB_PRESENT);
                 if zero { s.with(LB_ZERO) } else { s }
             }
+            // 16.11 SR 2 c and 3 a i: `{0}` is `{0,0}`, an upper bound of 0.
             "fixed quantifier" => {
-                let zero = !s.has(NONZERO);
-                let s = s.without(NONZERO);
-                if zero { s.with(LB_ZERO) } else { s }
+                if !s.has(NONZERO) {
+                    return None;
+                }
+                s.without(NONZERO)
             }
             "upper bound" => {
                 if !s.has(NONZERO) {
@@ -601,26 +630,28 @@ impl Rule for PathMinimums {
 /// 16.12 SR 1-4: a simplified negation, conjunction or direction override holds no
 /// concatenation, quantifier, `?` or multiset alternation, and an override no other override.
 ///
-/// Inherited, not synthesized: being below one of those is a context, and the four forbidden
+/// Reading: SR 6 turns a negation or conjunction into a label expression (NOTE 255, 257), so
+/// a direction override inside one is a non-label construct and is refused too, as it is
+/// inside an override (SR 2).
+///
+/// Inherited, not synthesized: being below one of those is a context, and the forbidden
 /// nodes are refused in it outright. That keeps the simplified nonterminals' states to their
 /// minimums, so a union of them stays a few productions.
 pub struct SimplifiedShape;
 
 /// Inherited: below a negation, conjunction or direction override.
 const INSIDE: Fact = 22;
-/// Inherited: below a direction override.
-const IN_OVERRIDE: Fact = 23;
-const COMPLEX: [&str; 4] = [
+const COMPLEX: [&str; 5] = [
     "simplified concatenation",
     "simplified quantified",
     "simplified questioned",
     "simplified multiset alternation",
+    "simplified direction override",
 ];
 
 impl SimplifiedShape {
     fn breaks(def: &str, inh: &State) -> bool {
-        (inh.has(INSIDE) && COMPLEX.contains(&def))
-            || (inh.has(IN_OVERRIDE) && def == "simplified direction override")
+        inh.has(INSIDE) && COMPLEX.contains(&def)
     }
 }
 
@@ -634,7 +665,7 @@ impl Rule for SimplifiedShape {
     }
 
     fn labels(&self) -> Vec<(Fact, String)> {
-        labels(&[(INSIDE, "inside"), (IN_OVERRIDE, "in-override")])
+        labels(&[(INSIDE, "inside")])
     }
 
     fn bookkeeping(&self) -> bool {
@@ -652,9 +683,6 @@ impl Rule for SimplifiedShape {
         );
         if inh.has(INSIDE) || opens {
             out.set(INSIDE, true);
-        }
-        if inh.has(IN_OVERRIDE) || node.def == "simplified direction override" {
-            out.set(IN_OVERRIDE, true);
         }
     }
 

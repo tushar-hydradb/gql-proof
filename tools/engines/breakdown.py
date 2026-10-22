@@ -21,6 +21,8 @@ OURS = [
     ("TRIM ... FROM needs", "20.24 SR 3: TRIM with a bare FROM"),
     ("under DIFFERENT EDGES a selective", "16.4 SR 12: selective pattern not alone"),
     ("a VALUE subquery returns at most one row", "20.6 SR 10: VALUE body not one row"),
+    ("quantified primaries do not nest", "16.7 SR 9: quantifier directly under a quantifier"),
+    ("a quantifier's upper bound is greater than 0", "16.11 SR 3: upper bound 0"),
 ]
 
 
@@ -37,6 +39,8 @@ def bucket(r):
         return "ours: invalid sentence", "21.3 SR 4: empty identifier in a parameter"
     if "NULL . " in s:
         return "ours: invalid sentence", "20.11: property of NULL"
+    if "bounds are at most" in m:
+        return "engine: documented deviation", "IL018: a quantifier bound above 255"
     if st == "42002":
         return "environment", "no parameters passed by the runner"
     if st.startswith("22"):
