@@ -124,6 +124,14 @@ pub trait Context {
     fn compatible(&self, _node: &Node, _pos: usize, _partial: u64, _child: u64) -> bool {
         true
     }
+    /// Whether a partial label of a ground walk can no longer finish within `target`: slot
+    /// `j` of `partial` becomes slot `map[j]` of the finished label (`None` if it closes on
+    /// the way), and what a slot asks only grows along a walk, so a partial already asking
+    /// more of a slot than `target` does there is a dead end. A rule that cannot tell says
+    /// false.
+    fn narrower(&self, _partial: &Self::Label, _map: &[Option<Slot>], _target: &Self::Label) -> bool {
+        false
+    }
 }
 
 /// A position's options grouped by [`Context::child_key`], so that a scan pushes a partial
@@ -388,12 +396,25 @@ impl<'a, C: Context> Engine<'a, C> {
         let (Sym::Nt(c), Opt::Label(l)) = (sym, o) else {
             return vec![o.clone()];
         };
-        let made = match self.parts[c as usize].get(l) {
-            Some(parts) => parts.clone(),
-            None => vec![l.clone()],
+        let mut made: Vec<&C::Label> = match self.parts[c as usize].get(l) {
+            Some(parts) => parts.iter().collect(),
+            None => vec![l],
         };
-        let grounds: BTreeSet<C::Label> = made.iter().flat_map(|m| self.ctx.grounds(m)).collect();
-        grounds.into_iter().map(Opt::Label).collect()
+        // Cheapest first: a walk that takes the first candidate with a witness then takes
+        // the smallest tree, and a label absorbed by one asking less lists every label of
+        // its key, hundreds at an expression, which label order would try in no useful
+        // order.
+        made.sort_by_key(|m| self.labels[c as usize].get(*m).copied().unwrap_or(u64::MAX));
+        let mut seen = BTreeSet::new();
+        let mut out = Vec::new();
+        for m in made {
+            for g in self.ctx.grounds(m) {
+                if seen.insert(g.clone()) {
+                    out.push(Opt::Label(g));
+                }
+            }
+        }
+        out
     }
 
     fn prod_stats<'s>(&self, stats: &'s mut Stats, p: ProdId) -> &'s mut ProdStats {
@@ -903,6 +924,7 @@ impl<'a, C: Context> Engine<'a, C> {
                 None,
                 &|l| self.ctx.within(target, l),
                 &|_, _| true,
+                Some(target),
                 &[false, true],
             )?;
             Some(ground)
@@ -922,6 +944,7 @@ impl<'a, C: Context> Engine<'a, C> {
         fixed: Option<(usize, &Opt<C::Label>)>,
         accept: &dyn Fn(&C::Label) -> bool,
         child_ok: &dyn Fn(usize, &Opt<C::Label>) -> bool,
+        target: Option<&C::Label>,
         modes: &[bool],
     ) -> Option<(Instance<C::Label>, C::Label)> {
         let node = self.node(p);
@@ -947,8 +970,11 @@ impl<'a, C: Context> Engine<'a, C> {
                 fixed,
                 accept,
                 child_ok,
+                target,
                 wide,
                 failed: RefCell::new(BTreeSet::new()),
+                bad: RefCell::new(BTreeSet::new()),
+                good: RefCell::new(BTreeSet::new()),
             };
             let mut chosen = Vec::with_capacity(opts.len());
             let mut steps = Vec::with_capacity(opts.len());
@@ -982,10 +1008,33 @@ impl<'a, C: Context> Engine<'a, C> {
     ) -> Option<(C::Label, Link)> {
         let pos = chosen.len();
         if pos == w.opts.len() {
-            return self
+            let mut rejected = 0;
+            let found = self
                 .finish(w.p, w.node, &partial)
                 .into_iter()
-                .find(|(l, link)| (w.wide || *link == w.shape.finish) && (w.accept)(l));
+                .filter(|(_, link)| w.wide || *link == w.shape.finish)
+                .find(|(l, _)| {
+                    let ok = (w.accept)(l);
+                    rejected += !ok as u64;
+                    ok
+                });
+            self.stats.borrow_mut().emit.ground_accept_rejected += rejected;
+            let found = found?;
+            // A finished, accepted completion: now every chosen child needs a witness.
+            for (i, candidate) in chosen.iter().enumerate() {
+                let key = (i, candidate.clone());
+                if w.good.borrow().contains(&key) {
+                    continue;
+                }
+                if (w.child_ok)(i, candidate) {
+                    w.good.borrow_mut().insert(key);
+                } else {
+                    self.stats.borrow_mut().emit.ground_child_rejected += 1;
+                    w.bad.borrow_mut().insert(key);
+                    return None;
+                }
+            }
+            return Some(found);
         }
         if w.failed.borrow().contains(&(pos, partial.clone())) {
             return None;
@@ -995,7 +1044,9 @@ impl<'a, C: Context> Engine<'a, C> {
             Some((at, o)) if at == pos => vec![o.clone()],
             _ if w.wide => {
                 let mut all = self.ground_options(sym, &w.opts[pos]);
-                for (o, _) in self.options(sym) {
+                let mut options = self.options(sym);
+                options.sort_by_key(|(_, size)| *size);
+                for (o, _) in options {
                     all.extend(self.ground_options(sym, &o));
                 }
                 let mut seen = BTreeSet::new();
@@ -1005,14 +1056,39 @@ impl<'a, C: Context> Engine<'a, C> {
             _ => self.ground_options(sym, &w.opts[pos]),
         };
         for candidate in candidates {
-            if !(w.child_ok)(pos, &candidate) {
+            if w.bad.borrow().contains(&(pos, candidate.clone())) {
                 continue;
             }
+            self.stats.borrow_mut().emit.ground_candidates += 1;
             for (q, link) in self.push(w.p, w.node, pos, &partial, &candidate) {
                 if !w.wide && link != w.shape.links[pos] {
                     continue;
                 }
                 let slots = self.ctx.slots(&q);
+                // In a narrow walk the links ahead are the instance's: where each slot of
+                // `q` ends up in the finished label is known, so a partial already past the
+                // target is cut here.
+                if let Some(target) = w.target
+                    && !w.wide
+                {
+                    let width = self.ctx.slots(target);
+                    let map: Vec<Option<Slot>> = (0..slots as Slot)
+                        .map(|mut j| {
+                            for k in pos + 1..w.opts.len() {
+                                j = w.shape.links[k].0.get(j as usize).copied().flatten()?;
+                                if j as usize >= w.shape.partial[k + 1] {
+                                    return None;
+                                }
+                            }
+                            let j = w.shape.finish.0.get(j as usize).copied().flatten()?;
+                            ((j as usize) < width).then_some(j)
+                        })
+                        .collect();
+                    if self.ctx.narrower(&q, &map, target) {
+                        self.stats.borrow_mut().emit.ground_narrowed += 1;
+                        continue;
+                    }
+                }
                 chosen.push(candidate.clone());
                 steps.push((link, slots));
                 if let Some(found) = self.ground_from(w, q, chosen, steps) {
@@ -1227,10 +1303,18 @@ struct Walk<'w, L> {
     /// Whether a ground candidate may be tried at a position at all (extraction: it has a
     /// witness). Decided per position, so the failure memo below stays valid.
     child_ok: &'w dyn Fn(usize, &Opt<L>) -> bool,
+    /// The label the finished one must lie within, if the walk has one: partial labels that
+    /// already ask more are cut ([`Context::narrower`]).
+    target: Option<&'w L>,
     /// Any option at the other positions, not only the instance's, and any links.
     wide: bool,
     /// Partial labels at a position no completion was found from.
     failed: RefCell<BTreeSet<(usize, L)>>,
+    /// Candidates at a position found to have no witness, and ones found to have one. A
+    /// witness is looked for only once a completion has finished and been accepted: a
+    /// candidate on a branch that never finishes is never searched for.
+    bad: RefCell<BTreeSet<(usize, Opt<L>)>>,
+    good: RefCell<BTreeSet<(usize, Opt<L>)>>,
 }
 
 /// The grammar whose derivation trees are, up to the names of variables, exactly `cfg`'s
@@ -1285,6 +1369,21 @@ impl<'a, C: Context> Analyzed<'a, C> {
     /// whose made labels are lost (must be none; see `Engine::add`).
     pub fn orphaned_options(&self) -> (usize, usize) {
         self.e.orphaned_options()
+    }
+
+    /// The labels productions of `nt` made, before any join: every live label's parts, and
+    /// the labels that joined nothing.
+    pub fn made(&self, nt: NtId) -> Vec<&C::Label> {
+        let mut out: BTreeSet<&C::Label> = BTreeSet::new();
+        for l in self.e.labels[nt as usize].keys() {
+            match self.e.parts[nt as usize].get(l) {
+                Some(parts) => out.extend(parts.iter()),
+                None => {
+                    out.insert(l);
+                }
+            }
+        }
+        out.into_iter().collect()
     }
 
     /// Scans production `p` once more, alone, with fresh counters.
@@ -1427,6 +1526,7 @@ impl<'a, C: Context> Analyzed<'a, C> {
                                                 Some((pos, &g)),
                                                 &|_| true,
                                                 &|_, _| true,
+                                                None,
                                                 &[false, true],
                                             )
                                         else {
@@ -1578,6 +1678,7 @@ impl<'a, C: Context> Analyzed<'a, C> {
                                     Some((pos, &g)),
                                     &fits,
                                     &|_, _| true,
+                                    None,
                                     &[false, true],
                                 )
                             else {

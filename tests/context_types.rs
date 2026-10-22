@@ -834,3 +834,69 @@ fn extraction_matches_emission() {
 }
 
 mod common;
+
+/// With joins, every ground of every made label is a ground of some label of the exact
+/// (unjoined) fixed point: a joined label never stands for a tree that does not exist. One
+/// variable; prints the phantoms per nonterminal, worst first. `GQL_NT` narrows the print to
+/// one nonterminal and lists its phantoms with the made labels they come from.
+#[test]
+#[ignore]
+fn joined_grounds_are_exact() {
+    use gql_proof::context::Context;
+    use gql_proof::context::scope::Caps;
+    use std::collections::BTreeMap;
+    let rule = Typed::new(
+        Scope {
+            caps: Caps {
+                slots: 1,
+                references: 1,
+            },
+        },
+        Types::new(&BASE),
+    );
+    let run = |join: bool| {
+        gql_proof::context::analyze(
+            &BASE,
+            &rule,
+            &Options {
+                progress: false,
+                join,
+                keys: true,
+                ..Options::default()
+            },
+        )
+        .unwrap()
+    };
+    let (exact, joined) = (run(false), run(true));
+    let only = std::env::var("GQL_NT").ok();
+    let mut rows: Vec<(usize, usize, String)> = Vec::new();
+    let mut total = 0;
+    for nt in 0..BASE.nts.len() as u32 {
+        let truth: BTreeSet<<Typed<Scope, Types> as Context>::Label> =
+            exact.labels(nt).flat_map(|l| rule.grounds(l)).collect();
+        let mut phantoms: BTreeMap<_, Vec<String>> = BTreeMap::new();
+        for m in joined.made(nt) {
+            for g in rule.grounds(m) {
+                if !truth.contains(&g) {
+                    phantoms.entry(g).or_default().push(rule.show(m));
+                }
+            }
+        }
+        if phantoms.is_empty() {
+            continue;
+        }
+        total += phantoms.len();
+        rows.push((phantoms.len(), truth.len(), BASE.nts[nt as usize].name.clone()));
+        if only.as_deref() == Some(BASE.nts[nt as usize].name.as_str()) {
+            for (g, from) in phantoms.iter().take(12) {
+                eprintln!("  phantom [{}] from {:?}", rule.show(g), from);
+            }
+        }
+    }
+    rows.sort_unstable_by(|a, b| b.cmp(a));
+    eprintln!("{total} phantom grounds over {} nonterminals", rows.len());
+    for (n, truth, name) in rows.iter().take(20) {
+        eprintln!("  {n:>6} phantoms, {truth:>6} true grounds  <{name}>");
+    }
+    assert_eq!(total, 0);
+}

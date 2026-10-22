@@ -75,6 +75,10 @@ enum Ctx<L> {
 pub struct ExtractStats {
     pub witness_searches: u64,
     pub context_searches: u64,
+    pub witness_failed: u64,
+    pub context_failed: u64,
+    /// Per nonterminal: failed witness and context searches.
+    pub failed_by_nt: BTreeMap<NtId, (u64, u64)>,
     pub ahead_tables: u64,
     pub ahead_nanos: u64,
     pub search_nanos: u64,
@@ -227,17 +231,30 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
         {
             let s = self.stats.borrow();
             let g = self.e.stats.borrow().emit.clone();
+            let mut worst: Vec<(&NtId, &(u64, u64))> = s.failed_by_nt.iter().collect();
+            worst.sort_by_key(|(_, (w, c))| std::cmp::Reverse(w + c));
+            let worst: Vec<String> = worst
+                .iter()
+                .take(5)
+                .map(|(nt, (w, c))| format!("<{}> {w}w/{c}c", self.cfg().name(**nt)))
+                .collect();
             eprintln!(
-                "searching: {} witness and {} context searches, {} in progress, {} ahead tables, ground {} narrow / {} wide / {} failed ({:.1} s), {:?}",
+                "searching: witness {} ({} failed), context {} ({} failed), {} in progress, {} ahead tables; ground {} narrow / {} wide / {} failed, candidates {} ({} no witness, {} no context, {} narrowed), {:?}\n  failing most: {}",
                 s.witness_searches,
+                s.witness_failed,
                 s.context_searches,
+                s.context_failed,
                 self.stack.borrow().len(),
                 s.ahead_tables,
                 g.ground_narrow,
                 g.ground_wide,
                 g.ground_failed,
-                g.ground_nanos as f64 / 1e9,
-                self.began.elapsed()
+                g.ground_candidates,
+                g.ground_child_rejected,
+                g.ground_accept_rejected,
+                g.ground_narrowed,
+                self.began.elapsed(),
+                worst.join(", ")
             );
             self.said.set(Some(Instant::now()));
         }
@@ -257,9 +274,55 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             stack.len()
         };
         self.stack.borrow_mut().push(key.clone());
+        if depth == 200 && std::env::var("GQL_DEBUG_STACK").is_ok() {
+            // Once: what a deep chain is made of, as runs of nonterminals.
+            let stack = self.stack.borrow();
+            let mut runs: Vec<(String, usize, bool)> = Vec::new();
+            for (c, n, g) in stack.iter().take(40) {
+                let name = format!("{} [{}]", self.cfg().name(*n), self.e.ctx.show(g));
+                match runs.last_mut() {
+                    Some((last, count, lc)) if *last == name && *lc == *c => *count += 1,
+                    _ => runs.push((name, 1, *c)),
+                }
+            }
+            let shown: Vec<String> = runs
+                .iter()
+                .map(|(n, k, c)| format!("{}{n}×{k}", if *c { "ctx " } else { "" }))
+                .collect();
+            eprintln!("stack at depth 200:\n  {}", shown.join("\n  "));
+        }
         let saved = self.lowest.replace(usize::MAX);
         let v = compute();
         self.stack.borrow_mut().pop();
+        if v.is_none() {
+            let mut s = self.stats.borrow_mut();
+            let failed = s.witness_failed + s.context_failed;
+            if std::env::var("GQL_DEBUG_FAILS")
+                .ok()
+                .and_then(|n| n.parse::<u64>().ok())
+                .is_some_and(|n| failed < n)
+            {
+                eprintln!(
+                    "failed {} search #{failed}: <{}> [{}] (hit {}, depth {})",
+                    if context { "context" } else { "witness" },
+                    self.cfg().name(nt),
+                    self.e.ctx.show(g),
+                    self.lowest.get(),
+                    self.stack.borrow().len()
+                );
+            }
+            if context {
+                s.context_failed += 1;
+            } else {
+                s.witness_failed += 1;
+            }
+            let by = s.failed_by_nt.entry(nt).or_default();
+            if context {
+                by.1 += 1;
+            } else {
+                by.0 += 1;
+            }
+        }
         let hit = self.lowest.get();
         if v.is_some() || hit >= depth {
             memo.borrow_mut().insert((nt, g.clone()), v.clone());
@@ -309,9 +372,43 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                 }
             }
             candidates.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-            candidates
+            let debug = std::env::var("GQL_DEBUG_NT").is_ok_and(|n| n == self.cfg().name(nt));
+            let shown: Vec<String> = if debug {
+                candidates
+                    .iter()
+                    .map(|(c, p, r)| {
+                        let pre = &self.prepared[*p as usize];
+                        let opts = self
+                            .e
+                            .smallest(*p, &pre.layers, &pre.ends, r)
+                            .map(|(opts, _)| {
+                                opts.iter()
+                                    .map(|o| match o {
+                                        Opt::Token => "tok".to_string(),
+                                        Opt::Label(l) => format!("[{}]", self.e.ctx.show(l)),
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(" ")
+                            })
+                            .unwrap_or_default();
+                        format!("{c} {} [{}]\n      from {opts}", crate::describe(self.cfg(), *p), self.e.ctx.show(r))
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            let found = candidates
                 .into_iter()
-                .find_map(|(_, p, r)| self.witness_with(p, r, g))
+                .find_map(|(_, p, r)| self.witness_with(p, r, g));
+            if debug && found.is_none() {
+                eprintln!(
+                    "no witness for <{}> within [{}]; made labels tried:\n  {}",
+                    self.cfg().name(nt),
+                    self.e.ctx.show(g),
+                    shown.join("\n  ")
+                );
+            }
+            found
         })
     }
 
@@ -328,6 +425,7 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             None,
             &|l| self.e.ctx.within(g, l),
             &|pos, o| self.child_ok(p, pos, o),
+            Some(g),
             &[false, true],
         )?;
         Some(self.node_of(p, ground, out, None))
@@ -446,7 +544,7 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             };
             if let Some((ground, out)) =
                 self.e
-                    .ground(q, &instance, Some((j, &fixed)), &accept, &child_ok, &[false])
+                    .ground(q, &instance, Some((j, &fixed)), &accept, &child_ok, None, &[false])
             {
                 return Some(found(ground, out));
             }
@@ -456,7 +554,7 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             let (r, _) = pre.ends.iter().min_by_key(|(_, (c, _, _))| *c)?;
             self.e.smallest(q, &pre.layers, &pre.ends, r)
         })?;
-        let (ground, out) = self.e.ground(q, &seed, Some((j, &fixed)), &accept, &child_ok, &[true])?;
+        let (ground, out) = self.e.ground(q, &seed, Some((j, &fixed)), &accept, &child_ok, None, &[true])?;
         Some(found(ground, out))
     }
 

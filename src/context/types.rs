@@ -1677,6 +1677,17 @@ impl Under<Scope> for Types {
         }
     }
 
+    /// A set only shrinks along a walk (every step meets), so a partial asking more of a slot
+    /// than the target does of the slot it becomes cannot finish within the target.
+    fn narrower(&self, partial: &Label, map: &[Option<Slot>], target: &Label) -> bool {
+        map.iter().enumerate().any(|(j, o)| {
+            o.is_some_and(|o| {
+                let (p, t) = (partial.vars.get(j), target.vars.get(o as usize));
+                matches!((p, t), (Some(p), Some(t)) if !within(*t, *p))
+            })
+        })
+    }
+
     fn compatible(&self, node: &Node, pos: usize, partial: u32, child: u32) -> bool {
         match Site::of(node, pos) {
             // 22.13, 22.14: as `comparable`, by family.
