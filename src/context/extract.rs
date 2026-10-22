@@ -75,6 +75,8 @@ enum Ctx<L> {
 pub struct ExtractStats {
     pub witness_searches: u64,
     pub context_searches: u64,
+    pub joined_searches: u64,
+    pub joined_failed: u64,
     pub witness_failed: u64,
     pub context_failed: u64,
     /// Per nonterminal: failed witness and context searches.
@@ -110,6 +112,10 @@ pub struct Extractor<'e, 'a, C: Context> {
     fillable: Vec<bool>,
     /// Per nonterminal: each made label and the productions that make it.
     makers: Vec<BTreeMap<C::Label, Vec<ProdId>>>,
+    /// Per nonterminal: the live labels some context to the top takes, at the joined level
+    /// (the closure emission ran, without grounding). Necessary for every ground within one
+    /// of them: a push that refuses a live label refuses every narrower one.
+    reached: Vec<BTreeSet<C::Label>>,
     witnesses: RefCell<BTreeMap<(NtId, C::Label), Option<Rc<XNode<C::Label>>>>>,
     contexts: RefCell<BTreeMap<(NtId, C::Label), Option<Rc<Ctx<C::Label>>>>>,
     /// The searches in progress (true for a context search), and the shallowest one the
@@ -127,7 +133,9 @@ pub struct Extractor<'e, 'a, C: Context> {
     stats: RefCell<ExtractStats>,
 }
 
-type Key<L> = (bool, NtId, L);
+/// A search in progress: its kind (0 a witness, 1 a context, 2 a joined-level context), the
+/// nonterminal and the label.
+type Key<L> = (u8, NtId, L);
 
 impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
     pub(super) fn new(e: &'e Engine<'a, C>, start: NtId, leaf: &dyn LeafProvider) -> Self {
@@ -146,9 +154,14 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                 })
             })
             .collect();
+        // Every production scanned once more against the final live labels: the layers the
+        // fixed point kept hold partial labels made from options as they were when each scan
+        // ran, before later joins replaced them, and every table here must agree with the
+        // labels the searches push.
         let prepared: Vec<Prepared<C::Label>> = (0..cfg.prods.len() as ProdId)
             .map(|p| {
-                let layers = e.kept_layers(p);
+                e.cache.borrow_mut().remove(&p);
+                let layers = e.layers(p);
                 let ends = e.ends(p, &layers);
                 Prepared {
                     layers,
@@ -157,6 +170,24 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                 }
             })
             .collect();
+        let mut live: Vec<BTreeMap<C::Label, C::Label>> = vec![BTreeMap::new(); cfg.nts.len()];
+        for (nt, labels) in e.labels.iter().enumerate() {
+            for l in labels.keys() {
+                if !e.live(nt, l) {
+                    continue;
+                }
+                match e.parts[nt].get(l) {
+                    Some(parts) => {
+                        for m in parts {
+                            live[nt].insert(m.clone(), l.clone());
+                        }
+                    }
+                    None => {
+                        live[nt].insert(l.clone(), l.clone());
+                    }
+                }
+            }
+        }
         let mut makers: Vec<BTreeMap<C::Label, Vec<ProdId>>> = vec![BTreeMap::new(); cfg.nts.len()];
         for (p, pre) in prepared.iter().enumerate() {
             let lhs = cfg.prods[p].lhs as usize;
@@ -172,12 +203,21 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                 began.elapsed()
             );
         }
+        let reached = reach(e, &prepared, &live, &fillable, start);
+        if e.options.progress {
+            eprintln!(
+                "extraction: {} live labels reached at the joined level in {:?}",
+                reached.iter().map(BTreeSet::len).sum::<usize>(),
+                began.elapsed()
+            );
+        }
         Extractor {
             e,
             start,
             prepared,
             fillable,
             makers,
+            reached,
             witnesses: RefCell::new(BTreeMap::new()),
             contexts: RefCell::new(BTreeMap::new()),
             stack: RefCell::new(Vec::new()),
@@ -218,7 +258,7 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
     fn search<T: Clone>(
         &self,
         memo: &RefCell<BTreeMap<(NtId, C::Label), Option<T>>>,
-        context: bool,
+        kind: u8,
         nt: NtId,
         g: &C::Label,
         compute: impl FnOnce() -> Option<T>,
@@ -239,11 +279,13 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                 .map(|(nt, (w, c))| format!("<{}> {w}w/{c}c", self.cfg().name(**nt)))
                 .collect();
             eprintln!(
-                "searching: witness {} ({} failed), context {} ({} failed), {} in progress, {} ahead tables; ground {} narrow / {} wide / {} failed, candidates {} ({} no witness, {} no context, {} narrowed), {:?}\n  failing most: {}",
+                "searching: witness {} ({} failed), context {} ({} failed), joined {} ({} failed), {} in progress, {} ahead tables; ground {} narrow / {} wide / {} failed, candidates {} ({} no witness, {} no context, {} narrowed), {:?}\n  failing most: {}",
                 s.witness_searches,
                 s.witness_failed,
                 s.context_searches,
                 s.context_failed,
+                s.joined_searches,
+                s.joined_failed,
                 self.stack.borrow().len(),
                 s.ahead_tables,
                 g.ground_narrow,
@@ -258,7 +300,7 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             );
             self.said.set(Some(Instant::now()));
         }
-        let key = (context, nt, g.clone());
+        let key = (kind, nt, g.clone());
         let depth = {
             let stack = self.stack.borrow();
             if let Some(i) = stack.iter().position(|k| *k == key) {
@@ -277,7 +319,7 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
         if depth == 200 && std::env::var("GQL_DEBUG_STACK").is_ok() {
             // Once: what a deep chain is made of, as runs of nonterminals.
             let stack = self.stack.borrow();
-            let mut runs: Vec<(String, usize, bool)> = Vec::new();
+            let mut runs: Vec<(String, usize, u8)> = Vec::new();
             for (c, n, g) in stack.iter().take(40) {
                 let name = format!("{} [{}]", self.cfg().name(*n), self.e.ctx.show(g));
                 match runs.last_mut() {
@@ -287,7 +329,7 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             }
             let shown: Vec<String> = runs
                 .iter()
-                .map(|(n, k, c)| format!("{}{n}×{k}", if *c { "ctx " } else { "" }))
+                .map(|(n, k, c)| format!("{}{n}×{k}", ["", "ctx ", "joined "][*c as usize]))
                 .collect();
             eprintln!("stack at depth 200:\n  {}", shown.join("\n  "));
         }
@@ -304,23 +346,23 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             {
                 eprintln!(
                     "failed {} search #{failed}: <{}> [{}] (hit {}, depth {})",
-                    if context { "context" } else { "witness" },
+                    ["witness", "context", "joined"][kind as usize],
                     self.cfg().name(nt),
                     self.e.ctx.show(g),
                     self.lowest.get(),
                     self.stack.borrow().len()
                 );
             }
-            if context {
-                s.context_failed += 1;
-            } else {
-                s.witness_failed += 1;
+            match kind {
+                0 => s.witness_failed += 1,
+                1 => s.context_failed += 1,
+                _ => s.joined_failed += 1,
             }
             let by = s.failed_by_nt.entry(nt).or_default();
-            if context {
-                by.1 += 1;
-            } else {
+            if kind == 0 {
                 by.0 += 1;
+            } else {
+                by.1 += 1;
             }
         }
         let hit = self.lowest.get();
@@ -338,10 +380,13 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             };
             if v.is_none() {
                 for (c, n, l) in settled {
-                    if c {
-                        self.contexts.borrow_mut().insert((n, l), None);
-                    } else {
-                        self.witnesses.borrow_mut().insert((n, l), None);
+                    match c {
+                        0 => {
+                            self.witnesses.borrow_mut().insert((n, l), None);
+                        }
+                        _ => {
+                            self.contexts.borrow_mut().insert((n, l), None);
+                        }
                     }
                 }
             }
@@ -358,7 +403,7 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
 
     /// The smallest ground tree of `nt` whose label `g` lies within.
     pub fn witness(&self, nt: NtId, g: &C::Label) -> Option<Rc<XNode<C::Label>>> {
-        self.search(&self.witnesses, false, nt, g, || {
+        self.search(&self.witnesses, 0, nt, g, || {
             self.stats.borrow_mut().witness_searches += 1;
             let mut candidates: Vec<(u64, ProdId, &C::Label)> = Vec::new();
             for &p in &self.cfg().nts[nt as usize].prods {
@@ -480,10 +525,18 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
 
     /// A ground context from a node of `nt` with label `g` to the top.
     fn up(&self, nt: NtId, g: &C::Label) -> Option<Rc<Ctx<C::Label>>> {
-        self.search(&self.contexts, true, nt, g, || {
+        self.search(&self.contexts, 1, nt, g, || {
             self.stats.borrow_mut().context_searches += 1;
             if nt == self.start && (self.e.options.any_top || self.e.ctx.top(g)) {
                 return Some(Rc::new(Ctx::Top));
+            }
+            // No live label `g` lies within has a context at the joined level: none of its
+            // grounds has one either.
+            if !self.reached[nt as usize]
+                .iter()
+                .any(|l| self.e.ctx.within(g, l))
+            {
+                return None;
             }
             let cfg = self.cfg();
             for &q in &self.e.users[nt as usize] {
@@ -844,6 +897,118 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             stats,
         }
     }
+}
+
+/// The live labels some context to the top takes, per nonterminal: the closure emission
+/// runs (`Analyzed::emit`), without grounding or a grammar. A reached label's productions
+/// contribute the child options of its smallest instance; one backward pass per production
+/// gives every option the label its cheapest instance makes, taken once that label's live
+/// label is reached; options whose label is never reached get a pass against the labels that
+/// are, again whenever more of them are (lemma 2 of `research/totality-2026-10-21.md`).
+fn reach<C: Context>(
+    e: &Engine<'_, C>,
+    prepared: &[Prepared<C::Label>],
+    live: &[BTreeMap<C::Label, C::Label>],
+    fillable: &[bool],
+    start: NtId,
+) -> Vec<BTreeSet<C::Label>> {
+    let cfg = e.cfg;
+    let mut reached: Vec<BTreeSet<C::Label>> = vec![BTreeSet::new(); cfg.nts.len()];
+    let mut queue: std::collections::VecDeque<(NtId, C::Label)> = Default::default();
+    let mark = |nt: NtId, l: &C::Label, reached: &mut Vec<BTreeSet<C::Label>>, queue: &mut std::collections::VecDeque<(NtId, C::Label)>| {
+        if reached[nt as usize].insert(l.clone()) {
+            queue.push_back((nt, l.clone()));
+        }
+    };
+    for l in e.labels[start as usize].keys() {
+        if e.live(start as usize, l) && (e.options.any_top || e.ctx.top(l)) {
+            mark(start, l, &mut reached, &mut queue);
+        }
+    }
+    // Per production: the options whose cheapest instance makes a label whose live label
+    // is not reached yet, keyed by that live label; and the options still open.
+    let mut pending: BTreeMap<(ProdId, C::Label), Vec<(usize, Opt<C::Label>)>> = BTreeMap::new();
+    let mut open: BTreeMap<ProdId, BTreeSet<(usize, Opt<C::Label>)>> = BTreeMap::new();
+    let mut passed: BTreeSet<ProdId> = BTreeSet::new();
+    let mut tried: BTreeMap<ProdId, usize> = BTreeMap::new();
+    let lhs_live = |p: ProdId, end: &C::Label| -> Option<C::Label> {
+        live[cfg.prods[p as usize].lhs as usize].get(end).cloned()
+    };
+    loop {
+        while let Some((nt, l)) = queue.pop_front() {
+            for &p in &cfg.nts[nt as usize].prods {
+                if !fillable[p as usize] {
+                    continue;
+                }
+                let pre = &prepared[p as usize];
+                if passed.insert(p) {
+                    for ((pos, o), end, _) in e.instances(p, &pre.layers, |_| true, |_, _| true) {
+                        open.entry(p).or_default().insert((pos, o.clone()));
+                        if let Some(end) = lhs_live(p, &end) {
+                            pending.entry((p, end)).or_default().push((pos, o));
+                        }
+                    }
+                }
+                // The smallest instance of each made label the reached live label stands
+                // for: its child options are reached.
+                let made: Vec<&C::Label> = match e.parts[nt as usize].get(&l) {
+                    Some(parts) => parts.iter().collect(),
+                    None => vec![&l],
+                };
+                for r in made {
+                    let Some((opts, _)) = e.smallest(p, &pre.layers, &pre.ends, r) else {
+                        continue;
+                    };
+                    for (pos, o) in opts.iter().enumerate() {
+                        if let (Sym::Nt(c), Opt::Label(cl)) = (cfg.prods[p as usize].rhs[pos], o) {
+                            open.entry(p).or_default().remove(&(pos, o.clone()));
+                            mark(c, cl, &mut reached, &mut queue);
+                        }
+                    }
+                }
+                for (pos, o) in pending.remove(&(p, l.clone())).unwrap_or_default() {
+                    open.entry(p).or_default().remove(&(pos, o.clone()));
+                    if let (Sym::Nt(c), Opt::Label(cl)) = (cfg.prods[p as usize].rhs[pos], &o) {
+                        mark(c, cl, &mut reached, &mut queue);
+                    }
+                }
+            }
+        }
+        // Options whose cheapest instance's label was never reached: a pass against the
+        // labels that are, once per growth of that set.
+        let mut grew = false;
+        for (&p, opens) in open.iter_mut() {
+            if opens.is_empty() {
+                continue;
+            }
+            let lhs = cfg.prods[p as usize].lhs as usize;
+            let known = reached[lhs].len();
+            if tried.get(&p) == Some(&known) {
+                continue;
+            }
+            tried.insert(p, known);
+            let pre = &prepared[p as usize];
+            let found = e.instances(
+                p,
+                &pre.layers,
+                |end| lhs_live(p, end).is_some_and(|l| reached[lhs].contains(&l)),
+                |pos, o| opens.contains(&(pos, o.clone())),
+            );
+            for ((pos, o), _, _) in found {
+                opens.remove(&(pos, o.clone()));
+                if let (Sym::Nt(c), Opt::Label(cl)) = (cfg.prods[p as usize].rhs[pos], &o) {
+                    if reached[c as usize].insert(cl.clone()) {
+                        queue.push_back((c, cl.clone()));
+                        grew = true;
+                    }
+                }
+            }
+        }
+        if queue.is_empty() && !grew {
+            break;
+        }
+    }
+    reached
 }
 
 /// Every (production, position) carrying each occurrence.
