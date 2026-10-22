@@ -64,10 +64,12 @@ pub enum Kind {
     Value,
     /// Declared under a quantifier or union: never referenced here.
     Group,
-    /// Needed only: any variable a reference may name (20.12 SR 8), or a node or an edge.
+    /// Needed only: any variable a reference may name (20.12 SR 8), a node or an edge, or
+    /// what a DELETE item may name (13.5 SR 5: a node, an edge or a value, never a path).
     /// The kind is chosen only where it matters (a column, an element reference).
     Any,
     Element,
+    Deletable,
 }
 
 /// What a reference may name (20.12 SR 8).
@@ -78,6 +80,7 @@ fn fits(need: Kind, have: Kind) -> bool {
     need == have
         || need == Kind::Any && REFERENCEABLE.contains(&have)
         || need == Kind::Element && matches!(have, Kind::Node | Kind::Edge)
+        || need == Kind::Deletable && matches!(have, Kind::Node | Kind::Edge | Kind::Value)
 }
 
 /// One need for two needs of one variable.
@@ -86,13 +89,20 @@ fn narrow(a: Kind, b: Kind) -> Option<Kind> {
         Some(b)
     } else if fits(b, a) {
         Some(a)
-    } else if matches!(
-        (a, b),
-        (Kind::Any, Kind::Element) | (Kind::Element, Kind::Any)
-    ) {
-        Some(Kind::Element)
     } else {
-        None
+        // Two needs chosen later: the one every variable meeting both meets.
+        match (a, b) {
+            (Kind::Any, Kind::Element | Kind::Deletable)
+            | (Kind::Element | Kind::Deletable, Kind::Any) => Some(if a == Kind::Any {
+                b
+            } else {
+                a
+            }),
+            (Kind::Element, Kind::Deletable) | (Kind::Deletable, Kind::Element) => {
+                Some(Kind::Element)
+            }
+            _ => None,
+        }
     }
 }
 
@@ -1751,6 +1761,21 @@ impl Context for Scope {
                         need: Some(k),
                         ..v.with(vf::TARGET).without(vf::USED | vf::BARE)
                     };
+                }
+                return self.combine(node, partial, &c);
+            }
+            // 13.5 SR 5: an item that is a reference names a node, an edge or a value, never
+            // a path (the value's type is the types rule's to check).
+            ("delete item", Item::Def("value expression")) => {
+                let mut c = child.clone();
+                for v in &mut c.vars {
+                    if !v.has(vf::BARE) || !v.pending() {
+                        continue;
+                    }
+                    let Some(k) = v.need.and_then(|n| narrow(n, Kind::Deletable)) else {
+                        return vec![];
+                    };
+                    v.need = Some(k);
                 }
                 return self.combine(node, partial, &c);
             }

@@ -48,11 +48,15 @@ fn probes() {
         "MATCH (x) RETURN x, count(*) AS y GROUP BY x",
         "MATCH (x) RETURN x ORDER BY x",
         "LET x = 1 RETURN LET y = x IN y END AS z",
+        // 13.5 SR 5: DELETE names a node, an edge or a value (its type is not scope's).
+        "MATCH (x) DELETE x",
+        "LET x = 1 DELETE x",
     ] {
         assert_eq!(verdict(ok), Ok(()), "{ok:?}");
     }
     for bad in [
         "RETURN x",
+        "MATCH x = () DELETE x",
         "MATCH (x) LET x = 1 RETURN x",
         "MATCH (x)-[x]->() RETURN x",
         "MATCH (x) RETURN x NEXT RETURN y",

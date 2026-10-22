@@ -1007,6 +1007,13 @@ impl<'t> Checker<'t> {
             match name(k) {
                 Some(n) if skip.contains(&n) => {}
                 Some("search condition") => self.condition(k, env),
+                // 13.5 SR 5: what DELETE deletes is a node or an edge.
+                Some("delete item") => {
+                    if let Some(ve) = own(k, "value expression") {
+                        let t = self.ty(ve, env);
+                        self.expect(k, &t, &[Class::Node, Class::Edge], "13.5 SR 5");
+                    }
+                }
                 Some(
                     "value expression"
                     | "aggregating value expression"

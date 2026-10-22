@@ -102,6 +102,10 @@ fn typed_sentences_pass() {
         // Past the typed cap the definitions' classes are forgotten, not the sentence.
         "LET x = 1, y = 2, z = 3 RETURN x AS w",
         "LET x = 1, y = 'a' RETURN x + 1 AS w",
+        // 13.5 SR 5: DELETE takes a node or an edge (`LET y = x DELETE y` is a documented
+        // narrowing: a value variable defined by another variable is opaque).
+        "MATCH (x) DELETE x",
+        "MATCH (x)-[y]->() DETACH DELETE y",
     ]
     .into_iter()
     .filter_map(|ok| verdict(ok).err().map(|e| format!("{ok:?}: {e:.300}")))
@@ -135,6 +139,10 @@ fn untyped_sentences_are_refused() {
         "LET x = 1 RETURN x.k AS y",
         "MATCH (x) RETURN x ORDER BY x",
         "RETURN 'a' AS x NEXT RETURN x + 1 AS y",
+        // 13.5 SR 5: not a value of another type, nor a path.
+        "LET x = true DELETE x",
+        "MATCH (x) DELETE CURRENT_DATE",
+        "MATCH x = () DELETE x",
     ]
     .into_iter()
     .filter(|bad| verdict(bad).is_ok())

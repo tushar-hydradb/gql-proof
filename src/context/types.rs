@@ -183,7 +183,8 @@ fn kind_bits(k: Kind) -> Option<u8> {
         Kind::Path => Some(PATH),
         Kind::Element => Some(NODE | EDGE),
         Kind::Value => Some(VALUE_BITS),
-        Kind::Any | Kind::Group => None,
+        // A DELETE item's class is the item's own check.
+        Kind::Any | Kind::Group | Kind::Deletable => None,
     }
 }
 
@@ -479,6 +480,7 @@ const READS: &[&str] = &[
     "object expression primary",
     "graph reference value expression",
     "binding table reference value expression",
+    "delete item",
 ];
 
 /// Where a class is used up: nothing above reads it.
@@ -487,6 +489,7 @@ const CONSUMERS: &[&str] = &[
     "let variable definition",
     "sort key",
     "return item",
+    "delete item",
 ];
 
 /// Where a result folds: the CASE family, and a list's elements (20.17 SR 3, 22.19).
@@ -845,6 +848,8 @@ impl Types {
             // 20.23 SR 2, 4 and 20.24 SR 3: what TRIM trims, and what it trims with, are
             // strings.
             "trim operands" => check(classed.iter().all(|c| fits(Some(*c), |c| c == Str)), Some(Str)),
+            // 13.5 SR 5: what DELETE deletes is a node or an edge.
+            "delete item" => check(fits(only, |c| matches!(c, Node | Edge)), only),
             "byte string function" => Some(Some(Bytes)),
             "list value function" => Some(Some(List)),
             // The categories over an untyped primary (20.21 SR 3, 20.23 SR 2, 4, 20.15 SR 1,
