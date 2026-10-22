@@ -11,13 +11,13 @@ https://claude.ai/artifact/R8qbDmSoZiQ2f32wr2QVtM (private to tushar)
 
 commits on main, newest first:
 
-- 25a3f18 `src/context/types.rs`: value expression types as a rule under scope,
+- 8fd6011 `src/context/types.rs`: value expression types as a rule under scope,
   `--rule types` in `gql-proof context`, `tests/context_types.rs`
-- 5b1a303 `src/context/pair.rs`: the combinator `Typed<A, B>`, `B: Under<A>`
+- 6aee419 `src/context/pair.rs`: the combinator `Typed<A, B>`, `B: Under<A>`
   holds no slots and sees each step of `A` (its inputs, output and link).
   `tests/context_pair.rs`: `Typed<Scope, Unit>` emits exactly scope's grammar,
   5% slower
-- 26503e3 `research/cutoff-2026-10-21.md` measured to 4 variables, and the
+- bd7b19a `research/cutoff-2026-10-21.md` measured to 4 variables, and the
   `coverage_by_cap` test
 
 the commit after these adds `Label::kids()`, the `census` and `pair_waste`

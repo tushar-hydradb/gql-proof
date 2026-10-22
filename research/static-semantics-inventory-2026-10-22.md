@@ -192,7 +192,7 @@ the agents' notes, in our words; grouped by area in the next section
 ## luck: a class of sentences gone by witness choice, not by a rule
 
 the typed two variable list of `tushar/prune` was regenerated between two runs
-(`ef00fdb`: extraction over the claim refined grammar, the smallest context
+(`258437a`: extraction over the claim refined grammar, the smallest context
 first). `violations.py` on both:
 
 ```
@@ -212,8 +212,8 @@ sentences                             1,228    1,310
 every static class survives the regeneration with new witnesses (`MATCH <- {
 , 0b0 }`, `RETURN VALUE { FINISH } AS x`, `CALL $$b ( )`). only the use after
 delete class is gone, and no rule took it out: nothing in scope, types or the
-checkers tracks a deleted variable (the two commits in between are `d831c27`,
-which types what DELETE deletes, 13.5 SR 5, and `ef00fdb`). it went because
+checkers tracks a deleted variable (the two commits in between are `c7b303a`,
+which types what DELETE deletes, 13.5 SR 5, and `258437a`). it went because
 the smaller witnesses happen not to put an access after a DELETE. the earlier
 list had, among the 17:
 
