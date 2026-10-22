@@ -285,6 +285,29 @@ impl Label {
         }
     }
 
+    /// Whether `self` and `other` are equal but for what they ask of their variables:
+    /// `without_needs` compared, without building either.
+    fn alike(&self, other: &Label) -> bool {
+        self.class == other.class
+            && self.facts == other.facts
+            && self.target == other.target
+            && self.result == other.result
+            && self.when == other.when
+            && self.operand == other.operand
+            && self.done == other.done
+            && self.kids == other.kids
+            && self.vars.len() == other.vars.len()
+            && self
+                .vars
+                .iter()
+                .zip(&other.vars)
+                .all(|(a, b)| match (a, b) {
+                    (Has(x), Has(y)) => x == y,
+                    (Has(_), _) | (_, Has(_)) => false,
+                    _ => true,
+                })
+    }
+
     /// While a production is scanned: its children's classes so far.
     pub fn kids(&self) -> &[Option<Ty>] {
         &self.kids
@@ -1564,7 +1587,7 @@ impl Under<Scope> for Types {
     /// the two differ in one variable's set only (the union). Two variables apart is a
     /// relation no pair of sets says.
     fn join(&self, _: &Scoped, x: &Label, y: &Label) -> Option<Label> {
-        if x.without_needs() != y.without_needs() {
+        if !x.alike(y) {
             return None;
         }
         let pairs = || x.vars.iter().zip(&y.vars);
@@ -1612,8 +1635,7 @@ impl Under<Scope> for Types {
     }
 
     fn within(&self, _: &Scoped, x: &Label, y: &Label) -> bool {
-        x.without_needs() == y.without_needs()
-            && x.vars.iter().zip(&y.vars).all(|(a, b)| within(*a, *b))
+        x.alike(y) && x.vars.iter().zip(&y.vars).all(|(a, b)| within(*a, *b))
     }
 
     fn partial_key(&self, node: &Node, pos: usize, l: &Label) -> u32 {

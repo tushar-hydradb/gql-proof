@@ -222,6 +222,9 @@ struct Engine<'a, C: Context> {
     parts: Vec<BTreeMap<C::Label, Vec<C::Label>>>,
     /// Per nonterminal, with `join`: the live labels by join key.
     keyed: Vec<BTreeMap<C::Label, Vec<C::Label>>>,
+    /// When emission must stop, and whether a search inside it found it past that.
+    until: std::cell::Cell<Option<Instant>>,
+    expired: std::cell::Cell<bool>,
     stats: RefCell<Stats>,
 }
 
@@ -263,6 +266,8 @@ impl<'a, C: Context> Engine<'a, C> {
             subsumed: vec![BTreeSet::new(); cfg.nts.len()],
             parts: vec![BTreeMap::new(); cfg.nts.len()],
             keyed: vec![BTreeMap::new(); cfg.nts.len()],
+            until: std::cell::Cell::new(None),
+            expired: std::cell::Cell::new(false),
             stats: RefCell::new(stats),
         }
     }
@@ -883,6 +888,10 @@ impl<'a, C: Context> Engine<'a, C> {
         chosen: &mut Vec<Opt<C::Label>>,
         steps: &mut Vec<(Link, usize)>,
     ) -> Option<(C::Label, Link)> {
+        if self.until.get().is_some_and(|t| Instant::now() > t) {
+            self.expired.set(true);
+            return None;
+        }
         let pos = chosen.len();
         if pos == w.opts.len() {
             return self
@@ -1198,6 +1207,8 @@ impl<'a, C: Context> Analyzed<'a, C> {
         let mut tried: BTreeMap<ProdId, usize> = BTreeMap::new();
         let began = Instant::now();
         let mut said = Instant::now();
+        // Searches inside one expansion check the deadline themselves.
+        e.until.set(e.options.deadline.map(|d| began + d));
         loop {
             while let Some((nt, l)) = out.queue.pop_front() {
                 if e.options.progress && said.elapsed() > Duration::from_secs(5) {
@@ -1212,7 +1223,7 @@ impl<'a, C: Context> Analyzed<'a, C> {
                     said = Instant::now();
                 }
                 if let Some(deadline) = e.options.deadline
-                    && began.elapsed() > deadline
+                    && (began.elapsed() > deadline || e.expired.get())
                 {
                     bail!(
                         "{}: emission not done after {deadline:?}\n{}",
@@ -1369,7 +1380,7 @@ impl<'a, C: Context> Analyzed<'a, C> {
                     said = Instant::now();
                 }
                 if let Some(deadline) = e.options.deadline
-                    && began.elapsed() > deadline
+                    && (began.elapsed() > deadline || e.expired.get())
                 {
                     bail!(
                         "{}: emission not done after {deadline:?} (in the fallback)\n{}",
@@ -1388,7 +1399,20 @@ impl<'a, C: Context> Analyzed<'a, C> {
                 tried.insert(p, reached.len());
                 e.stats.borrow_mut().emit.fallback_runs += 1;
                 if join {
-                    let fits = |l: &C::Label| reached.keys().any(|r| ctx.within(r, l));
+                    // The reached labels by join key: a label lies within another only if
+                    // they share it.
+                    let mut keyed: BTreeMap<Option<C::Label>, Vec<(&C::Label, NtId)>> =
+                        BTreeMap::new();
+                    for (r, id) in reached {
+                        keyed.entry(ctx.join_key(r)).or_default().push((r, *id));
+                    }
+                    let reached_within = |l: &C::Label| {
+                        keyed
+                            .get(&ctx.join_key(l))
+                            .and_then(|rs| rs.iter().find(|(r, _)| ctx.within(r, l)))
+                            .map(|(_, id)| *id)
+                    };
+                    let fits = |l: &C::Label| reached_within(l).is_some();
                     let found = e.instances(p, &layers[&p].0, fits, |pos, o| {
                         open.iter()
                             .any(|(at, g)| *at == pos && opt_within(ctx, g, o))
@@ -1405,13 +1429,13 @@ impl<'a, C: Context> Analyzed<'a, C> {
                             else {
                                 continue;
                             };
-                            let Some(r) = reached.keys().find(|r| ctx.within(r, &made)) else {
+                            let Some(id) = reached_within(&made) else {
                                 continue;
                             };
                             open.remove(&(pos, g.clone()));
                             if taken.insert((p, (pos, g))) {
                                 e.stats.borrow_mut().emit.fallback_emitted += 1;
-                                out.add(&mut prods, &mut shapes, reached[r], prod, ground);
+                                out.add(&mut prods, &mut shapes, id, prod, ground);
                             }
                         }
                     }
