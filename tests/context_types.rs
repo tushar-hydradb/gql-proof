@@ -830,7 +830,12 @@ fn extraction_matches_emission() {
         keys: true,
         ..Options::default()
     };
-    common::extraction_matches_emission(&BASE, &rule, &options, true);
+    // `GQL_JOIN`: the extraction reads the joined fixed point; the oracle stays unjoined.
+    let extract = Options {
+        join: std::env::var("GQL_JOIN").is_ok(),
+        ..options.clone()
+    };
+    common::extraction_matches_emission(&BASE, &rule, &options, &extract, true);
 }
 
 mod common;

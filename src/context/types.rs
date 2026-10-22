@@ -842,6 +842,9 @@ impl Types {
             | "power function"
             | "square root" => check(typed, Some(Approx)),
             "character string function" => Some(Some(Str)),
+            // 20.23 SR 2, 4 and 20.24 SR 3: what TRIM trims, and what it trims with, are
+            // strings.
+            "trim operands" => check(classed.iter().all(|c| fits(Some(*c), |c| c == Str)), Some(Str)),
             "byte string function" => Some(Some(Bytes)),
             "list value function" => Some(Some(List)),
             // The categories over an untyped primary (20.21 SR 3, 20.23 SR 2, 4, 20.15 SR 1,
@@ -1344,6 +1347,18 @@ impl Types {
                         return vec![];
                     }
                     out.class = Some(Ty::Slot(s, kept));
+                }
+                // A deferred class the node does not pass on is settled here as far as the
+                // sites below settled it: the reference went through them, so its variable
+                // must be one of the classes they let through, whatever else is chosen.
+                for (&s, &m) in &slots {
+                    if matches!(out.class, Some(Ty::Slot(t, _)) if t == s) {
+                        continue;
+                    }
+                    match meet(vars[s as usize], Allow(m)) {
+                        Some(e) => vars[s as usize] = e,
+                        None => return vec![],
+                    }
                 }
                 out.vars = vars;
                 return vec![out];

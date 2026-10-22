@@ -11,12 +11,21 @@ use std::collections::BTreeSet;
 
 /// Per-target extraction covers exactly the productions and cdrc pairs the emitted grammar
 /// can derive, outside the lexical layer and below spelled names, among productions the
-/// leaf provider can fill: the same fixed point read two ways. Every extracted sentence
-/// passes the scope checker (and the types checker, when `typed`) and the rule itself.
-pub fn extraction_matches_emission<C: Context>(base: &Cfg, rule: &C, options: &Options, typed: bool) {
+/// leaf provider can fill. The emission is the oracle, from a fixed point run with
+/// `options`; the extraction reads a fixed point run with `extract` (the same options, or
+/// joins and keys on, which must change nothing). Every extracted sentence passes the scope
+/// checker (and the types checker, when `typed`) and the rule itself.
+pub fn extraction_matches_emission<C: Context>(
+    base: &Cfg,
+    rule: &C,
+    options: &Options,
+    extract: &Options,
+    typed: bool,
+) {
     let start = base.require("GQL-program").unwrap();
-    let analyzed = gql_proof::context::analyze(base, rule, options).unwrap();
-    let built = analyzed.emit(start, "x").unwrap();
+    let oracle = gql_proof::context::analyze(base, rule, options).unwrap();
+    let built = oracle.emit(start, "x").unwrap();
+    let analyzed = gql_proof::context::analyze(base, rule, extract).unwrap();
     let lexical = |p: u32| base.nts[base.prods[p as usize].lhs as usize].lexical;
     // A spelled name is derived from its text in both paths, never chosen: pairs below one
     // are not something a sentence can cover either way.

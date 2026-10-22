@@ -402,7 +402,7 @@ fn extraction_matches_emission() {
         progress: false,
         ..Options::default()
     };
-    common::extraction_matches_emission(&BASE, &rule, &options, false);
+    common::extraction_matches_emission(&BASE, &rule, &options, &options, false);
 }
 
 mod common;
