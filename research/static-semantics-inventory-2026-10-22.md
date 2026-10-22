@@ -46,7 +46,7 @@ status, for everything that is not a definition:
 ```
 kind            rules  generated  grammar  reading  checked  not modelled
 definition        482
-constraint        168         60       11       37        0            60
+constraint        168         68       11       37        0            52
 type              258        182        0       55        5            16
 catalog            66          1        0        0        0            65
 implementation     51          1        0        1        0            35
@@ -56,10 +56,10 @@ implementation     51          1        0        1        0            35
 
 of the 426 constraint and type rules:
 
-- 253 (59%) are kept as iso says (generated or grammar)
+- 261 (61%) are kept as iso says (generated or grammar)
 - 92 (22%) are kept by a narrower reading
 - 5 are checked only
-- 76 (18%) are not modelled
+- 68 (16%) are not modelled
 
 all 66 catalog rules but one are not modelled: there is no catalog, session,
 graph type or procedure signature in the generator, so every rule that needs one

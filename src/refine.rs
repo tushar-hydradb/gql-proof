@@ -425,6 +425,12 @@ fn minima(s: State, nodes: bool, len: bool) -> State {
 }
 
 const BOUNDS: [&str; 3] = ["lower bound", "upper bound", "fixed quantifier"];
+const UNIONS: [&str; 4] = [
+    "path pattern union",
+    "path multiset alternation",
+    "simplified path union",
+    "simplified multiset alternation",
+];
 
 impl Rule for PathMinimums {
     fn name(&self) -> &str {
@@ -474,7 +480,15 @@ impl Rule for PathMinimums {
             return Some(if nonzero { s.with(NONZERO) } else { s });
         }
         if node.group {
-            return Some(s);
+            // A union's or alternation's repeated operands fold as they come (the minimum is
+            // associative), so the group holds one of four states, not a subset of them.
+            let owner = node.def.split('/').next().unwrap_or("");
+            return Some(if UNIONS.contains(&owner) {
+                let (nodes, len) = (!s.has(NO_NODES), !s.has(NO_LEN));
+                minima(s, nodes, len)
+            } else {
+                s
+            });
         }
         let rhs = node.items;
         Some(match node.def {
@@ -528,10 +542,7 @@ impl Rule for PathMinimums {
                 let (nodes, len) = (s.has(NODES), s.has(LEN));
                 minima(s, nodes, len)
             }
-            "path pattern union"
-            | "path multiset alternation"
-            | "simplified path union"
-            | "simplified multiset alternation" => {
+            d if UNIONS.contains(&d) => {
                 let (nodes, len) = (!s.has(NO_NODES), !s.has(NO_LEN));
                 minima(s, nodes, len)
             }
@@ -565,10 +576,29 @@ impl Rule for PathMinimums {
 
 /// 16.12 SR 1-4: a simplified negation, conjunction or direction override holds no
 /// concatenation, quantifier, `?` or multiset alternation, and an override no other override.
+///
+/// Inherited, not synthesized: being below one of those is a context, and the four forbidden
+/// nodes are refused in it outright. That keeps the simplified nonterminals' states to their
+/// minimums, so a union of them stays a few productions.
 pub struct SimplifiedShape;
 
-const S_COMPLEX: Fact = 22;
-const S_OVERRIDE: Fact = 23;
+/// Inherited: below a negation, conjunction or direction override.
+const INSIDE: Fact = 22;
+/// Inherited: below a direction override.
+const IN_OVERRIDE: Fact = 23;
+const COMPLEX: [&str; 4] = [
+    "simplified concatenation",
+    "simplified quantified",
+    "simplified questioned",
+    "simplified multiset alternation",
+];
+
+impl SimplifiedShape {
+    fn breaks(def: &str, inh: &State) -> bool {
+        (inh.has(INSIDE) && COMPLEX.contains(&def))
+            || (inh.has(IN_OVERRIDE) && def == "simplified direction override")
+    }
+}
 
 impl Rule for SimplifiedShape {
     fn name(&self) -> &str {
@@ -580,32 +610,35 @@ impl Rule for SimplifiedShape {
     }
 
     fn labels(&self) -> Vec<(Fact, String)> {
-        labels(&[(S_COMPLEX, "complex"), (S_OVERRIDE, "override")])
+        labels(&[(INSIDE, "inside"), (IN_OVERRIDE, "in-override")])
     }
 
     fn bookkeeping(&self) -> bool {
         true
     }
 
-    fn step(&self, node: &Node, _inh: &State, _children: &[State], s: State) -> Option<State> {
-        if node.group {
-            return Some(s);
+    fn down(&self, node: &Node, inh: &State, _pos: usize, _left: &[State], out: &mut State) {
+        let opens = matches!(
+            node.def,
+            "simplified negation" | "simplified conjunction" | "simplified direction override"
+        );
+        if inh.has(INSIDE) || opens {
+            out.set(INSIDE, true);
         }
-        Some(match node.def {
-            "simplified concatenation"
-            | "simplified quantified"
-            | "simplified questioned"
-            | "simplified multiset alternation" => s.with(S_COMPLEX),
-            "simplified negation" | "simplified conjunction" if s.has(S_COMPLEX) => return None,
-            "simplified direction override" => {
-                if s.has(S_COMPLEX) || s.has(S_OVERRIDE) {
-                    return None;
-                }
-                s.with(S_OVERRIDE)
-            }
-            "simplified path pattern expression" => s.without_all(&[S_COMPLEX, S_OVERRIDE]),
-            _ => s,
-        })
+        if inh.has(IN_OVERRIDE) || node.def == "simplified direction override" {
+            out.set(IN_OVERRIDE, true);
+        }
+    }
+
+    fn rejects(&self, node: &Node, inh: &State) -> bool {
+        Self::breaks(node.def, inh)
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if Self::breaks(node.def, inh) {
+            return None;
+        }
+        Some(s)
     }
 }
 

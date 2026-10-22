@@ -369,7 +369,7 @@
 {"clause": "16.4", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "names the path pattern list"}
 {"clause": "16.4", "sr": 10, "kind": "implementation", "status": "generated", "where": "src/lib.rs:30", "note": "default match mode ID086 is an option; portable assumes neither"}
 {"clause": "16.4", "sr": 11, "kind": "definition", "status": "n/a", "where": "", "note": "names the match mode"}
-{"clause": "16.4", "sr": 12, "kind": "constraint", "status": "not modelled", "where": "", "note": "DIFFERENT EDGES with a selective path pattern allows only that one pattern"}
+{"clause": "16.4", "sr": 12, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "under DIFFERENT EDGES (given or ID086) a selective path pattern is alone in its list; reading: KEEP's prefix does not make a pattern selective, 16.6 SR 4 (SelectiveAlone)"}
 {"clause": "16.4", "sr": 13, "kind": "definition", "status": "n/a", "where": "", "note": "defines global singletons and scope index"}
 {"clause": "16.4", "sr": 14, "kind": "constraint", "status": "reading", "where": "src/refine.rs:164", "note": "unbounded quantifier needs a guard; read per graph pattern depth"}
 {"clause": "16.4", "sr": 15, "kind": "definition", "status": "n/a", "where": "", "note": "path variables are unconditional singletons"}
@@ -399,7 +399,7 @@
 {"clause": "16.7", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "defines possibly variable length pattern"}
 {"clause": "16.7", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "defines fixed length pattern"}
 {"clause": "16.7", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "defines minimum path length"}
-{"clause": "16.7", "sr": 8, "kind": "constraint", "status": "not modelled", "where": "", "note": "quantified or questioned primary must have positive minimum path length"}
+{"clause": "16.7", "sr": 8, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "quantified or questioned primary has minimum path length > 0 (PathMinimums; an edge counts its parentheses, SR 14 a)"}
 {"clause": "16.7", "sr": 9, "kind": "constraint", "status": "not modelled", "where": "", "note": "no quantifier directly nested inside a quantified primary"}
 {"clause": "16.7", "sr": 10, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:706", "note": "multiset alternation subpath vars distinct; generator allows one per pattern"}
 {"clause": "16.7", "sr": 11, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:966", "note": "union operand references only own or outside vars; generator declares nothing under unions"}
@@ -407,11 +407,11 @@
 {"clause": "16.7", "sr": 13, "kind": "definition", "status": "n/a", "where": "", "note": "defines empty element pattern"}
 {"clause": "16.7", "sr": 14, "kind": "definition", "status": "n/a", "where": "", "note": "inserts implicit node patterns etc."}
 {"clause": "16.7", "sr": 15, "kind": "definition", "status": "n/a", "where": "", "note": "defines minimum node count"}
-{"clause": "16.7", "sr": 16, "kind": "constraint", "status": "not modelled", "where": "", "note": "top path pattern expression must have positive minimum node count"}
+{"clause": "16.7", "sr": 16, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "top path pattern expression has minimum node count > 0, after SR 14's implicit nodes and 16.12's rewrite (PathMinimums)"}
 {"clause": "16.7", "sr": 17, "kind": "definition", "status": "n/a", "where": "", "note": "what element variable declarations declare; TEMP"}
 {"clause": "16.7", "sr": 18, "kind": "definition", "status": "n/a", "where": "", "note": "node vs edge variables"}
 {"clause": "16.7", "sr": 19, "kind": "definition", "status": "n/a", "where": "", "note": "scope of element variables"}
-{"clause": "16.7", "sr": 20, "kind": "constraint", "status": "not modelled", "where": "", "note": "parenthesized expression with subpath var must have positive minimum node count"}
+{"clause": "16.7", "sr": 20, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "parenthesized expression with a subpath variable has minimum node count > 0 (PathMinimums)"}
 {"clause": "16.7", "sr": 21, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:915", "note": "element pattern with WHERE must declare a variable"}
 {"clause": "16.7", "sr": 22, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:966", "note": "exposure rules (no subpath joins, no conditional joins); generator declares nothing under union/?/quantifier"}
 {"clause": "16.7", "sr": 23, "kind": "definition", "status": "n/a", "where": "", "note": "names exposed with a degree"}
@@ -428,12 +428,12 @@
 {"clause": "16.10", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/scope.rs:810", "note": "element reference names a node or edge (group list if group)"}
 {"clause": "16.11", "sr": 1, "kind": "implementation", "status": "not modelled", "where": "", "note": "upper bound limit is implementation-defined; nothing caps quantifier values"}
 {"clause": "16.11", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "normalizes quantifier forms"}
-{"clause": "16.11", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "upper bound positive and not below lower bound"}
+{"clause": "16.11", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "upper bound 0 is kept out (PathMinimums, src/refine.rs); upper below lower is not: the automaton knows zero or not, not the value"}
 {"clause": "16.11", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "defines variable quantifier"}
-{"clause": "16.12", "sr": 1, "kind": "constraint", "status": "not modelled", "where": "", "note": "simplified negation holds no concatenation, quantifier, ? or multiset alternation"}
-{"clause": "16.12", "sr": 2, "kind": "constraint", "status": "not modelled", "where": "", "note": "no nested simplified direction override"}
-{"clause": "16.12", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "simplified direction override holds no concatenation, quantifier, ? or alternation"}
-{"clause": "16.12", "sr": 4, "kind": "constraint", "status": "not modelled", "where": "", "note": "simplified conjunction holds no concatenation, quantifier, ? or alternation"}
+{"clause": "16.12", "sr": 1, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "simplified negation holds no concatenation, quantifier, ? or multiset alternation (SimplifiedShape)"}
+{"clause": "16.12", "sr": 2, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "no nested simplified direction override (SimplifiedShape)"}
+{"clause": "16.12", "sr": 3, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "simplified direction override holds no concatenation, quantifier, ? or alternation (SimplifiedShape)"}
+{"clause": "16.12", "sr": 4, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "simplified conjunction holds no concatenation, quantifier, ? or alternation (SimplifiedShape)"}
 {"clause": "16.12", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "parenthesizes simplified expression"}
 {"clause": "16.12", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "rewrites simplified patterns to full ones"}
 {"clause": "16.12", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "applies 16.7 conformance rules to result"}

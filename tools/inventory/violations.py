@@ -45,6 +45,24 @@ def _(s):
 def _(s):
     return re.search(r"\b(CHAR|VARCHAR|STRING|BINARY|VARBINARY|BYTES|DECIMAL|DEC)\s*\(\s*(0[xob]0+|0)\s*[,)]", s) is not None
 
+EDGE = r"(?:<->|<-|->|<~|~>|~|-)"
+PREFIXES = r"(?:MATCH|,|ALL|ANY|SHORTEST|TRAIL|WALK|SIMPLE|ACYCLIC|PATHS?|GROUPS?|=|\d+)"
+
+@check("16.7 SR 16: path pattern of a lone questioned or zero-quantified edge")
+def _(s):
+    # An abbreviated edge right after MATCH, a comma or a prefix, then `?`, `*`, `{0}` or
+    # `{,`: a path pattern that can match no node. Text level, a lower bound.
+    zero = r"(?:\?|\*|\{\s*(?:0[xob])?0+\s*\}|\{\s*,)"
+    return re.search(PREFIXES + r"\s*\(?\s*" + EDGE + r"\s*\)?\s*" + zero + r"\s*(?:FINISH|RETURN|WHERE|,|KEEP|$)", s) is not None
+
+@check("16.12: quantifier or ? beside & or ! or a direction override in a simplified pattern")
+def _(s):
+    for m in re.finditer(r"/(.*?)/", s):
+        body = m.group(1)
+        if re.search(r"[&!<>~]\s*\(?\s*\w+\s*[?*+{]", body) or re.search(r"\w+\s*[?*+{][^&]*&", body):
+            return True
+    return False
+
 @check("20.6 SR 10: VALUE subquery without LIMIT 1")
 def _(s):
     for m in re.finditer(r"\bVALUE\s*\{", s):
