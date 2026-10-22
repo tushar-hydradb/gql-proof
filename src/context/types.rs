@@ -1498,4 +1498,43 @@ impl Under<Scope> for Types {
             ..l.clone()
         })
     }
+
+    fn join_key(&self, _: &Scoped, l: &Label) -> Option<Label> {
+        Some(l.without_needs())
+    }
+
+    /// Exact in two cases: one label's sets all lie within the other's (it is the other), or
+    /// the two differ in one variable's set only (the union). Two variables apart is a
+    /// relation no pair of sets says.
+    fn join(&self, _: &Scoped, x: &Label, y: &Label) -> Option<Label> {
+        if x.without_needs() != y.without_needs() {
+            return None;
+        }
+        // Whether every context `b` takes also takes `a`'s trees: `a`'s set inside `b`'s.
+        let within = |a: Entry, b: Entry| match (a, b) {
+            (_, Free) => true,
+            (Allow(p), Allow(q)) => p & !q == 0,
+            (a, b) => a == b,
+        };
+        let pairs = || x.vars.iter().zip(&y.vars);
+        if pairs().all(|(a, b)| within(*b, *a)) {
+            return Some(x.clone());
+        }
+        if pairs().all(|(a, b)| within(*a, *b)) {
+            return Some(y.clone());
+        }
+        let apart: Vec<usize> = pairs()
+            .enumerate()
+            .filter(|(_, (a, b))| a != b)
+            .map(|(i, _)| i)
+            .collect();
+        let [s] = apart[..] else { return None };
+        let union = match (x.vars[s], y.vars[s]) {
+            (Allow(p), Allow(q)) => Allow(p | q),
+            _ => Free,
+        };
+        let mut vars = x.vars.clone();
+        vars[s] = union;
+        Some(Label { vars, ..x.clone() })
+    }
 }

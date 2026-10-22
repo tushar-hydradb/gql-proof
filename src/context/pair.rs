@@ -53,6 +53,14 @@ pub trait Under<A: Context> {
     ) -> Option<Self::Label> {
         Some(label.clone())
     }
+    /// Labels under one label of `A` that may join share a key; `None` never joins.
+    fn join_key(&self, _a: &A::Label, _label: &Self::Label) -> Option<Self::Label> {
+        None
+    }
+    /// As [`Context::join`], for two labels under the same label of `A`.
+    fn join(&self, _a: &A::Label, _x: &Self::Label, _y: &Self::Label) -> Option<Self::Label> {
+        None
+    }
 }
 
 /// `A` and `B` together, as one [`Context`].
@@ -165,6 +173,18 @@ impl<A: Context, B: Under<A>> Context for Typed<A, B> {
                 Projection::Replace((a2, b2), same)
             }
         }
+    }
+
+    /// Only `B` joins, under one label of `A`: `A`'s variables and links are the same for both.
+    fn join_key(&self, (a, b): &Self::Label) -> Option<Self::Label> {
+        Some((a.clone(), self.b.join_key(a, b)?))
+    }
+
+    fn join(&self, (a, x): &Self::Label, (a2, y): &Self::Label) -> Option<Self::Label> {
+        if a != a2 {
+            return None;
+        }
+        Some((a.clone(), self.b.join(a, x, y)?))
     }
 }
 

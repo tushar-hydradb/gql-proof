@@ -89,6 +89,16 @@ pub trait Context {
     fn project(&self, _label: &Self::Label, _masks: Masks) -> Projection<Self::Label> {
         Projection::Keep
     }
+    /// Labels that may join (see [`Context::join`]) share a key; `None` never joins.
+    fn join_key(&self, _label: &Self::Label) -> Option<Self::Label> {
+        None
+    }
+    /// One label standing for exactly the trees of `a` and those of `b`, if the rule can say
+    /// that (`a` itself when `b`'s trees are among `a`'s). Every `push` and `finish` must
+    /// distribute over it: what the joined label gives is what `a` and `b` give together.
+    fn join(&self, _a: &Self::Label, _b: &Self::Label) -> Option<Self::Label> {
+        None
+    }
 }
 
 /// What [`Context::project`] makes of a label.
@@ -111,6 +121,9 @@ pub struct Options {
     pub reads_all: Option<NtId>,
     pub live: bool,
     pub single_pass: bool,
+    /// Labels the rule can join become one in the fixed point (answer subsumption); emission
+    /// is not done for them yet.
+    pub join: bool,
 }
 
 impl Default for Options {
@@ -122,6 +135,7 @@ impl Default for Options {
             reads_all: None,
             live: true,
             single_pass: true,
+            join: false,
         }
     }
 }
@@ -175,6 +189,12 @@ struct Engine<'a, C: Context> {
     /// Per production: its partial labels so far, and how many of each child's labels they
     /// already combine.
     cache: RefCell<HashMap<ProdId, Kept<C::Label>>>,
+    /// Per nonterminal, with `join`: labels a join replaced. Still valid, no longer pushed.
+    subsumed: Vec<BTreeSet<C::Label>>,
+    /// Per nonterminal, with `join`: the labels productions made that each live one stands for.
+    parts: Vec<BTreeMap<C::Label, Vec<C::Label>>>,
+    /// Per nonterminal, with `join`: the live labels by join key.
+    keyed: Vec<BTreeMap<C::Label, Vec<C::Label>>>,
     stats: RefCell<Stats>,
 }
 
@@ -213,8 +233,68 @@ impl<'a, C: Context> Engine<'a, C> {
             masks,
             order: vec![Vec::new(); cfg.nts.len()],
             cache: RefCell::new(HashMap::new()),
+            subsumed: vec![BTreeSet::new(); cfg.nts.len()],
+            parts: vec![BTreeMap::new(); cfg.nts.len()],
+            keyed: vec![BTreeMap::new(); cfg.nts.len()],
             stats: RefCell::new(stats),
         }
+    }
+
+    /// Adds label `l` of `nt`, made by a production with a smallest tree of `size`; whether
+    /// the labels of `nt` changed. With `join`, `l` joins a live label it can (answer
+    /// subsumption): the joined label replaces both, standing for the labels made so far, and
+    /// joins on while it can.
+    fn add(&mut self, nt: usize, l: C::Label, size: u64) -> bool {
+        if let Some(old) = self.labels[nt].get_mut(&l) {
+            *old = (*old).min(size);
+            return false;
+        }
+        let key = self.options.join.then(|| self.ctx.join_key(&l)).flatten();
+        let Some(key) = key else {
+            self.labels[nt].insert(l.clone(), size);
+            self.order[nt].push(l);
+            return true;
+        };
+        let ctx = self.ctx;
+        let (mut cur, mut parts, mut size) = (l.clone(), vec![l], size);
+        loop {
+            let live = self.keyed[nt].entry(key.clone()).or_default();
+            let found = live
+                .iter()
+                .enumerate()
+                .find_map(|(i, m)| ctx.join(m, &cur).map(|j| (i, j)));
+            let Some((i, j)) = found else { break };
+            let m = live.remove(i);
+            let m_size = self.labels[nt][&m];
+            if j == m {
+                // Already standing for these trees.
+                self.keyed[nt].get_mut(&key).unwrap().insert(i, m.clone());
+                let e = self.labels[nt].get_mut(&m).unwrap();
+                *e = (*e).min(size);
+                self.parts[nt].get_mut(&m).unwrap().extend(parts);
+                self.stats.get_mut().joined += 1;
+                return false;
+            }
+            self.subsumed[nt].insert(m.clone());
+            parts.extend(self.parts[nt].remove(&m).unwrap_or_default());
+            size = size.min(m_size);
+            cur = j;
+            self.stats.get_mut().joined += 1;
+        }
+        if self.labels[nt].contains_key(&cur) {
+            // A label subsumed before, standing again: live once more.
+            self.subsumed[nt].remove(&cur);
+        }
+        self.labels[nt].insert(cur.clone(), size);
+        self.keyed[nt].entry(key).or_default().push(cur.clone());
+        self.parts[nt].entry(cur.clone()).or_default().extend(parts);
+        self.order[nt].push(cur);
+        true
+    }
+
+    /// Whether label `l` of `nt` is still pushed (not replaced by a join).
+    fn live(&self, nt: usize, l: &C::Label) -> bool {
+        !self.subsumed[nt].contains(l)
     }
 
     fn prod_stats<'s>(&self, stats: &'s mut Stats, p: ProdId) -> &'s mut ProdStats {
@@ -299,6 +379,7 @@ impl<'a, C: Context> Engine<'a, C> {
             Sym::Lit(_) => vec![(Opt::Token, 1)],
             Sym::Nt(c) => self.labels[c as usize]
                 .iter()
+                .filter(|(l, _)| self.live(c as usize, l))
                 .map(|(l, &s)| (Opt::Label(l.clone()), s))
                 .collect(),
         }
@@ -390,6 +471,7 @@ impl<'a, C: Context> Engine<'a, C> {
                 Sym::Lit(_) => Vec::new(),
                 Sym::Nt(c) => self.order[c as usize][kept.seen[pos]..]
                     .iter()
+                    .filter(|l| self.live(c as usize, l))
                     .map(|l| (Opt::Label(l.clone()), self.labels[c as usize][l]))
                     .collect(),
             };
@@ -465,8 +547,10 @@ impl<'a, C: Context> Engine<'a, C> {
         }
     }
 
+    /// Live labels: the ones a join replaced are not counted.
     fn total(&self) -> usize {
-        self.labels.iter().map(BTreeMap::len).sum()
+        self.labels.iter().map(BTreeMap::len).sum::<usize>()
+            - self.subsumed.iter().map(BTreeSet::len).sum::<usize>()
     }
 
     fn widest(&self) -> String {
@@ -526,16 +610,10 @@ impl<'a, C: Context> Engine<'a, C> {
             for p in std::mem::take(&mut dirty) {
                 let lhs = self.cfg.prods[p as usize].lhs as usize;
                 for (l, size) in self.scan(p) {
-                    let known = &mut self.labels[lhs];
                     // Only a new label is news for the productions above: a smaller witness
                     // of a known one is kept, but rounds go by height, so the first is small.
-                    match known.get_mut(&l) {
-                        None => {
-                            known.insert(l.clone(), size);
-                            self.order[lhs].push(l);
-                            changed.insert(lhs);
-                        }
-                        Some(old) => *old = (*old).min(size),
+                    if self.add(lhs, l, size) {
+                        changed.insert(lhs);
                     }
                 }
                 if let Some(deadline) = self.options.deadline
@@ -587,7 +665,10 @@ impl<'a, C: Context> Engine<'a, C> {
             .iter()
             .enumerate()
             .filter(|(_, l)| !l.is_empty())
-            .map(|(nt, l)| (self.cfg.nts[nt].name.clone(), l.len()))
+            .map(|(nt, l)| {
+                let live = l.len() - self.subsumed[nt].len();
+                (self.cfg.nts[nt].name.clone(), live)
+            })
             .collect();
         self.stats.get_mut().labels = labels;
     }
@@ -854,6 +935,12 @@ impl<'a, C: Context> Analyzed<'a, C> {
     pub fn emit(&self, start: NtId, placeholder: &str) -> Result<Built> {
         let _span = tracing::info_span!("emit").entered();
         let (cfg, ctx, e) = (self.e.cfg, self.e.ctx, &self.e);
+        if e.options.join {
+            bail!(
+                "{}: emission from joined labels is not built yet",
+                ctx.name()
+            );
+        }
         let tops: Vec<C::Label> = e.labels[start as usize]
             .keys()
             .filter(|l| e.options.any_top || ctx.top(l))
