@@ -1,0 +1,1025 @@
+{"clause": "5.3", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the program."}
+{"clause": "5.3", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "Names the initial session and graph, fixed by 22.1."}
+{"clause": "5.3", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "The program is its own scope clause."}
+{"clause": "5.3", "sr": 4, "kind": "constraint", "status": "not modelled", "where": "", "note": "No confusability check; numbered ASCII names (context.rs:2047) make clashes unlikely, not impossible by rule."}
+{"clause": "5.3", "sr": 5, "kind": "catalog", "status": "not modelled", "where": "", "note": "Working schema comes from the initial session; no session modelled."}
+{"clause": "5.3", "sr": 6, "kind": "catalog", "status": "not modelled", "where": "", "note": "Scope of the working schema reference; depends on session schema."}
+{"clause": "5.3", "sr": 7, "kind": "catalog", "status": "not modelled", "where": "", "note": "Working graph site and its type come from session and initial graph's graph type."}
+{"clause": "5.3", "sr": 8, "kind": "catalog", "status": "not modelled", "where": "", "note": "Scope of the working graph site; depends on session state."}
+{"clause": "5.3", "sr": 9, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1878", "note": "Program starts with an empty record: top label must have no variables."}
+{"clause": "5.3", "sr": 10, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1878", "note": "Program starts with a unit table: nothing referenceable at the top."}
+{"clause": "7.1", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the session set command."}
+{"clause": "7.1", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "Names the enclosing program."}
+{"clause": "7.1", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "Session set has empty type; no statement chain reads it."}
+{"clause": "7.1", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "Names the schema reference of SESSION SET SCHEMA."}
+{"clause": "7.1", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "Names the displacement from the time zone string."}
+{"clause": "7.1", "sr": 6, "kind": "type", "status": "not modelled", "where": "", "note": "Session parameter initializer assignability and consistency with earlier sets; session commands untyped (verify/types.rs:49)."}
+{"clause": "7.2", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the session reset command."}
+{"clause": "7.2", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "Shorthand expansion of SESSION RESET arguments."}
+{"clause": "7.2", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "Reset parameter spec has empty type; nothing reads it."}
+{"clause": "7.2", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "Reset command has empty type; nothing reads it."}
+{"clause": "7.3", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Close command has empty type; nothing reads it."}
+{"clause": "8.1", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the start transaction command."}
+{"clause": "8.1", "sr": 2, "kind": "implementation", "status": "not modelled", "where": "", "note": "Default characteristics when none given are implementation-defined; nothing to enforce."}
+{"clause": "8.2", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the transaction characteristics."}
+{"clause": "8.2", "sr": 2, "kind": "constraint", "status": "not modelled", "where": "", "note": "Grammar lists modes freely; READ ONLY, READ WRITE (two access modes) can be generated."}
+{"clause": "8.2", "sr": 3, "kind": "implementation", "status": "reading", "where": "src/tokens.rs:37; src/leaf.rs:58", "note": "Implementation-defined access modes excluded entirely from generation and rejected by verifier."}
+{"clause": "9.1", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/scope.rs:553; src/verify/scope.rs:364", "note": "Nested procedure spec has its body's type; scope treats nested bodies as their own scope."}
+{"clause": "9.1", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/scope.rs:553; src/verify/types.rs:1478", "note": "Nested query spec has its body's type; scope and types follow the body."}
+{"clause": "9.1", "sr": 3, "kind": "type", "status": "reading", "where": "src/context/scope.rs:1179", "note": "Nested data-modifying spec typed as body; generator lets nothing it binds escape."}
+{"clause": "9.1", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "Classifies a procedure spec by the kind of statements its body holds."}
+{"clause": "9.1", "sr": 5, "kind": "constraint", "status": "not modelled", "where": "", "note": "Catalog-modifying procedure bodies may mix in other statement kinds; nothing checks."}
+{"clause": "9.1", "sr": 6, "kind": "constraint", "status": "not modelled", "where": "", "note": "Data-modifying bodies may contain catalog statements; no rule tracks statement kinds."}
+{"clause": "9.1", "sr": 7, "kind": "constraint", "status": "not modelled", "where": "", "note": "Query specifications (subqueries, CALL bodies) may contain data-modifying or catalog statements unchecked."}
+{"clause": "9.2", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the procedure body."}
+{"clause": "9.2", "sr": 2, "kind": "type", "status": "reading", "where": "src/context/scope.rs:1047; src/verify/scope.rs:198", "note": "Binding variable definitions thread the record; generator never references what they bind."}
+{"clause": "9.2", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "Names the statement block."}
+{"clause": "9.2", "sr": 4, "kind": "constraint", "status": "not modelled", "where": "", "note": "A catalog-modifying statement may be followed by NEXT statements; no check."}
+{"clause": "9.2", "sr": 5, "kind": "constraint", "status": "not modelled", "where": "", "note": "Focused and ambient statements may be mixed across NEXT in one block; no check."}
+{"clause": "9.2", "sr": 6, "kind": "constraint", "status": "not modelled", "where": "", "note": "SELECT statements may be mixed with other linear query statements in one block; no check."}
+{"clause": "9.2", "sr": 7, "kind": "constraint", "status": "not modelled", "where": "", "note": "Blocks may mix statements with and without a primitive result statement; no check."}
+{"clause": "9.2", "sr": 8, "kind": "definition", "status": "n/a", "where": "", "note": "Names the sequence of NEXT statements."}
+{"clause": "9.2", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "Indexes the statements of the block."}
+{"clause": "9.2", "sr": 10, "kind": "type", "status": "generated", "where": "src/context/scope.rs:621; src/verify/scope.rs:226", "note": "First statement sees the record after binding variable definitions, or the body's."}
+{"clause": "9.2", "sr": 11, "kind": "type", "status": "generated", "where": "src/context/scope.rs:621; src/verify/scope.rs:236", "note": "First statement sees the body's incoming table."}
+{"clause": "9.2", "sr": 12, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:1069; src/context/scope.rs:1075; src/context.rs:2047; src/verify/scope.rs:247", "note": "NEXT passes previous result or unit table; only those columns referenced; fresh names keep record and table disjoint."}
+{"clause": "9.2", "sr": 13, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1069; src/verify/scope.rs:236", "note": "Body's type is the last statement's; statement chain threads it."}
+{"clause": "10.1", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the graph variable definition."}
+{"clause": "10.1", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "Names the defined graph variable."}
+{"clause": "10.1", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "Names the typed graph initializer."}
+{"clause": "10.1", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "Names the graph initializer."}
+{"clause": "10.1", "sr": 5, "kind": "type", "status": "not modelled", "where": "", "note": "Graph initializer type equals its graph expression's; graphs are not typed (context/types.rs:869)."}
+{"clause": "10.1", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "Names the incoming record type."}
+{"clause": "10.1", "sr": 7, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:839; src/context.rs:2047; src/verify/scope.rs:206", "note": "Graph variable name must be new to the record; fresh naming guarantees it."}
+{"clause": "10.1", "sr": 8, "kind": "type", "status": "not modelled", "where": "", "note": "Initializer must be assignable to declared graph reference type; graphs are opaque, no check."}
+{"clause": "10.1", "sr": 9, "kind": "type", "status": "reading", "where": "src/context/scope.rs:1047; src/verify/scope.rs:220", "note": "Graph variable added to record; generator never references it afterwards."}
+{"clause": "10.2", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the binding table variable definition."}
+{"clause": "10.2", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "Names the defined table variable."}
+{"clause": "10.2", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "Names the typed table initializer."}
+{"clause": "10.2", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "Names the table initializer."}
+{"clause": "10.2", "sr": 5, "kind": "type", "status": "not modelled", "where": "", "note": "Table initializer type equals its table expression's; tables are not typed."}
+{"clause": "10.2", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "Names the incoming record type."}
+{"clause": "10.2", "sr": 7, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:839; src/context.rs:2047; src/verify/scope.rs:207", "note": "Table variable name must be new to the record; fresh naming guarantees it."}
+{"clause": "10.2", "sr": 8, "kind": "type", "status": "not modelled", "where": "", "note": "Table initializer must be assignable to declared table type; tables untyped, unchecked."}
+{"clause": "10.2", "sr": 9, "kind": "type", "status": "reading", "where": "src/context/scope.rs:1047; src/verify/scope.rs:220", "note": "Table variable added to record; generator never references it afterwards."}
+{"clause": "10.3", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the value variable definition."}
+{"clause": "10.3", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "Names the defined value variable."}
+{"clause": "10.3", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "Names the typed value initializer."}
+{"clause": "10.3", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "Names the value initializer."}
+{"clause": "10.3", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/types.rs:1053", "note": "Initializer class is its expression's class."}
+{"clause": "10.3", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "Names the incoming record type."}
+{"clause": "10.3", "sr": 7, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:839; src/context.rs:2047; src/verify/scope.rs:208", "note": "Value variable name must be new; marked NEW and freshly named."}
+{"clause": "10.3", "sr": 8, "kind": "type", "status": "generated", "where": "src/context/types.rs:1054; src/verify/types.rs:820", "note": "Typed initializer value must be assignable to the declared value type; coarse classes."}
+{"clause": "10.3", "sr": 9, "kind": "type", "status": "generated", "where": "src/context/types.rs:1527; src/context/scope.rs:839", "note": "New value variable gets the definition's type (LET); BVD ones never referenced."}
+{"clause": "11.1", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the graph expression."}
+{"clause": "11.1", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "Rewrites a bare name to a variable or a catalog graph reference."}
+{"clause": "11.1", "sr": 3, "kind": "type", "status": "reading", "where": "src/context/types.rs:879; src/verify/types.rs:1450", "note": "Value used as graph must be graph reference typed; generator allows only dynamic values. CURRENT_GRAPH site check not modelled."}
+{"clause": "11.2", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the binding table expression."}
+{"clause": "11.2", "sr": 2, "kind": "type", "status": "not modelled", "where": "", "note": "Nested table query must yield a table; a FINISH or catalog body is not rejected."}
+{"clause": "11.2", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "Rewrites a bare name to a variable or a catalog table reference."}
+{"clause": "11.2", "sr": 4, "kind": "type", "status": "reading", "where": "src/context/types.rs:879; src/verify/types.rs:1455", "note": "Value used as table must be table reference typed; generator allows only dynamic values."}
+{"clause": "11.3", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Inserts implicit VARIABLE keyword."}
+{"clause": "12.1", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the linear catalog-modifying statement."}
+{"clause": "12.1", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/scope.rs:549", "note": "Catalog statement passes record through; it binds nothing."}
+{"clause": "12.1", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/scope.rs:549", "note": "Catalog statement passes table through; it binds nothing."}
+{"clause": "12.1", "sr": 4, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1075", "note": "Catalog statement has no result, so NEXT sees a unit table."}
+{"clause": "12.2", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names schema parent and name."}
+{"clause": "12.2", "sr": 2, "kind": "catalog", "status": "not modelled", "where": "", "note": "Parent directory path must exist in the catalog."}
+{"clause": "12.2", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "Names the parent directory."}
+{"clause": "12.2", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "Names the schema name."}
+{"clause": "12.2", "sr": 5, "kind": "catalog", "status": "not modelled", "where": "", "note": "Without IF NOT EXISTS, schema must not already exist."}
+{"clause": "12.3", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the drop schema statement."}
+{"clause": "12.3", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "Names schema parent and name."}
+{"clause": "12.3", "sr": 3, "kind": "catalog", "status": "not modelled", "where": "", "note": "Parent directory path must exist in the catalog."}
+{"clause": "12.3", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "Names the parent directory."}
+{"clause": "12.3", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "Names the schema name."}
+{"clause": "12.3", "sr": 6, "kind": "catalog", "status": "not modelled", "where": "", "note": "Without IF EXISTS, schema must exist."}
+{"clause": "12.3", "sr": 7, "kind": "catalog", "status": "not modelled", "where": "", "note": "Cannot drop the current working schema or a non-empty schema."}
+{"clause": "12.4", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the create graph statement."}
+{"clause": "12.4", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "Names graph parent and name."}
+{"clause": "12.4", "sr": 3, "kind": "catalog", "status": "not modelled", "where": "", "note": "Parent reference must identify a schema."}
+{"clause": "12.4", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "Names the parent schema."}
+{"clause": "12.4", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "Names the graph name."}
+{"clause": "12.4", "sr": 6, "kind": "catalog", "status": "not modelled", "where": "", "note": "Without IF NOT EXISTS or OR REPLACE, graph must not exist."}
+{"clause": "12.4", "sr": 7, "kind": "type", "status": "reading", "where": "src/context/scope.rs:597", "note": "LIKE graph expression sees record and unit table; generator allows no references there."}
+{"clause": "12.4", "sr": 8, "kind": "type", "status": "reading", "where": "src/context/scope.rs:596", "note": "AS COPY OF graph expression sees record and unit table; generator allows no references there."}
+{"clause": "12.5", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the drop graph statement and its parent and name."}
+{"clause": "12.5", "sr": 2, "kind": "catalog", "status": "not modelled", "where": "", "note": "Parent reference must identify a schema."}
+{"clause": "12.5", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "Names the parent schema."}
+{"clause": "12.5", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "Names the graph name."}
+{"clause": "12.5", "sr": 5, "kind": "catalog", "status": "not modelled", "where": "", "note": "Without IF EXISTS, graph must exist."}
+{"clause": "12.6", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the create graph type statement and its parent and name."}
+{"clause": "12.6", "sr": 2, "kind": "catalog", "status": "not modelled", "where": "", "note": "Parent reference must identify a schema."}
+{"clause": "12.6", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "Names the parent schema."}
+{"clause": "12.6", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "Names the graph type name."}
+{"clause": "12.6", "sr": 5, "kind": "catalog", "status": "not modelled", "where": "", "note": "Without IF NOT EXISTS or OR REPLACE, graph type must not exist."}
+{"clause": "12.6", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "Names the graph type source."}
+{"clause": "12.6", "sr": 7, "kind": "catalog", "status": "not modelled", "where": "", "note": "Source graph type from a referenced type or a graph's constraining type; needs catalog."}
+{"clause": "12.7", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the drop graph type statement and its parent and name."}
+{"clause": "12.7", "sr": 2, "kind": "catalog", "status": "not modelled", "where": "", "note": "Parent reference must identify a schema."}
+{"clause": "12.7", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "Names the parent schema."}
+{"clause": "12.7", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "Names the graph type name."}
+{"clause": "12.7", "sr": 5, "kind": "catalog", "status": "not modelled", "where": "", "note": "Without IF EXISTS, graph type must exist."}
+{"clause": "12.7", "sr": 6, "kind": "catalog", "status": "not modelled", "where": "", "note": "Graph type in use by an existing graph cannot be dropped."}
+{"clause": "12.8", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the call statement parts."}
+{"clause": "12.8", "sr": 2, "kind": "constraint", "status": "not modelled", "where": "", "note": "Inline CALL as catalog-modifying statement must have a catalog-modifying body; unchecked."}
+{"clause": "12.8", "sr": 3, "kind": "catalog", "status": "not modelled", "where": "", "note": "Named procedure must be a catalog procedure; needs procedure signature."}
+{"clause": "13.1", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the linear data-modifying statement."}
+{"clause": "13.1", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "Implicit FINISH in focused body without result."}
+{"clause": "13.1", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "Implicit FINISH in ambient body without result."}
+{"clause": "13.1", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "Names the statement sequence."}
+{"clause": "13.1", "sr": 5, "kind": "constraint", "status": "reading", "where": "src/refine.rs:324; src/verify.rs:740", "note": "Needs a data-modifying statement, counted only along the statement spine, not inside subqueries."}
+{"clause": "13.1", "sr": 6, "kind": "type", "status": "generated", "where": "src/context/scope.rs:621; src/verify/scope.rs:352", "note": "First statement sees the statement's incoming record."}
+{"clause": "13.1", "sr": 7, "kind": "type", "status": "generated", "where": "src/context/scope.rs:621; src/verify/scope.rs:352", "note": "First statement sees the statement's incoming table."}
+{"clause": "13.1", "sr": 8, "kind": "type", "status": "generated", "where": "src/context/scope.rs:621; src/verify/scope.rs:352", "note": "Each statement sees the previous one's outgoing record and table."}
+{"clause": "13.1", "sr": 9, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1075", "note": "Statement's type is its last element's; result or unit table."}
+{"clause": "13.2", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the insert statement."}
+{"clause": "13.2", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "Names the insert graph pattern."}
+{"clause": "13.2", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "Names system-generated variable names."}
+{"clause": "13.2", "sr": 4, "kind": "type", "status": "generated", "where": "src/context/scope.rs:873; src/verify/scope.rs:661", "note": "New insert variables become node or edge columns; closed-type store assignment never arises without catalog."}
+{"clause": "13.2", "sr": 5, "kind": "catalog", "status": "not modelled", "where": "", "note": "Insert needs a current working graph; depends on session."}
+{"clause": "13.2", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "Names the current working graph site."}
+{"clause": "13.2", "sr": 7, "kind": "type", "status": "generated", "where": "src/context/scope.rs:873; src/verify/scope.rs:661", "note": "Outgoing table adds new insert variables as columns."}
+{"clause": "13.2", "sr": 8, "kind": "type", "status": "generated", "where": "src/context/scope.rs:541; src/verify/types.rs:910", "note": "Insert passes the record through."}
+{"clause": "13.2", "sr": 9, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1075", "note": "Insert has no result; NEXT sees unit table."}
+{"clause": "13.3", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the set statement."}
+{"clause": "13.3", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "Names the set item list."}
+{"clause": "13.3", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1746; src/verify/scope.rs:738", "note": "Partial: target must be node or edge; value being a supported property type is not checked."}
+{"clause": "13.3", "sr": 4, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:1746; src/verify/scope.rs:780", "note": "Same variable and property set twice forbidden; generator allows one item per variable."}
+{"clause": "13.3", "sr": 5, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:1746; src/verify/scope.rs:787", "note": "Set-all on a variable excludes other items on it; generator allows one item per variable."}
+{"clause": "13.3", "sr": 6, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1051", "note": "SET passes the table through."}
+{"clause": "13.3", "sr": 7, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1051", "note": "SET passes the record through."}
+{"clause": "13.3", "sr": 8, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1075", "note": "SET has no result; NEXT sees unit table."}
+{"clause": "13.4", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the remove statement."}
+{"clause": "13.4", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "Names the remove item list."}
+{"clause": "13.4", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1746; src/verify/scope.rs:749", "note": "REMOVE target must be a node or edge variable."}
+{"clause": "13.4", "sr": 4, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1051", "note": "REMOVE passes the table through."}
+{"clause": "13.4", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1051", "note": "REMOVE passes the record through."}
+{"clause": "13.4", "sr": 6, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1075", "note": "REMOVE has no result; NEXT sees unit table."}
+{"clause": "13.5", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the delete statement."}
+{"clause": "13.5", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "Names the delete item list."}
+{"clause": "13.5", "sr": 3, "kind": "catalog", "status": "not modelled", "where": "", "note": "Delete needs a current working graph; depends on session."}
+{"clause": "13.5", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "Names the current working graph site."}
+{"clause": "13.5", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/types.rs:851; src/context/scope.rs:1767; src/verify/types.rs:1010", "note": "Deleted items must be node or edge typed."}
+{"clause": "13.5", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "Implicit NODETACH."}
+{"clause": "13.5", "sr": 7, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1051", "note": "DELETE passes the table through."}
+{"clause": "13.5", "sr": 8, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1051", "note": "DELETE passes the record through."}
+{"clause": "13.5", "sr": 9, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1075", "note": "DELETE has no result; NEXT sees unit table."}
+{"clause": "13.6", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the call statement parts."}
+{"clause": "13.6", "sr": 2, "kind": "constraint", "status": "not modelled", "where": "", "note": "Inline CALL as data-modifying statement must have a data-modifying body; unchecked."}
+{"clause": "13.6", "sr": 3, "kind": "catalog", "status": "not modelled", "where": "", "note": "Named procedure must be a data procedure; needs procedure signature."}
+{"clause": "14.1", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the statement and its composite expression"}
+{"clause": "14.1", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/scope.rs:698", "note": "record passes through a composite query statement unchanged"}
+{"clause": "14.1", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/scope.rs:698", "note": "outgoing table is the composite expression's result"}
+{"clause": "14.1", "sr": 4, "kind": "type", "status": "generated", "where": "src/context/scope.rs:698", "note": "statement's type is the composite expression's type"}
+{"clause": "14.2", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "set operator without quantifier defaults to DISTINCT"}
+{"clause": "14.2", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names the composite query expression"}
+{"clause": "14.2", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "all conjunctions in one composite expression must be the same operator; mixing UNION/EXCEPT/OTHERWISE unchecked"}
+{"clause": "14.2", "sr": 4, "kind": "constraint", "status": "not modelled", "where": "", "note": "focused and ambient operands may not be mixed in one composite expression"}
+{"clause": "14.2", "sr": 5, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:1687", "note": "FINISH only allowed when there is a single operand; also checked at verify/scope.rs:329"}
+{"clause": "14.2", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "names the composite query primary"}
+{"clause": "14.2", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "names the linear query statement of the primary"}
+{"clause": "14.2", "sr": 8, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1687", "note": "every operand gets the composite's incoming record"}
+{"clause": "14.2", "sr": 9, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1687", "note": "every operand gets the composite's incoming table"}
+{"clause": "14.2", "sr": 10, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:1687", "note": "partial: column-name equality enforced (also src/verify/scope.rs:341); combinability and DISTINCT/EXCEPT/INTERSECT comparability not"}
+{"clause": "14.3", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the linear query statement"}
+{"clause": "14.3", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "sequence of statements in a linear query"}
+{"clause": "14.3", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/scope.rs:627", "note": "first statement sees the linear statement's incoming record"}
+{"clause": "14.3", "sr": 4, "kind": "type", "status": "generated", "where": "src/context/scope.rs:627", "note": "first statement sees the linear statement's incoming table"}
+{"clause": "14.3", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/scope.rs:627", "note": "each statement sees what the previous one outputs"}
+{"clause": "14.3", "sr": 6, "kind": "type", "status": "generated", "where": "src/context/scope.rs:698", "note": "linear statement's result is the last statement's"}
+{"clause": "14.4", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the match statement"}
+{"clause": "14.4", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "incoming record field names"}
+{"clause": "14.4", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "incoming table column names"}
+{"clause": "14.4", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "OPTIONAL MATCH rewritten as OPTIONAL CALL over incoming names"}
+{"clause": "14.4", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1027", "note": "new pattern names extend the table, repeated ones join"}
+{"clause": "14.4", "sr": 6, "kind": "type", "status": "generated", "where": "src/context/scope.rs:698", "note": "match statement has no result"}
+{"clause": "14.5", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names call query statement parts"}
+{"clause": "14.5", "sr": 2, "kind": "constraint", "status": "not modelled", "where": "", "note": "inline procedure in a query CALL must be a query, not data- or catalog-modifying"}
+{"clause": "14.5", "sr": 3, "kind": "catalog", "status": "not modelled", "where": "", "note": "named procedure in query CALL must be a query procedure; needs catalog"}
+{"clause": "14.6", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the filter statement"}
+{"clause": "14.6", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "bare FILTER condition means FILTER WHERE"}
+{"clause": "14.6", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "names the where clause"}
+{"clause": "14.6", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "incoming record type"}
+{"clause": "14.6", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "incoming table type"}
+{"clause": "14.6", "sr": 6, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1051", "note": "where clause sees the filter's incoming record"}
+{"clause": "14.6", "sr": 7, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1051", "note": "where clause sees the filter's incoming table"}
+{"clause": "14.6", "sr": 8, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1051", "note": "filter passes the record through"}
+{"clause": "14.6", "sr": 9, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1051", "note": "filter passes the table through"}
+{"clause": "14.6", "sr": 10, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1051", "note": "filter has no result"}
+{"clause": "14.7", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the let statement"}
+{"clause": "14.7", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names the definition list"}
+{"clause": "14.7", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "LET x = e shorthand for VALUE x = e"}
+{"clause": "14.7", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "incoming record names"}
+{"clause": "14.7", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "incoming table names"}
+{"clause": "14.7", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "union of incoming names"}
+{"clause": "14.7", "sr": 7, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:627", "note": "LET may only reference names bound before the statement"}
+{"clause": "14.7", "sr": 8, "kind": "definition", "status": "n/a", "where": "", "note": "list of incoming references"}
+{"clause": "14.7", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "concatenated definitions block"}
+{"clause": "14.7", "sr": 10, "kind": "definition", "status": "n/a", "where": "", "note": "return list of defined names"}
+{"clause": "14.7", "sr": 11, "kind": "definition", "status": "n/a", "where": "", "note": "LET rewritten as a CALL with a RETURN"}
+{"clause": "14.8", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the for statement"}
+{"clause": "14.8", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names the for item"}
+{"clause": "14.8", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "names the item alias"}
+{"clause": "14.8", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "alias variable name"}
+{"clause": "14.8", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "names the item source"}
+{"clause": "14.8", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "ordinality/offset clause or empty"}
+{"clause": "14.8", "sr": 7, "kind": "type", "status": "generated", "where": "src/context/scope.rs:627", "note": "source expression sees record amended with table"}
+{"clause": "14.8", "sr": 8, "kind": "type", "status": "generated", "where": "src/context/scope.rs:627", "note": "source expression sees a unit table"}
+{"clause": "14.8", "sr": 9, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1033", "note": "FOR passes the record through"}
+{"clause": "14.8", "sr": 10, "kind": "type", "status": "reading", "where": "src/context/types.rs:882; src/context/scope.rs:839", "note": "source must be list or table (generator: lists only); position name differs from alias"}
+{"clause": "14.8", "sr": 11, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:839", "note": "new FOR names must not clash with record; generator forbids any bound name"}
+{"clause": "14.8", "sr": 12, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1033", "note": "FOR adds alias and position columns to the table"}
+{"clause": "14.8", "sr": 13, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1033", "note": "FOR has no result"}
+{"clause": "14.9", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the order-by-and-page statement"}
+{"clause": "14.9", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "incoming record type"}
+{"clause": "14.9", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "incoming table type"}
+{"clause": "14.9", "sr": 4, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1051", "note": "order/offset/limit see the incoming record"}
+{"clause": "14.9", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1051", "note": "order/offset/limit see the incoming table"}
+{"clause": "14.9", "sr": 6, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1051", "note": "statement has no result"}
+{"clause": "14.10", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the primitive result statement"}
+{"clause": "14.10", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "incoming record type"}
+{"clause": "14.10", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "incoming table type"}
+{"clause": "14.10", "sr": 4, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:1096; src/context/scope.rs:1498; src/context/scope.rs:1606", "note": "sort keys: no subquery, only visible names; generator also bans every aggregate in sort keys"}
+{"clause": "14.10", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "hidden column for an aggregated sort key"}
+{"clause": "14.10", "sr": 6, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1606", "note": "ORDER BY helper columns dropped; FINISH has empty type"}
+{"clause": "14.11", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the return statement"}
+{"clause": "14.11", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names the return body"}
+{"clause": "14.11", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "RETURN defaults to ALL"}
+{"clause": "14.11", "sr": 4, "kind": "type", "status": "not modelled", "where": "", "note": "RETURN DISTINCT items must be groupable (22.15); unchecked in both type modules"}
+{"clause": "14.11", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "names the set quantifier"}
+{"clause": "14.11", "sr": 6, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:1842; src/context/scope.rs:1394", "note": "RETURN * needs non-unit table and no GROUP BY; generator needs a binding statement before"}
+{"clause": "14.11", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "NO BINDINGS means empty item list"}
+{"clause": "14.11", "sr": 8, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:1302", "note": "non-variable return items need an alias"}
+{"clause": "14.11", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "expression and alias name of a return item"}
+{"clause": "14.11", "sr": 10, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:1387", "note": "with GROUP BY every item is grouping or aggregating"}
+{"clause": "14.11", "sr": 11, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1339", "note": "columns are aliases with the item types; checker flags duplicates"}
+{"clause": "14.11", "sr": 12, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1339", "note": "outgoing table is the return table"}
+{"clause": "14.11", "sr": 13, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1339", "note": "record passes through RETURN"}
+{"clause": "14.11", "sr": 14, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1339", "note": "return statement has empty type"}
+{"clause": "14.12", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "select rules run before all others"}
+{"clause": "14.12", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names the select statement"}
+{"clause": "14.12", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "SELECT defaults to ALL"}
+{"clause": "14.12", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "names the set quantifier"}
+{"clause": "14.12", "sr": 5, "kind": "type", "status": "not modelled", "where": "", "note": "SELECT DISTINCT items must be groupable (22.15); unchecked"}
+{"clause": "14.12", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "select body or empty"}
+{"clause": "14.12", "sr": 7, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:1140", "note": "partial: SELECT * needs FROM enforced; * with GROUP BY not (GROUP BY () slips)"}
+{"clause": "14.12", "sr": 8, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:1167", "note": "non-variable select items need alias; generator names every item"}
+{"clause": "14.12", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "builds the FILTER from WHERE or the last pattern WHERE"}
+{"clause": "14.12", "sr": 10, "kind": "definition", "status": "n/a", "where": "", "note": "select item list, aliases and count"}
+{"clause": "14.12", "sr": 11, "kind": "definition", "status": "n/a", "where": "", "note": "set of aggregating select items"}
+{"clause": "14.12", "sr": 12, "kind": "definition", "status": "n/a", "where": "", "note": "GROUP BY rewrite with fresh keys"}
+{"clause": "14.12", "sr": 13, "kind": "definition", "status": "n/a", "where": "", "note": "non-aggregating items with keys substituted"}
+{"clause": "14.12", "sr": 14, "kind": "definition", "status": "n/a", "where": "", "note": "return items for aggregated sort keys"}
+{"clause": "14.12", "sr": 15, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:1167", "note": "aggregating select items need alias; generator names every item, never aggregates in SELECT"}
+{"clause": "14.12", "sr": 16, "kind": "definition", "status": "n/a", "where": "", "note": "HAVING turned into a FILTER on a fresh column"}
+{"clause": "14.12", "sr": 17, "kind": "definition", "status": "n/a", "where": "", "note": "LET items for computed sort keys"}
+{"clause": "14.12", "sr": 18, "kind": "definition", "status": "n/a", "where": "", "note": "builds the LET statement"}
+{"clause": "14.12", "sr": 19, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:1140", "note": "grouped SELECT sort keys only name aliases/keys; generator lets SELECT reference nothing"}
+{"clause": "14.12", "sr": 20, "kind": "definition", "status": "n/a", "where": "", "note": "builds the rewritten ORDER BY"}
+{"clause": "14.12", "sr": 21, "kind": "definition", "status": "n/a", "where": "", "note": "first RETURN of the rewrite"}
+{"clause": "14.12", "sr": 22, "kind": "definition", "status": "n/a", "where": "", "note": "final RETURN in select-list order"}
+{"clause": "14.12", "sr": 23, "kind": "definition", "status": "n/a", "where": "", "note": "offset clause or empty"}
+{"clause": "14.12", "sr": 24, "kind": "definition", "status": "n/a", "where": "", "note": "limit clause or empty"}
+{"clause": "14.12", "sr": 25, "kind": "definition", "status": "n/a", "where": "", "note": "scope clause and return list of the rewrite"}
+{"clause": "14.12", "sr": 26, "kind": "constraint", "status": "not modelled", "where": "", "note": "FROM subquery: with graph expression must be ambient, without must be focused"}
+{"clause": "14.12", "sr": 27, "kind": "definition", "status": "n/a", "where": "", "note": "SELECT replaced by CALL/FILTER/RETURN sequence"}
+{"clause": "15.1", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the call procedure statement"}
+{"clause": "15.1", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names the procedure call"}
+{"clause": "15.1", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "incoming record type"}
+{"clause": "15.1", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "incoming table record type"}
+{"clause": "15.1", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "record amended by table"}
+{"clause": "15.1", "sr": 6, "kind": "type", "status": "reading", "where": "src/context/scope.rs:1666", "note": "procedure sees record amended with table; generator: body sees nothing outside"}
+{"clause": "15.1", "sr": 7, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1666", "note": "procedure sees a unit table"}
+{"clause": "15.1", "sr": 8, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1061", "note": "call's result columns; named procedure result needs catalog"}
+{"clause": "15.1", "sr": 9, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:1061", "note": "call result columns must not clash with incoming columns"}
+{"clause": "15.1", "sr": 10, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1061", "note": "outgoing table is incoming amended with call result"}
+{"clause": "15.1", "sr": 11, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1061", "note": "record passes through CALL"}
+{"clause": "15.1", "sr": 12, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1061", "note": "outgoing table type built from amended record"}
+{"clause": "15.1", "sr": 13, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1061", "note": "CALL statement has empty type"}
+{"clause": "15.2", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the inline call"}
+{"clause": "15.2", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names the nested procedure"}
+{"clause": "15.2", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "missing scope clause means all incoming record names"}
+{"clause": "15.2", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "names the scope clause"}
+{"clause": "15.2", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/scope.rs:627", "note": "scope clause references resolve in the caller's scope"}
+{"clause": "15.2", "sr": 6, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:836", "note": "scope clause must not list a name twice"}
+{"clause": "15.2", "sr": 7, "kind": "type", "status": "reading", "where": "src/context/scope.rs:1666", "note": "body sees listed record fields; generator: body references nothing outside"}
+{"clause": "15.2", "sr": 8, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1666", "note": "body sees the call's incoming (unit) table"}
+{"clause": "15.2", "sr": 9, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1061", "note": "call's outgoing record is the body's"}
+{"clause": "15.2", "sr": 10, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1061", "note": "call's outgoing table is the body's"}
+{"clause": "15.2", "sr": 11, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1061", "note": "call's type is the body's"}
+{"clause": "15.3", "sr": 1, "kind": "catalog", "status": "not modelled", "where": "", "note": "resolves the referenced procedure in the catalog"}
+{"clause": "15.3", "sr": 2, "kind": "catalog", "status": "not modelled", "where": "", "note": "procedure descriptor from catalog"}
+{"clause": "15.3", "sr": 3, "kind": "catalog", "status": "not modelled", "where": "", "note": "parameter list and arity bounds from descriptor"}
+{"clause": "15.3", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "argument expressions in order"}
+{"clause": "15.3", "sr": 5, "kind": "catalog", "status": "not modelled", "where": "", "note": "too few arguments for the procedure"}
+{"clause": "15.3", "sr": 6, "kind": "catalog", "status": "not modelled", "where": "", "note": "too many arguments for the procedure"}
+{"clause": "15.3", "sr": 7, "kind": "catalog", "status": "not modelled", "where": "", "note": "arguments must be store-assignable to parameter types"}
+{"clause": "15.3", "sr": 8, "kind": "catalog", "status": "not modelled", "where": "", "note": "YIELD only on procedures returning a binding table"}
+{"clause": "15.3", "sr": 9, "kind": "catalog", "status": "not modelled", "where": "", "note": "named call's type from YIELD or procedure result"}
+{"clause": "16.1", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the at schema clause"}
+{"clause": "16.1", "sr": 2, "kind": "catalog", "status": "not modelled", "where": "", "note": "schema reference resolves to a catalog schema"}
+{"clause": "16.1", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "names the enclosing procedure body"}
+{"clause": "16.1", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "scope clause of AT is the procedure body"}
+{"clause": "16.1", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "schema reference scope covers the body"}
+{"clause": "16.1", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "AT sets the working schema"}
+{"clause": "16.2", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the use graph clause"}
+{"clause": "16.2", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names the graph expression"}
+{"clause": "16.2", "sr": 3, "kind": "type", "status": "reading", "where": "src/context/scope.rs:1174", "note": "graph expression sees the incoming record; generator lets it reference nothing"}
+{"clause": "16.2", "sr": 4, "kind": "type", "status": "reading", "where": "src/context/scope.rs:1174", "note": "graph expression sees a unit table; generator lets it reference nothing"}
+{"clause": "16.2", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "names the part containing USE"}
+{"clause": "16.2", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "scope clause of USE is the focused statement"}
+{"clause": "16.2", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "scope of the graph expression"}
+{"clause": "16.2", "sr": 8, "kind": "definition", "status": "n/a", "where": "", "note": "USE makes its graph the working graph site"}
+{"clause": "16.3", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the binding table and its graph pattern"}
+{"clause": "16.3", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "pattern scope carries into its yield clause"}
+{"clause": "16.3", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "collects element, path and subpath variable names"}
+{"clause": "16.3", "sr": 4, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:468", "note": "one name, one pattern variable; joins need equal node/edge kind, subpath named apart"}
+{"clause": "16.3", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "GLOBALS: pattern variables in scope"}
+{"clause": "16.3", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "names the incoming record type"}
+{"clause": "16.3", "sr": 7, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:961", "note": "subpath variable never spelled with a binding variable name, so no incoming field clash"}
+{"clause": "16.3", "sr": 8, "kind": "definition", "status": "n/a", "where": "", "note": "names the incoming table record type"}
+{"clause": "16.3", "sr": 9, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:961", "note": "subpath variable never spelled with a binding variable name, so no incoming column clash"}
+{"clause": "16.3", "sr": 10, "kind": "definition", "status": "n/a", "where": "", "note": "defines overlap of pattern vars with incoming names"}
+{"clause": "16.3", "sr": 11, "kind": "definition", "status": "n/a", "where": "", "note": "names the explicit YIELD list"}
+{"clause": "16.3", "sr": 12, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:1000", "note": "YIELD names distinct and declared by the pattern"}
+{"clause": "16.3", "sr": 13, "kind": "definition", "status": "n/a", "where": "", "note": "names the yield clause after rewriting"}
+{"clause": "16.3", "sr": 14, "kind": "definition", "status": "n/a", "where": "", "note": "names the yield references"}
+{"clause": "16.3", "sr": 15, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:1004", "note": "yielded references bind to this graph pattern"}
+{"clause": "16.3", "sr": 16, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:1027", "note": "joined incoming name matches group degree; generator joins only singleton nodes/edges"}
+{"clause": "16.3", "sr": 17, "kind": "definition", "status": "n/a", "where": "", "note": "projected field types of yield refs"}
+{"clause": "16.3", "sr": 18, "kind": "definition", "status": "n/a", "where": "", "note": "record type of the yield"}
+{"clause": "16.3", "sr": 19, "kind": "definition", "status": "n/a", "where": "", "note": "incoming record amended with table"}
+{"clause": "16.3", "sr": 20, "kind": "type", "status": "reading", "where": "src/context/scope.rs:468", "note": "implicit join columns must be comparable; generator joins only same-kind nodes/edges"}
+{"clause": "16.3", "sr": 21, "kind": "definition", "status": "n/a", "where": "", "note": "property spec rewritten as element WHERE"}
+{"clause": "16.3", "sr": 22, "kind": "definition", "status": "n/a", "where": "", "note": "names the transformed pattern"}
+{"clause": "16.3", "sr": 23, "kind": "catalog", "status": "not modelled", "where": "", "note": "needs a working graph from session or USE; no session modelled"}
+{"clause": "16.3", "sr": 24, "kind": "definition", "status": "n/a", "where": "", "note": "names the working graph site"}
+{"clause": "16.3", "sr": 25, "kind": "type", "status": "reading", "where": "src/context/scope.rs:16", "note": "pattern expressions see incoming fields; generator forbids outer references"}
+{"clause": "16.3", "sr": 26, "kind": "definition", "status": "n/a", "where": "", "note": "record type of the result table"}
+{"clause": "16.3", "sr": 27, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1000", "note": "result table binds pattern variables (or YIELD subset)"}
+{"clause": "16.4", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the graph pattern"}
+{"clause": "16.4", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "defines same depth of graph pattern matching"}
+{"clause": "16.4", "sr": 3, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:468", "note": "implicit joins only on unconditional singletons; generator also bars path/selective joins"}
+{"clause": "16.4", "sr": 4, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:706", "note": "no shared subpath variable; generator allows one subpath variable per pattern"}
+{"clause": "16.4", "sr": 5, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:468", "note": "a name is not both node and edge; joins need equal kind"}
+{"clause": "16.4", "sr": 6, "kind": "constraint", "status": "reading", "where": "src/refine.rs:280", "note": "KEEP excludes per-pattern search prefix; read per graph pattern depth"}
+{"clause": "16.4", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "moves path mode inside parentheses"}
+{"clause": "16.4", "sr": 8, "kind": "definition", "status": "n/a", "where": "", "note": "names the transformed pattern"}
+{"clause": "16.4", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "names the path pattern list"}
+{"clause": "16.4", "sr": 10, "kind": "implementation", "status": "generated", "where": "src/lib.rs:30", "note": "default match mode ID086 is an option; portable assumes neither"}
+{"clause": "16.4", "sr": 11, "kind": "definition", "status": "n/a", "where": "", "note": "names the match mode"}
+{"clause": "16.4", "sr": 12, "kind": "constraint", "status": "not modelled", "where": "", "note": "DIFFERENT EDGES with a selective path pattern allows only that one pattern"}
+{"clause": "16.4", "sr": 13, "kind": "definition", "status": "n/a", "where": "", "note": "defines global singletons and scope index"}
+{"clause": "16.4", "sr": 14, "kind": "constraint", "status": "reading", "where": "src/refine.rs:164", "note": "unbounded quantifier needs a guard; read per graph pattern depth"}
+{"clause": "16.4", "sr": 15, "kind": "definition", "status": "n/a", "where": "", "note": "path variables are unconditional singletons"}
+{"clause": "16.5", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the insert graph pattern"}
+{"clause": "16.5", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "adds generated names to anonymous insert elements"}
+{"clause": "16.5", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "defines system-generated names"}
+{"clause": "16.5", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "names the insert statement"}
+{"clause": "16.5", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "what an insert element pattern declares"}
+{"clause": "16.5", "sr": 6, "kind": "type", "status": "generated", "where": "src/context/scope.rs:627", "note": "insert property values see record amended with table via statement chaining"}
+{"clause": "16.5", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "defines insert element pattern"}
+{"clause": "16.5", "sr": 8, "kind": "definition", "status": "n/a", "where": "", "note": "defines bound insert element pattern and its type"}
+{"clause": "16.5", "sr": 9, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:1030", "note": "no duplicate property names on a bound insert element; generator gives bound ones no properties"}
+{"clause": "16.5", "sr": 10, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:1030", "note": "bound insert element is a bare node; generator also declares each name once"}
+{"clause": "16.5", "sr": 11, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:666", "note": "insert edge variable unique; generator declares every insert name once"}
+{"clause": "16.6", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "implicit WALK PATHS"}
+{"clause": "16.6", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "defaults path mode and count"}
+{"clause": "16.6", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "counted shortest path rewrite"}
+{"clause": "16.6", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "defines restrictive and selective"}
+{"clause": "16.6", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "defines interior and boundary variables"}
+{"clause": "16.6", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "defines exterior variables"}
+{"clause": "16.6", "sr": 7, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:124", "note": "selective interior vars not shared; generator never joins any selective pattern variable"}
+{"clause": "16.6", "sr": 8, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:915", "note": "selective pattern references only its own vars; generator lets in-pattern predicates see only local ones"}
+{"clause": "16.7", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names outermost graph pattern"}
+{"clause": "16.7", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "tokens ending in minus"}
+{"clause": "16.7", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "tokens starting with minus"}
+{"clause": "16.7", "sr": 4, "kind": "constraint", "status": "generated", "where": "src/tree.rs:75", "note": "no -- from adjacent tokens; renderer always puts a space between tokens"}
+{"clause": "16.7", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "defines possibly variable length pattern"}
+{"clause": "16.7", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "defines fixed length pattern"}
+{"clause": "16.7", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "defines minimum path length"}
+{"clause": "16.7", "sr": 8, "kind": "constraint", "status": "not modelled", "where": "", "note": "quantified or questioned primary must have positive minimum path length"}
+{"clause": "16.7", "sr": 9, "kind": "constraint", "status": "not modelled", "where": "", "note": "no quantifier directly nested inside a quantified primary"}
+{"clause": "16.7", "sr": 10, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:706", "note": "multiset alternation subpath vars distinct; generator allows one per pattern"}
+{"clause": "16.7", "sr": 11, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:966", "note": "union operand references only own or outside vars; generator declares nothing under unions"}
+{"clause": "16.7", "sr": 12, "kind": "definition", "status": "n/a", "where": "", "note": "element WHERE rewritten as parenthesized WHERE"}
+{"clause": "16.7", "sr": 13, "kind": "definition", "status": "n/a", "where": "", "note": "defines empty element pattern"}
+{"clause": "16.7", "sr": 14, "kind": "definition", "status": "n/a", "where": "", "note": "inserts implicit node patterns etc."}
+{"clause": "16.7", "sr": 15, "kind": "definition", "status": "n/a", "where": "", "note": "defines minimum node count"}
+{"clause": "16.7", "sr": 16, "kind": "constraint", "status": "not modelled", "where": "", "note": "top path pattern expression must have positive minimum node count"}
+{"clause": "16.7", "sr": 17, "kind": "definition", "status": "n/a", "where": "", "note": "what element variable declarations declare; TEMP"}
+{"clause": "16.7", "sr": 18, "kind": "definition", "status": "n/a", "where": "", "note": "node vs edge variables"}
+{"clause": "16.7", "sr": 19, "kind": "definition", "status": "n/a", "where": "", "note": "scope of element variables"}
+{"clause": "16.7", "sr": 20, "kind": "constraint", "status": "not modelled", "where": "", "note": "parenthesized expression with subpath var must have positive minimum node count"}
+{"clause": "16.7", "sr": 21, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:915", "note": "element pattern with WHERE must declare a variable"}
+{"clause": "16.7", "sr": 22, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:966", "note": "exposure rules (no subpath joins, no conditional joins); generator declares nothing under union/?/quantifier"}
+{"clause": "16.7", "sr": 23, "kind": "definition", "status": "n/a", "where": "", "note": "names exposed with a degree"}
+{"clause": "16.7", "sr": 24, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:975", "note": "parenthesized WHERE references no path variable"}
+{"clause": "16.8", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the label expression"}
+{"clause": "16.8", "sr": 2, "kind": "catalog", "status": "not modelled", "where": "", "note": "needs a working graph site; no session modelled"}
+{"clause": "16.8", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "names the working graph site"}
+{"clause": "16.8", "sr": 4, "kind": "catalog", "status": "not modelled", "where": "", "note": "labels must exist in a closed graph type; no graph types modelled"}
+{"clause": "16.9", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the path variable reference"}
+{"clause": "16.9", "sr": 2, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:810", "note": "path reference must be an unconditional singleton; generator declares nothing under quantifiers"}
+{"clause": "16.9", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/scope.rs:810", "note": "path variable reference names a path"}
+{"clause": "16.10", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the element variable reference"}
+{"clause": "16.10", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names its declared type"}
+{"clause": "16.10", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/scope.rs:810", "note": "element reference names a node or edge (group list if group)"}
+{"clause": "16.11", "sr": 1, "kind": "implementation", "status": "not modelled", "where": "", "note": "upper bound limit is implementation-defined; nothing caps quantifier values"}
+{"clause": "16.11", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "normalizes quantifier forms"}
+{"clause": "16.11", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "upper bound positive and not below lower bound"}
+{"clause": "16.11", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "defines variable quantifier"}
+{"clause": "16.12", "sr": 1, "kind": "constraint", "status": "not modelled", "where": "", "note": "simplified negation holds no concatenation, quantifier, ? or multiset alternation"}
+{"clause": "16.12", "sr": 2, "kind": "constraint", "status": "not modelled", "where": "", "note": "no nested simplified direction override"}
+{"clause": "16.12", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "simplified direction override holds no concatenation, quantifier, ? or alternation"}
+{"clause": "16.12", "sr": 4, "kind": "constraint", "status": "not modelled", "where": "", "note": "simplified conjunction holds no concatenation, quantifier, ? or alternation"}
+{"clause": "16.12", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "parenthesizes simplified expression"}
+{"clause": "16.12", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "rewrites simplified patterns to full ones"}
+{"clause": "16.12", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "applies 16.7 conformance rules to result"}
+{"clause": "16.13", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the where clause and condition"}
+{"clause": "16.13", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/scope.rs:627", "note": "condition sees record amended with table, via statement chaining"}
+{"clause": "16.13", "sr": 3, "kind": "type", "status": "reading", "where": "src/context/scope.rs:16", "note": "condition sees a unit table; generator bars correlation in nested queries"}
+{"clause": "16.13", "sr": 4, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1052", "note": "WHERE passes the incoming table through"}
+{"clause": "16.14", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the yield clause"}
+{"clause": "16.14", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "collects yield items"}
+{"clause": "16.14", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "counts yield items"}
+{"clause": "16.14", "sr": 4, "kind": "constraint", "status": "generated", "where": "src/main.rs:194", "note": "unaliased yield item name is a binding variable; names are regular identifiers"}
+{"clause": "16.14", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "names yield clause after rewrite"}
+{"clause": "16.14", "sr": 6, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:447", "note": "yield aliases distinct; two bindings never merge into one name"}
+{"clause": "16.14", "sr": 7, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1251", "note": "yielded name must be an incoming column; output table typing"}
+{"clause": "16.15", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names group by clause and list"}
+{"clause": "16.15", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/scope.rs:833", "note": "grouping key references see record amended with table"}
+{"clause": "16.15", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/scope.rs:833", "note": "grouping key sees a unit table"}
+{"clause": "16.15", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "applies 22.15 grouping operation rules"}
+{"clause": "16.15", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "names grouping variable"}
+{"clause": "16.15", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "defines grouping column"}
+{"clause": "16.15", "sr": 7, "kind": "type", "status": "generated", "where": "src/context/scope.rs:833", "note": "output table holds the grouping columns"}
+{"clause": "16.16", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names order by clause"}
+{"clause": "16.16", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names sort specification list"}
+{"clause": "16.16", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1052", "note": "ORDER BY passes the incoming table through"}
+{"clause": "16.17", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "applies 22.14 ordering operation rules"}
+{"clause": "16.17", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names sort specification list"}
+{"clause": "16.17", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "counts sort specifications"}
+{"clause": "16.17", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "indexes sort specifications"}
+{"clause": "16.17", "sr": 5, "kind": "type", "status": "reading", "where": "src/context/scope.rs:1097", "note": "sort key sees record amended with table; generator bars aggregates and subqueries"}
+{"clause": "16.17", "sr": 6, "kind": "implementation", "status": "not modelled", "where": "", "note": "default null ordering is implementation-defined; nothing depends on it"}
+{"clause": "16.17", "sr": 7, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1052", "note": "sort list passes the incoming table through"}
+{"clause": "16.18", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names limit clause"}
+{"clause": "16.18", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1052", "note": "LIMIT passes the incoming table through"}
+{"clause": "16.19", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names offset clause"}
+{"clause": "16.19", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1052", "note": "OFFSET passes the incoming table through"}
+{"clause": "17.1", "sr": 1, "kind": "catalog", "status": "not modelled", "where": "", "note": "schema reference resolves through its absolute or relative form"}
+{"clause": "17.1", "sr": 2, "kind": "catalog", "status": "not modelled", "where": "", "note": "absolute schema path must name a schema in the catalog"}
+{"clause": "17.1", "sr": 3, "kind": "catalog", "status": "not modelled", "where": "", "note": "relative schema path resolves against working schema"}
+{"clause": "17.1", "sr": 4, "kind": "catalog", "status": "not modelled", "where": "", "note": "HOME_SCHEMA / CURRENT_SCHEMA need session values"}
+{"clause": "17.1", "sr": 5, "kind": "catalog", "status": "not modelled", "where": "", "note": "absolute directory path must exist in the catalog"}
+{"clause": "17.1", "sr": 6, "kind": "catalog", "status": "not modelled", "where": "", "note": "relative .. steps must stay below the catalog root"}
+{"clause": "17.2", "sr": 1, "kind": "catalog", "status": "not modelled", "where": "", "note": "graph reference resolves to home or catalog graph"}
+{"clause": "17.2", "sr": 2, "kind": "catalog", "status": "not modelled", "where": "", "note": "graph name must name a graph under its parent"}
+{"clause": "17.2", "sr": 3, "kind": "catalog", "status": "not modelled", "where": "", "note": "graph identified, or nothing"}
+{"clause": "17.3", "sr": 1, "kind": "catalog", "status": "not modelled", "where": "", "note": "graph type reference must name a graph type"}
+{"clause": "17.3", "sr": 2, "kind": "catalog", "status": "not modelled", "where": "", "note": "graph type name must exist under its parent"}
+{"clause": "17.3", "sr": 3, "kind": "catalog", "status": "not modelled", "where": "", "note": "graph type identified, or nothing"}
+{"clause": "17.4", "sr": 1, "kind": "catalog", "status": "not modelled", "where": "", "note": "binding table reference resolves through the catalog"}
+{"clause": "17.4", "sr": 2, "kind": "catalog", "status": "not modelled", "where": "", "note": "binding table name must exist under its parent"}
+{"clause": "17.4", "sr": 3, "kind": "catalog", "status": "not modelled", "where": "", "note": "binding table identified, or nothing"}
+{"clause": "17.5", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "implicit ./ parent for procedures"}
+{"clause": "17.5", "sr": 2, "kind": "catalog", "status": "not modelled", "where": "", "note": "procedure reference resolves through the catalog"}
+{"clause": "17.5", "sr": 3, "kind": "catalog", "status": "not modelled", "where": "", "note": "procedure must exist under its parent"}
+{"clause": "17.6", "sr": 1, "kind": "constraint", "status": "not modelled", "where": "", "note": "parent reference solidus rule: none after root /, required otherwise"}
+{"clause": "17.6", "sr": 2, "kind": "catalog", "status": "not modelled", "where": "", "note": "needs the current working schema"}
+{"clause": "17.6", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "lists object names"}
+{"clause": "17.6", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "indexes object names"}
+{"clause": "17.6", "sr": 5, "kind": "catalog", "status": "not modelled", "where": "", "note": "each object name must exist in the catalog"}
+{"clause": "17.6", "sr": 6, "kind": "catalog", "status": "not modelled", "where": "", "note": "parent reference identifies the last catalog object"}
+{"clause": "17.7", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the reference parameter"}
+{"clause": "17.7", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names its substituted parameter reference"}
+{"clause": "17.7", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "names the parameter's substitution"}
+{"clause": "17.7", "sr": 4, "kind": "catalog", "status": "not modelled", "where": "", "note": "parameter value must parse as the expected reference; needs session parameters"}
+{"clause": "17.7", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "parameter replaced by its value"}
+{"clause": "17.8", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the external object reference"}
+{"clause": "17.8", "sr": 2, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:57", "note": "must be a URI with scheme; fixed stub urn:example:graph"}
+{"clause": "17.8", "sr": 3, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:57", "note": "must contain a colon; stub does"}
+{"clause": "17.8", "sr": 4, "kind": "implementation", "status": "not modelled", "where": "", "note": "what an external reference identifies is implementation-defined"}
+{"clause": "17.8", "sr": 5, "kind": "catalog", "status": "not modelled", "where": "", "note": "external reference must identify an existing object"}
+{"clause": "18.1", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the nested graph type spec and its body"}
+{"clause": "18.1", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names the nested graph type spec and its body"}
+{"clause": "18.1", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "element type specs are the node and edge type specs of the body"}
+{"clause": "18.1", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "property names of an element type spec"}
+{"clause": "18.1", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "defines property name-sharing between element type specs"}
+{"clause": "18.1", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "defines when one element type spec implies another via key labels"}
+{"clause": "18.1", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "defines structural consistency between element type specs"}
+{"clause": "18.1", "sr": 8, "kind": "constraint", "status": "not modelled", "where": "", "note": "two node type specs in one body may not share an effective key label set"}
+{"clause": "18.1", "sr": 9, "kind": "constraint", "status": "not modelled", "where": "", "note": "a node type spec implying another must be structurally consistent with it"}
+{"clause": "18.1", "sr": 10, "kind": "constraint", "status": "not modelled", "where": "", "note": "local node type aliases must be unique within a graph type body"}
+{"clause": "18.1", "sr": 11, "kind": "constraint", "status": "not modelled", "where": "", "note": "every edge type's source and destination node types must be declared in the body"}
+{"clause": "18.1", "sr": 12, "kind": "definition", "status": "n/a", "where": "", "note": "names the source node type spec of an edge type spec"}
+{"clause": "18.1", "sr": 13, "kind": "definition", "status": "n/a", "where": "", "note": "names the destination node type spec of an edge type spec"}
+{"clause": "18.1", "sr": 14, "kind": "constraint", "status": "not modelled", "where": "", "note": "edge type specs sharing a key label set must agree on direction, labels, properties"}
+{"clause": "18.1", "sr": 15, "kind": "definition", "status": "n/a", "where": "", "note": "defines structural endpoint consistency of edge type specs"}
+{"clause": "18.1", "sr": 16, "kind": "constraint", "status": "not modelled", "where": "", "note": "an implying edge type spec must be structurally and endpoint consistent"}
+{"clause": "18.1", "sr": 17, "kind": "definition", "status": "n/a", "where": "", "note": "set of node type key label sets of a body"}
+{"clause": "18.1", "sr": 18, "kind": "definition", "status": "n/a", "where": "", "note": "set of edge type key label sets of a body"}
+{"clause": "18.1", "sr": 19, "kind": "definition", "status": "n/a", "where": "", "note": "nested spec denotes the graph type of its body"}
+{"clause": "18.1", "sr": 20, "kind": "definition", "status": "n/a", "where": "", "note": "graph type built from the body's node and edge types"}
+{"clause": "18.1", "sr": 21, "kind": "definition", "status": "n/a", "where": "", "note": "node type key label set dictionary"}
+{"clause": "18.1", "sr": 22, "kind": "definition", "status": "n/a", "where": "", "note": "edge type key label set dictionary"}
+{"clause": "18.1", "sr": 23, "kind": "implementation", "status": "not modelled", "where": "", "note": "graph type normal form is implementation-defined (IV003)"}
+{"clause": "18.2", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the node type spec"}
+{"clause": "18.2", "sr": 2, "kind": "constraint", "status": "not modelled", "where": "", "note": "node type inside a closed node reference type has no alias, key label set or name"}
+{"clause": "18.2", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "a named node type spec has no key label set and no alias"}
+{"clause": "18.2", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "local alias of a node type spec, else system-generated"}
+{"clause": "18.2", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "key label set of a node type spec, possibly omitted"}
+{"clause": "18.2", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "implied label set of a node type spec"}
+{"clause": "18.2", "sr": 7, "kind": "constraint", "status": "not modelled", "where": "", "note": "node key labels and implied labels must be disjoint"}
+{"clause": "18.2", "sr": 8, "kind": "definition", "status": "n/a", "where": "", "note": "label set is key plus implied labels"}
+{"clause": "18.2", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "effective key label set, with GG22 inference"}
+{"clause": "18.2", "sr": 10, "kind": "implementation", "status": "not modelled", "where": "", "note": "min node key label count is implementation-defined (IL003)"}
+{"clause": "18.2", "sr": 11, "kind": "implementation", "status": "not modelled", "where": "", "note": "max node key label count is implementation-defined (IL003)"}
+{"clause": "18.2", "sr": 12, "kind": "implementation", "status": "not modelled", "where": "", "note": "min node label count is implementation-defined (IL001)"}
+{"clause": "18.2", "sr": 13, "kind": "implementation", "status": "not modelled", "where": "", "note": "max node label count is implementation-defined"}
+{"clause": "18.2", "sr": 14, "kind": "definition", "status": "n/a", "where": "", "note": "property type set of a node type spec"}
+{"clause": "18.2", "sr": 15, "kind": "implementation", "status": "not modelled", "where": "", "note": "max node property count is implementation-defined (IL002)"}
+{"clause": "18.2", "sr": 16, "kind": "definition", "status": "n/a", "where": "", "note": "node type built from label set and property types"}
+{"clause": "18.2", "sr": 17, "kind": "implementation", "status": "not modelled", "where": "", "note": "node type normal form is implementation-defined (IV003)"}
+{"clause": "18.3", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the edge type spec"}
+{"clause": "18.3", "sr": 2, "kind": "constraint", "status": "not modelled", "where": "", "note": "edge type inside a closed edge reference type has no key labels, name or aliases"}
+{"clause": "18.3", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "a named edge type spec has no key label set"}
+{"clause": "18.3", "sr": 4, "kind": "constraint", "status": "not modelled", "where": "", "note": "DIRECTED/UNDIRECTED keyword must match the endpoint pair or pattern direction"}
+{"clause": "18.3", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "edge type phrase rewritten to an edge type pattern"}
+{"clause": "18.3", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "key label set of an edge type spec"}
+{"clause": "18.3", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "implied label set of an edge type spec"}
+{"clause": "18.3", "sr": 8, "kind": "constraint", "status": "not modelled", "where": "", "note": "edge key labels and implied labels must be disjoint"}
+{"clause": "18.3", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "edge label set is key plus implied labels"}
+{"clause": "18.3", "sr": 10, "kind": "definition", "status": "n/a", "where": "", "note": "effective key label set of an edge type spec, with GG22"}
+{"clause": "18.3", "sr": 11, "kind": "implementation", "status": "not modelled", "where": "", "note": "min edge key label count implementation-defined"}
+{"clause": "18.3", "sr": 12, "kind": "implementation", "status": "not modelled", "where": "", "note": "max edge key label count implementation-defined"}
+{"clause": "18.3", "sr": 13, "kind": "implementation", "status": "not modelled", "where": "", "note": "min edge label count implementation-defined (IL001)"}
+{"clause": "18.3", "sr": 14, "kind": "implementation", "status": "not modelled", "where": "", "note": "max edge label count implementation-defined (IL001)"}
+{"clause": "18.3", "sr": 15, "kind": "definition", "status": "n/a", "where": "", "note": "property type set of an edge type spec"}
+{"clause": "18.3", "sr": 16, "kind": "implementation", "status": "not modelled", "where": "", "note": "max edge property count implementation-defined (IL002)"}
+{"clause": "18.3", "sr": 17, "kind": "constraint", "status": "not modelled", "where": "", "note": "source alias or key label set must resolve to a node type spec in the body"}
+{"clause": "18.3", "sr": 18, "kind": "constraint", "status": "not modelled", "where": "", "note": "destination alias or key label set must resolve to a node type spec in the body"}
+{"clause": "18.3", "sr": 19, "kind": "definition", "status": "n/a", "where": "", "note": "directed or undirected edge type built from the spec"}
+{"clause": "18.3", "sr": 20, "kind": "implementation", "status": "not modelled", "where": "", "note": "edge type normal form is implementation-defined (IV003)"}
+{"clause": "18.4", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "LABEL name rewritten as colon form"}
+{"clause": "18.4", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "label set phrase denotes its label set spec"}
+{"clause": "18.4", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "label set spec is the set of its label names"}
+{"clause": "18.5", "sr": 1, "kind": "constraint", "status": "not modelled", "where": "", "note": "property type names in one property types spec must be distinct"}
+{"clause": "18.5", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "property types spec denotes its list"}
+{"clause": "18.5", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "property type list denotes its property types"}
+{"clause": "18.6", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "name of a property type"}
+{"clause": "18.6", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "value type of a property type"}
+{"clause": "18.6", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "property type is a name/type pair"}
+{"clause": "18.6", "sr": 4, "kind": "implementation", "status": "not modelled", "where": "", "note": "property value type must be supported; support set is implementation-defined (4.3.4)"}
+{"clause": "18.7", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the property value type and its value type"}
+{"clause": "18.7", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names the property value type and its value type"}
+{"clause": "18.7", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "property value type is its value type"}
+{"clause": "18.7", "sr": 4, "kind": "implementation", "status": "not modelled", "where": "", "note": "property value type must be supported; implementation-defined (4.3.4)"}
+{"clause": "18.8", "sr": 1, "kind": "type", "status": "reading", "where": "src/context/types.rs:1124; checked src/verify/types.rs:2116", "note": "binding table type taken as opaque, its record type not followed"}
+{"clause": "18.8", "sr": 2, "kind": "implementation", "status": "not modelled", "where": "", "note": "binding table type normal form implementation-defined"}
+{"clause": "18.9", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:1129; checked src/verify/types.rs:2074", "note": "value type passes the type of its single child"}
+{"clause": "18.9", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/types.rs:1130", "note": "predefined type passes its child's type"}
+{"clause": "18.9", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/types.rs:1133", "note": "reference value type passes its child's type"}
+{"clause": "18.9", "sr": 4, "kind": "type", "status": "reading", "where": "src/context/types.rs:1139,1263; checked src/verify/types.rs:2160", "note": "nullability: NOT NULL anywhere inside a type counts as not nullable"}
+{"clause": "18.9", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/types.rs:1106; checked src/verify/types.rs:2087", "note": "BOOL type maps to the boolean class"}
+{"clause": "18.9", "sr": 6, "kind": "implementation", "status": "not modelled", "where": "", "note": "boolean type normal form implementation-defined (IV008)"}
+{"clause": "18.9", "sr": 7, "kind": "constraint", "status": "not modelled", "where": "", "note": "max length must be at least 1; generator can emit 0"}
+{"clause": "18.9", "sr": 8, "kind": "constraint", "status": "grammar", "where": "", "note": "min length is an unsigned integer, so never negative"}
+{"clause": "18.9", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "omitted min length defaults to 0"}
+{"clause": "18.9", "sr": 10, "kind": "constraint", "status": "not modelled", "where": "", "note": "fixed length must be at least 1; generator can emit 0"}
+{"clause": "18.9", "sr": 11, "kind": "definition", "status": "n/a", "where": "", "note": "omitted fixed length defaults to 1"}
+{"clause": "18.9", "sr": 12, "kind": "type", "status": "generated", "where": "src/context/types.rs:1107; checked src/verify/types.rs:2088", "note": "STRING types map to the string class"}
+{"clause": "18.9", "sr": 13, "kind": "constraint", "status": "not modelled", "where": "", "note": "string min length must not exceed max length"}
+{"clause": "18.9", "sr": 14, "kind": "definition", "status": "n/a", "where": "", "note": "string type minimum length from min length"}
+{"clause": "18.9", "sr": 15, "kind": "definition", "status": "n/a", "where": "", "note": "string type maximum length from max length"}
+{"clause": "18.9", "sr": 16, "kind": "definition", "status": "n/a", "where": "", "note": "fixed length fixes both string bounds"}
+{"clause": "18.9", "sr": 17, "kind": "implementation", "status": "not modelled", "where": "", "note": "default string max length implementation-defined (IL013)"}
+{"clause": "18.9", "sr": 18, "kind": "implementation", "status": "not modelled", "where": "", "note": "string type normal form implementation-defined"}
+{"clause": "18.9", "sr": 19, "kind": "definition", "status": "n/a", "where": "", "note": "material values of a string type are strings within its bounds"}
+{"clause": "18.9", "sr": 20, "kind": "type", "status": "generated", "where": "src/context/types.rs:1108; checked src/verify/types.rs:2089", "note": "BYTES types map to the byte string class"}
+{"clause": "18.9", "sr": 21, "kind": "constraint", "status": "not modelled", "where": "", "note": "byte string min length must not exceed max length"}
+{"clause": "18.9", "sr": 22, "kind": "definition", "status": "n/a", "where": "", "note": "byte string minimum length"}
+{"clause": "18.9", "sr": 23, "kind": "definition", "status": "n/a", "where": "", "note": "byte string maximum length"}
+{"clause": "18.9", "sr": 24, "kind": "definition", "status": "n/a", "where": "", "note": "fixed length fixes both byte string bounds"}
+{"clause": "18.9", "sr": 25, "kind": "implementation", "status": "not modelled", "where": "", "note": "default byte string max length implementation-defined (IL013)"}
+{"clause": "18.9", "sr": 26, "kind": "implementation", "status": "not modelled", "where": "", "note": "byte string type normal form implementation-defined"}
+{"clause": "18.9", "sr": 27, "kind": "definition", "status": "n/a", "where": "", "note": "material values of a byte string type"}
+{"clause": "18.9", "sr": 28, "kind": "constraint", "status": "not modelled", "where": "", "note": "byte string type min length must not exceed its max length"}
+{"clause": "18.9", "sr": 29, "kind": "constraint", "status": "not modelled", "where": "", "note": "precision must be at least 1; generator can emit 0"}
+{"clause": "18.9", "sr": 30, "kind": "type", "status": "generated", "where": "src/context/types.rs:1131", "note": "numeric type passes its exact or approximate child"}
+{"clause": "18.9", "sr": 31, "kind": "implementation", "status": "not modelled", "where": "", "note": "exact numeric normal form implementation-defined"}
+{"clause": "18.9", "sr": 32, "kind": "implementation", "status": "not modelled", "where": "", "note": "exact precision and scale maxima implementation-defined (IL011)"}
+{"clause": "18.9", "sr": 33, "kind": "type", "status": "generated", "where": "src/context/types.rs:1109", "note": "exact numeric type maps to the exact class"}
+{"clause": "18.9", "sr": 34, "kind": "type", "status": "generated", "where": "src/context/types.rs:1109", "note": "binary exact numeric type is exact"}
+{"clause": "18.9", "sr": 35, "kind": "type", "status": "reading", "where": "src/context/types.rs:1109; checked src/verify/types.rs:2091", "note": "signed integer types: one coarse exact class, widths not tracked"}
+{"clause": "18.9", "sr": 36, "kind": "type", "status": "reading", "where": "src/context/types.rs:1109; checked src/verify/types.rs:2092", "note": "unsigned integer types: one coarse exact class, widths not tracked"}
+{"clause": "18.9", "sr": 37, "kind": "constraint", "status": "grammar", "where": "", "note": "scale is an unsigned integer, so never negative"}
+{"clause": "18.9", "sr": 38, "kind": "constraint", "status": "not modelled", "where": "", "note": "scale must not exceed precision in an exact numeric type"}
+{"clause": "18.9", "sr": 39, "kind": "type", "status": "reading", "where": "src/context/types.rs:1109; checked src/verify/types.rs:2095", "note": "DECIMAL maps to the coarse exact class; precision and scale ignored"}
+{"clause": "18.9", "sr": 40, "kind": "constraint", "status": "not modelled", "where": "", "note": "approximate numeric precision must be at least 2"}
+{"clause": "18.9", "sr": 41, "kind": "implementation", "status": "not modelled", "where": "", "note": "approximate numeric normal form implementation-defined"}
+{"clause": "18.9", "sr": 42, "kind": "implementation", "status": "not modelled", "where": "", "note": "approximate precision and scale maxima implementation-defined (IL011)"}
+{"clause": "18.9", "sr": 43, "kind": "type", "status": "reading", "where": "src/context/types.rs:1110; checked src/verify/types.rs:2098", "note": "FLOAT family maps to one approximate class"}
+{"clause": "18.9", "sr": 44, "kind": "definition", "status": "n/a", "where": "", "note": "preferred name of a numeric type"}
+{"clause": "18.9", "sr": 45, "kind": "definition", "status": "n/a", "where": "", "note": "explicit precision of a numeric type"}
+{"clause": "18.9", "sr": 46, "kind": "definition", "status": "n/a", "where": "", "note": "explicit scale of a numeric type"}
+{"clause": "18.9", "sr": 47, "kind": "type", "status": "generated", "where": "src/context/types.rs:1132", "note": "temporal type passes its child's type"}
+{"clause": "18.9", "sr": 48, "kind": "type", "status": "generated", "where": "src/context/types.rs:1114; checked src/verify/types.rs:2099", "note": "ZONED DATETIME type maps to zoned datetime class"}
+{"clause": "18.9", "sr": 49, "kind": "type", "status": "generated", "where": "src/context/types.rs:1115", "note": "LOCAL DATETIME type maps to local datetime class"}
+{"clause": "18.9", "sr": 50, "kind": "type", "status": "generated", "where": "src/context/types.rs:1111", "note": "DATE type maps to date class"}
+{"clause": "18.9", "sr": 51, "kind": "type", "status": "generated", "where": "src/context/types.rs:1112", "note": "ZONED TIME type maps to zoned time class"}
+{"clause": "18.9", "sr": 52, "kind": "type", "status": "generated", "where": "src/context/types.rs:1113", "note": "LOCAL TIME type maps to local time class"}
+{"clause": "18.9", "sr": 53, "kind": "implementation", "status": "not modelled", "where": "", "note": "temporal instant type normal form implementation-defined"}
+{"clause": "18.9", "sr": 54, "kind": "type", "status": "generated", "where": "src/context/types.rs:1140; checked src/verify/types.rs:2104", "note": "duration qualifier picks year-month or day-time group"}
+{"clause": "18.9", "sr": 55, "kind": "type", "status": "generated", "where": "src/context/types.rs:1116; checked src/verify/types.rs:2104", "note": "duration type maps to its unit group class"}
+{"clause": "18.9", "sr": 56, "kind": "type", "status": "reading", "where": "src/context/types.rs:1124; checked src/verify/types.rs:2115", "note": "graph reference type taken as opaque"}
+{"clause": "18.9", "sr": 57, "kind": "type", "status": "reading", "where": "src/context/types.rs:1124; checked src/verify/types.rs:2115", "note": "open graph reference type taken as opaque"}
+{"clause": "18.9", "sr": 58, "kind": "type", "status": "reading", "where": "src/context/types.rs:1124; checked src/verify/types.rs:2115", "note": "closed graph reference type opaque; its graph type not interpreted"}
+{"clause": "18.9", "sr": 59, "kind": "type", "status": "reading", "where": "src/context/types.rs:1124; checked src/verify/types.rs:2116", "note": "binding table reference type taken as opaque"}
+{"clause": "18.9", "sr": 60, "kind": "type", "status": "generated", "where": "src/context/types.rs:1122; checked src/verify/types.rs:2117", "note": "node reference type maps to node class"}
+{"clause": "18.9", "sr": 61, "kind": "type", "status": "generated", "where": "src/context/types.rs:1122; checked src/verify/types.rs:2117", "note": "open node reference type maps to node class"}
+{"clause": "18.9", "sr": 62, "kind": "type", "status": "not modelled", "where": "", "note": "closed node type's constraint ignored; treated as any node (context/types.rs:1122)"}
+{"clause": "18.9", "sr": 63, "kind": "type", "status": "generated", "where": "src/context/types.rs:1123; checked src/verify/types.rs:2118", "note": "edge reference type maps to edge class"}
+{"clause": "18.9", "sr": 64, "kind": "type", "status": "generated", "where": "src/context/types.rs:1123; checked src/verify/types.rs:2118", "note": "open edge reference type maps to edge class"}
+{"clause": "18.9", "sr": 65, "kind": "type", "status": "not modelled", "where": "", "note": "closed edge type's constraint ignored; treated as any edge (context/types.rs:1123)"}
+{"clause": "18.9", "sr": 66, "kind": "type", "status": "generated", "where": "src/context/types.rs:1134", "note": "constructed value type passes its child's type"}
+{"clause": "18.9", "sr": 67, "kind": "type", "status": "generated", "where": "src/context/types.rs:1119; checked src/verify/types.rs:2119", "note": "PATH type maps to path class"}
+{"clause": "18.9", "sr": 68, "kind": "constraint", "status": "not modelled", "where": "", "note": "GROUP list element type must be a node or edge reference type"}
+{"clause": "18.9", "sr": 69, "kind": "type", "status": "generated", "where": "src/context/types.rs:1127; checked src/verify/types.rs:2113", "note": "immaterial type flagged; CAST and typed initializers to it refused"}
+{"clause": "18.9", "sr": 70, "kind": "type", "status": "generated", "where": "src/context/types.rs:1127; checked src/verify/types.rs:2113", "note": "NULL type is immaterial"}
+{"clause": "18.9", "sr": 71, "kind": "type", "status": "generated", "where": "src/context/types.rs:1127; checked src/verify/types.rs:2114", "note": "NOTHING type is immaterial"}
+{"clause": "18.9", "sr": 72, "kind": "implementation", "status": "not modelled", "where": "", "note": "immaterial type normal form implementation-defined"}
+{"clause": "18.9", "sr": 73, "kind": "type", "status": "reading", "where": "src/context/types.rs:1120; checked src/verify/types.rs:2120", "note": "list type maps to one list class; element type, GROUP and max length not followed"}
+{"clause": "18.9", "sr": 74, "kind": "implementation", "status": "not modelled", "where": "", "note": "list type normal form implementation-defined"}
+{"clause": "18.9", "sr": 75, "kind": "type", "status": "reading", "where": "src/context/types.rs:1121; checked src/verify/types.rs:2125", "note": "record type maps to one record class; fields not followed"}
+{"clause": "18.9", "sr": 76, "kind": "implementation", "status": "not modelled", "where": "", "note": "record type normal form implementation-defined"}
+{"clause": "18.9", "sr": 77, "kind": "definition", "status": "n/a", "where": "", "note": "field types spec denotes its field type list"}
+{"clause": "18.9", "sr": 78, "kind": "definition", "status": "n/a", "where": "", "note": "field type list denotes its field types"}
+{"clause": "18.9", "sr": 79, "kind": "implementation", "status": "not modelled", "where": "", "note": "max record field count implementation-defined (IL015)"}
+{"clause": "18.9", "sr": 80, "kind": "definition", "status": "n/a", "where": "", "note": "preferred name of dynamic union types is ANY"}
+{"clause": "18.9", "sr": 81, "kind": "type", "status": "generated", "where": "src/context/types.rs:1128", "note": "dynamic union type taken as dynamic"}
+{"clause": "18.9", "sr": 82, "kind": "type", "status": "generated", "where": "src/context/types.rs:1128", "note": "ANY PROPERTY VALUE taken as dynamic"}
+{"clause": "18.9", "sr": 83, "kind": "type", "status": "generated", "where": "src/context/types.rs:1128", "note": "open ANY taken as dynamic"}
+{"clause": "18.9", "sr": 84, "kind": "type", "status": "not modelled", "where": "", "note": "closed union's components ignored; treated as fully dynamic (context/types.rs:1128)"}
+{"clause": "18.9", "sr": 85, "kind": "type", "status": "reading", "where": "src/context/types.rs:1263", "note": "closed union nullability: any NOT NULL inside makes it not nullable"}
+{"clause": "18.9", "sr": 86, "kind": "type", "status": "reading", "where": "src/context/types.rs:1263", "note": "component list nullability read as NOT NULL anywhere"}
+{"clause": "18.9", "sr": 87, "kind": "type", "status": "not modelled", "where": "", "note": "component type set of a union not computed"}
+{"clause": "18.9", "sr": 88, "kind": "constraint", "status": "not modelled", "where": "", "note": "union components must be all nullable or all NOT NULL"}
+{"clause": "18.9", "sr": 89, "kind": "implementation", "status": "not modelled", "where": "", "note": "dynamic union normal form implementation-defined (IV008)"}
+{"clause": "18.10", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the field type list containing the field type"}
+{"clause": "18.10", "sr": 2, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:862", "note": "field names in a field type list are distinct slots, never one name twice"}
+{"clause": "18.10", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "name of a field type"}
+{"clause": "18.10", "sr": 4, "kind": "type", "status": "reading", "where": "src/context/types.rs:1121; checked src/verify/types.rs:2131", "note": "field value types not followed by generator; record is one class"}
+{"clause": "19.3", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the two comparison operands"}
+{"clause": "19.3", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "equality or ordering rules of 22.13/22.14 apply"}
+{"clause": "19.3", "sr": 3, "kind": "type", "status": "reading", "where": "src/context/types.rs:341; checked src/verify/types.rs:215", "note": "list and record comparison recurses into elements; generator compares them only where any elements pass"}
+{"clause": "19.3", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "<>, >, <=, >= rewritten via = and <"}
+{"clause": "19.4", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the exists predicate"}
+{"clause": "19.4", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "EXISTS over a graph pattern rewritten to MATCH ... RETURN"}
+{"clause": "19.4", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "EXISTS over a match block rewritten to ... RETURN"}
+{"clause": "19.4", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "names the nested query specification"}
+{"clause": "19.4", "sr": 5, "kind": "type", "status": "not modelled", "where": "", "note": "EXISTS body must yield a binding table; FINISH or no-result bodies not excluded"}
+{"clause": "19.6", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the value type predicate and its operands"}
+{"clause": "19.6", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names the value type predicate and its operands"}
+{"clause": "19.6", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/types.rs:963", "note": "IS TYPED predicate is boolean"}
+{"clause": "19.7", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the string operand"}
+{"clause": "19.7", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "normal form defaults to NFC"}
+{"clause": "19.7", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "IS NOT NORMALIZED rewritten as NOT (IS NORMALIZED)"}
+{"clause": "19.8", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the directed predicate"}
+{"clause": "19.8", "sr": 2, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:966; checked src/verify/scope.rs:1561", "note": "operand singleton: generator never declares group element variables"}
+{"clause": "19.8", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/types.rs:896; checked src/verify/types.rs:1166", "note": "IS DIRECTED operand must be an edge"}
+{"clause": "19.8", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "IS NOT DIRECTED rewritten as NOT"}
+{"clause": "19.9", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the labeled predicate"}
+{"clause": "19.9", "sr": 2, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:966; checked src/verify/scope.rs:1562", "note": "operand singleton: generator never declares group element variables"}
+{"clause": "19.9", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "names the label expression"}
+{"clause": "19.9", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "IS NOT LABELED rewritten as NOT"}
+{"clause": "19.9", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "colon form rewritten as IS LABELED"}
+{"clause": "19.10", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the source/destination predicate"}
+{"clause": "19.10", "sr": 2, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:966; src/context/types.rs:894; checked src/verify/scope.rs:1563, src/verify/types.rs:1180", "note": "node operand singleton (no group vars generated) and a node"}
+{"clause": "19.10", "sr": 3, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:966; src/context/types.rs:895; checked src/verify/scope.rs:1563, src/verify/types.rs:1183", "note": "edge operand singleton (no group vars generated) and an edge"}
+{"clause": "19.10", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "names SOURCE or DESTINATION keyword"}
+{"clause": "19.10", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "NOT form rewritten as NOT (...)"}
+{"clause": "19.11", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the ALL_DIFFERENT predicate"}
+{"clause": "19.11", "sr": 2, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:966; checked src/verify/scope.rs:1564", "note": "ALL_DIFFERENT operands singleton: no group vars generated"}
+{"clause": "19.12", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the SAME predicate"}
+{"clause": "19.12", "sr": 2, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:966; checked src/verify/scope.rs:1565", "note": "SAME operands singleton: no group vars generated"}
+{"clause": "19.13", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the PROPERTY_EXISTS predicate"}
+{"clause": "19.13", "sr": 2, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:966; checked src/verify/scope.rs:1566", "note": "PROPERTY_EXISTS operand singleton: no group vars generated"}
+{"clause": "19.13", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "names the property name"}
+{"clause": "20.1", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:1010, src/context/types.rs:1057", "note": "immaterial CAST and typed-initializer targets refused, so no expression gets the empty type"}
+{"clause": "20.1", "sr": 2, "kind": "type", "status": "reading", "where": "src/context/types.rs:871", "note": "graph reference value expression only from a dynamic value; GRAPH forms opaque"}
+{"clause": "20.1", "sr": 3, "kind": "type", "status": "reading", "where": "src/context/types.rs:871", "note": "binding table reference value expression only from a dynamic value; TABLE forms opaque"}
+{"clause": "20.1", "sr": 4, "kind": "type", "status": "generated", "where": "src/context/types.rs:867", "note": "node reference value expression must be node class (or null/dynamic)"}
+{"clause": "20.1", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/types.rs:868", "note": "edge reference value expression must be edge class"}
+{"clause": "20.1", "sr": 6, "kind": "type", "status": "generated", "where": "src/context/types.rs:866", "note": "record expression must be record class"}
+{"clause": "20.1", "sr": 7, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:25, src/context/scope.rs:1102, src/context/scope.rs:1506", "note": "aggregates only as a return item's own; horizontal aggregation over group variables never generated"}
+{"clause": "20.3", "sr": 1, "kind": "implementation", "status": "n/a", "where": "", "note": "non-negative integer spec type is ID062"}
+{"clause": "20.3", "sr": 2, "kind": "implementation", "status": "n/a", "where": "", "note": "SESSION_USER type is ID061 string; generator types it as string"}
+{"clause": "20.4", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.4", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.4", "sr": 3, "kind": "catalog", "status": "not modelled", "where": "", "note": "parameter type comes from the request; both components treat $x as dynamic/unknown"}
+{"clause": "20.5", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.5", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.5", "sr": 3, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:849, src/context/scope.rs:1060", "note": "LET-IN names are fresh, never a field of the incoming record"}
+{"clause": "20.5", "sr": 4, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:849, src/context/scope.rs:1060", "note": "each LET-IN definition takes its own fresh name"}
+{"clause": "20.5", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/types.rs:1076", "note": "defined variable takes its expression's class (followed only if exact/str/bool/dynamic)"}
+{"clause": "20.5", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.5", "sr": 7, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1640", "note": "expression after IN sees the LET-defined variables"}
+{"clause": "20.5", "sr": 8, "kind": "type", "status": "generated", "where": "src/context/types.rs:1052", "note": "LET-IN expression's type is its body's"}
+{"clause": "20.6", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.6", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.6", "sr": 3, "kind": "type", "status": "checked", "where": "src/verify/types.rs:1698", "note": "VALUE subquery must return exactly one column; generator does not restrict"}
+{"clause": "20.6", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.6", "sr": 5, "kind": "constraint", "status": "not modelled", "where": "", "note": "VALUE subquery's last statement must be a linear query statement"}
+{"clause": "20.6", "sr": 6, "kind": "constraint", "status": "not modelled", "where": "", "note": "VALUE subquery's emitting result statement must not be omitted"}
+{"clause": "20.6", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.6", "sr": 8, "kind": "constraint", "status": "not modelled", "where": "", "note": "VALUE subquery result statement must contain a RETURN"}
+{"clause": "20.6", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.6", "sr": 10, "kind": "constraint", "status": "not modelled", "where": "", "note": "VALUE subquery needs LIMIT 1, or an ungrouped single aggregate return item"}
+{"clause": "20.6", "sr": 11, "kind": "type", "status": "reading", "where": "src/context/scope.rs:1128", "note": "subquery sees outer record; generator allows no outer references at all"}
+{"clause": "20.6", "sr": 12, "kind": "type", "status": "reading", "where": "src/context/scope.rs:1128", "note": "subquery starts from the unit table; generator never correlates"}
+{"clause": "20.6", "sr": 13, "kind": "type", "status": "reading", "where": "src/context/types.rs:815", "note": "VALUE subquery result typed opaque, used only where any type fits"}
+{"clause": "20.7", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.7", "sr": 2, "kind": "constraint", "status": "reading", "where": "src/context/types.rs:658, src/context/types.rs:1181", "note": "simple CASE operand/when-operand pairing; operand narrowed to exact, string, node or edge"}
+{"clause": "20.7", "sr": 3, "kind": "constraint", "status": "generated", "where": "src/context/types.rs:1007, src/context/types.rs:1173", "note": "a CASE with every result NULL is refused"}
+{"clause": "20.7", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.7", "sr": 5, "kind": "type", "status": "reading", "where": "src/context/types.rs:979, src/context/types.rs:1173", "note": "CASE results combined; narrowed to exact numbers or NULL"}
+{"clause": "20.8", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.8", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.8", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.8", "sr": 4, "kind": "constraint", "status": "generated", "where": "src/context/types.rs:1010", "note": "CAST to an immaterial type refused"}
+{"clause": "20.8", "sr": 5, "kind": "constraint", "status": "reading", "where": "src/context/types.rs:1018", "note": "CAST NULL to a NOT NULL target refused; reading: NOT NULL anywhere in the target"}
+{"clause": "20.8", "sr": 6, "kind": "type", "status": "generated", "where": "src/context/types.rs:1021", "note": "CAST's type is its target's class"}
+{"clause": "20.8", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.8", "sr": 8, "kind": "type", "status": "reading", "where": "src/context/types.rs:369", "note": "Table 4 source/target pairs; lists, records and unfollowed classes cast only to dynamic"}
+{"clause": "20.8", "sr": 9, "kind": "type", "status": "checked", "where": "src/verify/types.rs:2140", "note": "target union must contain source; generator treats any union target as ANY, verifier only single-component unions"}
+{"clause": "20.8", "sr": 10, "kind": "type", "status": "not modelled", "where": "", "note": "dynamic-union source cast to static target needs a castable component; both leave it"}
+{"clause": "20.8", "sr": 11, "kind": "type", "status": "reading", "where": "src/context/types.rs:369", "note": "list casts only to a dynamic target, element casts never needed"}
+{"clause": "20.8", "sr": 12, "kind": "type", "status": "reading", "where": "src/context/types.rs:369", "note": "record casts only to a dynamic target, field checks never needed"}
+{"clause": "20.9", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.9", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.9", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "aggregate argument must not contain a nested procedure body (VALUE/EXISTS subquery)"}
+{"clause": "20.9", "sr": 4, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:1102", "note": "no aggregate nested directly in another"}
+{"clause": "20.9", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.9", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.9", "sr": 7, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:1102, src/context/scope.rs:1506, src/context/types.rs:1026", "note": "COUNT(*) only in an aggregating value expression; type exact"}
+{"clause": "20.9", "sr": 8, "kind": "type", "status": "generated", "where": "src/context/types.rs:1027", "note": "SUM/AVG/STDDEV need numbers, MIN/MAX ordered scalars, result types per kind"}
+{"clause": "20.9", "sr": 9, "kind": "type", "status": "generated", "where": "src/context/types.rs:857, src/context/types.rs:1051", "note": "binary set functions take numeric operands, return approximate"}
+{"clause": "20.10", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.10", "sr": 2, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:21", "note": "ELEMENT_ID needs a singleton reference; no element variable is declared under quantifiers"}
+{"clause": "20.10", "sr": 3, "kind": "implementation", "status": "n/a", "where": "", "note": "ELEMENT_ID type is ID076; generator types it opaque"}
+{"clause": "20.11", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.11", "sr": 2, "kind": "type", "status": "checked", "where": "src/verify/types.rs:1912", "note": "property of a closed record must name an existing field; generator types it opaque"}
+{"clause": "20.11", "sr": 3, "kind": "catalog", "status": "generated", "where": "src/context/types.rs:809, src/context/types.rs:1302", "note": "no catalog, so element types are open and properties dynamic"}
+{"clause": "20.12", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.12", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.12", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.12", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.12", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.12", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.12", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.12", "sr": 8, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:802", "note": "reference names a variable in scope; never correlated into subqueries"}
+{"clause": "20.12", "sr": 9, "kind": "type", "status": "reading", "where": "src/context/types.rs:1294", "note": "reference takes its variable's type; value variables opaque unless LET-defined"}
+{"clause": "20.12", "sr": 10, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.12", "sr": 11, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.12", "sr": 12, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:21", "note": "non-singleton references must be bounded groups; generator makes no group variables"}
+{"clause": "20.12", "sr": 13, "kind": "implementation", "status": "n/a", "where": "", "note": "projected element type via IW011 mechanism"}
+{"clause": "20.13", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:906", "note": "path concatenation yields path class"}
+{"clause": "20.13", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/types.rs:863", "note": "path value primary must be a path"}
+{"clause": "20.14", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:805", "note": "path constructor yields path class"}
+{"clause": "20.15", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:862", "note": "list primary must be a list"}
+{"clause": "20.15", "sr": 2, "kind": "type", "status": "checked", "where": "src/verify/types.rs:1635", "note": "concatenated lists' element types must combine; generator does not follow elements"}
+{"clause": "20.16", "sr": 1, "kind": "type", "status": "checked", "where": "src/verify/types.rs:1401", "note": "TRIM list count must be exact scale 0; generator only asks numeric"}
+{"clause": "20.16", "sr": 2, "kind": "implementation", "status": "n/a", "where": "", "note": "ELEMENTS result type is ID005"}
+{"clause": "20.17", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:803", "note": "list constructor yields list class"}
+{"clause": "20.17", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.17", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/types.rs:495, src/context/types.rs:1172", "note": "list element types must combine; folded like CASE results"}
+{"clause": "20.18", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.18", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.18", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.18", "sr": 4, "kind": "implementation", "status": "n/a", "where": "", "note": "record field count bounded by IL015"}
+{"clause": "20.18", "sr": 5, "kind": "type", "status": "reading", "where": "src/context/types.rs:804", "note": "record constructor typed as record class, fields not followed"}
+{"clause": "20.18", "sr": 6, "kind": "type", "status": "reading", "where": "src/context/types.rs:804", "note": "record constructor typed as record class, fields not followed"}
+{"clause": "20.19", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.19", "sr": 2, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:862", "note": "field names in one record are distinct"}
+{"clause": "20.19", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.19", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.19", "sr": 5, "kind": "type", "status": "reading", "where": "src/context/types.rs:442", "note": "field type not tracked; field expressions unread"}
+{"clause": "20.20", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:955", "note": "AND/OR/XOR operands boolean, result boolean"}
+{"clause": "20.20", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/types.rs:1089", "note": "parenthesized boolean passes its operand's type"}
+{"clause": "20.20", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/types.rs:864", "note": "boolean predicand primary must be boolean"}
+{"clause": "20.20", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.20", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.21", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:409, src/context/types.rs:898", "note": "arithmetic result exact or approximate by operands; precision ID"}
+{"clause": "20.21", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/types.rs:888", "note": "factor takes its primary's type, sign needs numeric"}
+{"clause": "20.21", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/types.rs:857", "note": "numeric primary must be numeric"}
+{"clause": "20.21", "sr": 4, "kind": "constraint", "status": "generated", "where": "src/tokens.rs:1", "note": "renderer separates every token by a space, so -- never forms"}
+{"clause": "20.22", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:829", "note": "length functions yield exact numbers (ID068)"}
+{"clause": "20.22", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.22", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/types.rs:829", "note": "CARDINALITY/SIZE yields exact number (ID070)"}
+{"clause": "20.22", "sr": 4, "kind": "type", "status": "generated", "where": "src/context/types.rs:1089", "note": "ABS passes its argument's numeric type"}
+{"clause": "20.22", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/types.rs:832", "note": "MOD takes divisor's type"}
+{"clause": "20.22", "sr": 6, "kind": "type", "status": "generated", "where": "src/context/types.rs:846", "note": "trig functions yield approximate (ID069)"}
+{"clause": "20.22", "sr": 7, "kind": "type", "status": "generated", "where": "src/context/types.rs:846", "note": "LOG yields approximate (ID069)"}
+{"clause": "20.22", "sr": 8, "kind": "type", "status": "generated", "where": "src/context/types.rs:846", "note": "LN yields approximate (ID069)"}
+{"clause": "20.22", "sr": 9, "kind": "type", "status": "generated", "where": "src/context/types.rs:846", "note": "EXP yields approximate (ID069)"}
+{"clause": "20.22", "sr": 10, "kind": "type", "status": "generated", "where": "src/context/types.rs:846", "note": "POWER yields approximate (ID069)"}
+{"clause": "20.22", "sr": 11, "kind": "type", "status": "generated", "where": "src/context/types.rs:1089", "note": "FLOOR/CEIL keep exact or approximate class of argument"}
+{"clause": "20.22", "sr": 12, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.22", "sr": 13, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.23", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:903", "note": "string concatenation yields string; lengths (IL013) not tracked"}
+{"clause": "20.23", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/types.rs:858", "note": "character string primary must be a string"}
+{"clause": "20.23", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/types.rs:904", "note": "byte concatenation yields bytes; lengths not tracked"}
+{"clause": "20.23", "sr": 4, "kind": "type", "status": "generated", "where": "src/context/types.rs:859", "note": "byte string primary must be bytes"}
+{"clause": "20.24", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:847", "note": "SUBSTRING/LEFT/RIGHT yield string"}
+{"clause": "20.24", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/types.rs:847", "note": "UPPER/LOWER yield string"}
+{"clause": "20.24", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "TRIM with FROM needs a spec or trim string; bare FROM not prevented (comparability generated, types.rs:850)"}
+{"clause": "20.24", "sr": 4, "kind": "type", "status": "checked", "where": "src/verify/types.rs:1934", "note": "LTRIM/RTRIM/BTRIM source and trim string must be comparable strings"}
+{"clause": "20.24", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/types.rs:847", "note": "NORMALIZE yields string; default form NFC"}
+{"clause": "20.25", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:853", "note": "byte substring yields bytes"}
+{"clause": "20.25", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/types.rs:853", "note": "byte trim yields bytes"}
+{"clause": "20.26", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:910", "note": "instant plus duration is zoned or local datetime, read as written"}
+{"clause": "20.27", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.27", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.27", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.27", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.27", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "20.27", "sr": 6, "kind": "type", "status": "generated", "where": "src/context/types.rs:817", "note": "DATE() yields date"}
+{"clause": "20.27", "sr": 7, "kind": "type", "status": "generated", "where": "src/context/types.rs:818", "note": "ZONED_TIME() yields zoned time"}
+{"clause": "20.27", "sr": 8, "kind": "type", "status": "generated", "where": "src/context/types.rs:819", "note": "ZONED_DATETIME() yields zoned datetime"}
+{"clause": "20.27", "sr": 9, "kind": "type", "status": "generated", "where": "src/context/types.rs:820", "note": "LOCAL_TIME() yields local time"}
+{"clause": "20.27", "sr": 10, "kind": "type", "status": "generated", "where": "src/context/types.rs:821", "note": "LOCAL_DATETIME() yields local datetime"}
+{"clause": "20.28", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:924", "note": "durations added must share a unit group"}
+{"clause": "20.28", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/types.rs:935", "note": "duration term takes its duration factor's type"}
+{"clause": "20.28", "sr": 3, "kind": "type", "status": "reading", "where": "src/context/types.rs:944", "note": "DURATION_BETWEEN instants must be the same class, not just essentially comparable"}
+{"clause": "20.28", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
+{"clause": "21.1", "sr": 1, "kind": "implementation", "status": "n/a", "where": "", "note": "which identifiers are valid authorization identifiers is IV015"}
+{"clause": "21.1", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names an identifier's canonical name form"}
+{"clause": "21.1", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "system-generated names are canonical forms of system-generated identifiers"}
+{"clause": "21.2", "sr": 1, "kind": "constraint", "status": "grammar", "where": "src/tree.rs:71 (lexical subtree printed as one chunk); src/tokens.rs:220 (check-grammar proof)", "note": "radix prefix and first digit sit in one lexical token, no separator can be printed"}
+{"clause": "21.2", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "underscores in decimal integers are ignored"}
+{"clause": "21.2", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "underscores in hex integers are ignored"}
+{"clause": "21.2", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "underscores in octal integers are ignored"}
+{"clause": "21.2", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "underscores in binary integers are ignored"}
+{"clause": "21.2", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "hex integer means the same decimal integer"}
+{"clause": "21.2", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "octal integer means the same decimal integer"}
+{"clause": "21.2", "sr": 8, "kind": "definition", "status": "n/a", "where": "", "note": "binary integer means the same decimal integer"}
+{"clause": "21.2", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "exponent letter is case-insensitive"}
+{"clause": "21.2", "sr": 10, "kind": "definition", "status": "n/a", "where": "", "note": "approximate suffix letter is case-insensitive"}
+{"clause": "21.2", "sr": 11, "kind": "constraint", "status": "grammar", "where": "src/tree.rs:71 (lexical subtree printed as one chunk); src/tokens.rs:220 (check-grammar proof)", "note": "suffix is inside the literal token, renderer never splits it"}
+{"clause": "21.2", "sr": 12, "kind": "definition", "status": "n/a", "where": "", "note": "scientific exact literal rewritten to common notation"}
+{"clause": "21.2", "sr": 13, "kind": "definition", "status": "n/a", "where": "", "note": "approximate literal without exponent rewritten to mantissa/exponent form"}
+{"clause": "21.2", "sr": 14, "kind": "implementation", "status": "n/a", "where": "", "note": "max digits in an unsigned integer is IL010, at least 9"}
+{"clause": "21.2", "sr": 15, "kind": "definition", "status": "n/a", "where": "", "note": "plain integer literal has an implied trailing period, scale 0"}
+{"clause": "21.2", "sr": 16, "kind": "definition", "status": "n/a", "where": "", "note": "exact suffix letter is case-insensitive"}
+{"clause": "21.2", "sr": 17, "kind": "constraint", "status": "grammar", "where": "src/tree.rs:71 (lexical subtree printed as one chunk); src/tokens.rs:220 (check-grammar proof)", "note": "exact suffix is inside the literal token, renderer never splits it"}
+{"clause": "21.2", "sr": 18, "kind": "type", "status": "generated", "where": "src/context/types.rs:782; checked src/verify/types.rs:2022", "note": "exact literal typed exact numeric; representability not checked but generated literals are a few digits"}
+{"clause": "21.2", "sr": 19, "kind": "type", "status": "generated", "where": "src/context/types.rs:783; checked src/verify/types.rs:2023", "note": "approximate literal typed approximate; F vs D precision not distinguished"}
+{"clause": "21.2", "sr": 20, "kind": "constraint", "status": "not modelled", "where": "", "note": "approximate literal range never checked; generated literals are tiny so unlikely to bite"}
+{"clause": "21.2", "sr": 21, "kind": "type", "status": "generated", "where": "src/context/types.rs:784; checked src/verify/types.rs:1061", "note": "boolean literal typed boolean"}
+{"clause": "21.2", "sr": 22, "kind": "definition", "status": "n/a", "where": "", "note": "string literal denotes its quoted sequence"}
+{"clause": "21.2", "sr": 23, "kind": "definition", "status": "n/a", "where": "", "note": "single-quoted sequence denotes its unbroken body"}
+{"clause": "21.2", "sr": 24, "kind": "definition", "status": "n/a", "where": "", "note": "double-quoted sequence denotes its unbroken body"}
+{"clause": "21.2", "sr": 25, "kind": "definition", "status": "n/a", "where": "", "note": "accent-quoted sequence denotes its unbroken body"}
+{"clause": "21.2", "sr": 26, "kind": "definition", "status": "n/a", "where": "", "note": "unbroken single-quoted body is its character representations"}
+{"clause": "21.2", "sr": 27, "kind": "definition", "status": "n/a", "where": "", "note": "unbroken double-quoted body is its character representations"}
+{"clause": "21.2", "sr": 28, "kind": "definition", "status": "n/a", "where": "", "note": "unbroken accent-quoted body is its character representations"}
+{"clause": "21.2", "sr": 29, "kind": "constraint", "status": "grammar", "where": "src/tree.rs:71 (lexical subtree printed as one chunk); src/tokens.rs:220 (check-grammar proof)", "note": "no-escape marker and quoted body are one lexical token, no separator printed"}
+{"clause": "21.2", "sr": 30, "kind": "definition", "status": "n/a", "where": "", "note": "defines when escaping is enabled or disabled"}
+{"clause": "21.2", "sr": 31, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:38; checked src/verify.rs:444", "note": "character representation is always the stub 'x', never a bare quote or backslash"}
+{"clause": "21.2", "sr": 32, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:38; checked src/verify.rs:444", "note": "character representation is always 'x', never a bare double quote or backslash"}
+{"clause": "21.2", "sr": 33, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:38; checked src/verify.rs:444", "note": "character representation is always 'x', never a bare grave accent or backslash"}
+{"clause": "21.2", "sr": 34, "kind": "definition", "status": "n/a", "where": "", "note": "doubled single quote means one quote"}
+{"clause": "21.2", "sr": 35, "kind": "definition", "status": "n/a", "where": "", "note": "doubled double quote means one double quote"}
+{"clause": "21.2", "sr": 36, "kind": "definition", "status": "n/a", "where": "", "note": "doubled grave accent means one grave accent"}
+{"clause": "21.2", "sr": 37, "kind": "constraint", "status": "grammar", "where": "src/tree.rs:71 (lexical subtree printed as one chunk); src/tokens.rs:220 (check-grammar proof)", "note": "doubled quote lies within one lexical token"}
+{"clause": "21.2", "sr": 38, "kind": "constraint", "status": "grammar", "where": "src/tree.rs:71 (lexical subtree printed as one chunk); src/tokens.rs:220 (check-grammar proof)", "note": "doubled double quote lies within one lexical token"}
+{"clause": "21.2", "sr": 39, "kind": "constraint", "status": "grammar", "where": "src/tree.rs:71 (lexical subtree printed as one chunk); src/tokens.rs:220 (check-grammar proof)", "note": "doubled grave accent lies within one lexical token"}
+{"clause": "21.2", "sr": 40, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:38; checked src/verify.rs:444", "note": "prose leaf is plain 'x', valid with or without escaping; escapes are never produced"}
+{"clause": "21.2", "sr": 41, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:38; checked src/verify.rs:444", "note": "string characters are 'x': no control, unassigned or bidi characters"}
+{"clause": "21.2", "sr": 42, "kind": "constraint", "status": "grammar", "where": "src/tree.rs:71 (lexical subtree printed as one chunk); src/tokens.rs:220 (check-grammar proof)", "note": "escape sequences are never generated (character representation is opaque) and would be one token"}
+{"clause": "21.2", "sr": 43, "kind": "definition", "status": "n/a", "where": "", "note": "escape meaning: backslash"}
+{"clause": "21.2", "sr": 44, "kind": "definition", "status": "n/a", "where": "", "note": "escape meaning: quote"}
+{"clause": "21.2", "sr": 45, "kind": "definition", "status": "n/a", "where": "", "note": "escape meaning: double quote"}
+{"clause": "21.2", "sr": 46, "kind": "definition", "status": "n/a", "where": "", "note": "escape meaning: grave accent"}
+{"clause": "21.2", "sr": 47, "kind": "definition", "status": "n/a", "where": "", "note": "escape meaning: tab"}
+{"clause": "21.2", "sr": 48, "kind": "definition", "status": "n/a", "where": "", "note": "escape meaning: backspace"}
+{"clause": "21.2", "sr": 49, "kind": "definition", "status": "n/a", "where": "", "note": "escape meaning: newline"}
+{"clause": "21.2", "sr": 50, "kind": "definition", "status": "n/a", "where": "", "note": "escape meaning: carriage return"}
+{"clause": "21.2", "sr": 51, "kind": "definition", "status": "n/a", "where": "", "note": "escape meaning: form feed"}
+{"clause": "21.2", "sr": 52, "kind": "definition", "status": "n/a", "where": "", "note": "escape meaning: unicode code point"}
+{"clause": "21.2", "sr": 53, "kind": "type", "status": "generated", "where": "src/context/types.rs:785; checked src/verify/types.rs:1062", "note": "string literal typed character string"}
+{"clause": "21.2", "sr": 54, "kind": "definition", "status": "n/a", "where": "", "note": "spaces between hex digits in byte strings are ignored"}
+{"clause": "21.2", "sr": 55, "kind": "definition", "status": "n/a", "where": "", "note": "adjacent byte string parts concatenate"}
+{"clause": "21.2", "sr": 56, "kind": "definition", "status": "n/a", "where": "", "note": "byte string X prefix is case-insensitive"}
+{"clause": "21.2", "sr": 57, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:71; checked src/verify.rs:347", "note": "separators inside byte strings are forced to newline-bearing text"}
+{"clause": "21.2", "sr": 58, "kind": "type", "status": "generated", "where": "src/context/types.rs:786; checked src/verify/types.rs:1063", "note": "byte string literal typed byte string"}
+{"clause": "21.2", "sr": 59, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:85; checked src/verify.rs:384", "note": "date string fixed to '2024-01-01'"}
+{"clause": "21.2", "sr": 60, "kind": "type", "status": "generated", "where": "src/context/types.rs:788; checked src/verify/types.rs:1065", "note": "date literal typed date"}
+{"clause": "21.2", "sr": 61, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:88; checked src/verify.rs:393", "note": "time zone string fixed to '+00:00'"}
+{"clause": "21.2", "sr": 62, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:86; checked src/verify.rs:387", "note": "time string fixed to '12:00:00'"}
+{"clause": "21.2", "sr": 63, "kind": "type", "status": "generated", "where": "src/context/types.rs:789; checked src/verify/types.rs:2046", "note": "time literal local or zoned by offset; generated strings have no offset"}
+{"clause": "21.2", "sr": 64, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:87; checked src/verify.rs:390", "note": "datetime string fixed to '2024-01-01T12:00:00'"}
+{"clause": "21.2", "sr": 65, "kind": "type", "status": "generated", "where": "src/context/types.rs:794; checked src/verify/types.rs:2046", "note": "datetime literal local or zoned by offset"}
+{"clause": "21.2", "sr": 66, "kind": "type", "status": "generated", "where": "src/context/types.rs:799", "note": "duration literal typed duration"}
+{"clause": "21.2", "sr": 67, "kind": "type", "status": "reading", "where": "src/context/types.rs:334; src/context/types.rs:408", "note": "NULL fits any typed site; operators on NULL typed exact, functions returning null type refused"}
+{"clause": "21.2", "sr": 68, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:89; checked src/verify.rs:369", "note": "duration string fixed to 'P1Y2M'"}
+{"clause": "21.2", "sr": 69, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:40; checked src/verify.rs:478", "note": "SQL datetime literal fixed to DATE '2024-01-01'"}
+{"clause": "21.2", "sr": 70, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:41; checked src/verify.rs:484", "note": "SQL interval literal fixed to INTERVAL '1' DAY"}
+{"clause": "21.2", "sr": 71, "kind": "type", "status": "generated", "where": "src/context/types.rs:315; checked src/verify/types.rs:2056", "note": "duration unit group from the string or interval qualifier"}
+{"clause": "21.2", "sr": 72, "kind": "definition", "status": "n/a", "where": "", "note": "SQL interval literal rewritten as an ISO duration literal"}
+{"clause": "21.2", "sr": 73, "kind": "constraint", "status": "not modelled", "where": "", "note": "list literal elements may be any expression; verifier waives it via the alternate derivation (src/verify/types.rs:41)"}
+{"clause": "21.2", "sr": 74, "kind": "type", "status": "generated", "where": "src/context/types.rs:803", "note": "list literal typed as its list constructor"}
+{"clause": "21.2", "sr": 75, "kind": "constraint", "status": "not modelled", "where": "", "note": "record literal fields may be any expression, not just literals"}
+{"clause": "21.2", "sr": 76, "kind": "definition", "status": "n/a", "where": "", "note": "literal's value comes from its General Rules"}
+{"clause": "21.3", "sr": 1, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:34; checked src/verify.rs:439", "note": "identifier start is always 'a'"}
+{"clause": "21.3", "sr": 2, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:35; checked src/verify.rs:443", "note": "identifier extend is always 'b'"}
+{"clause": "21.3", "sr": 3, "kind": "constraint", "status": "grammar", "where": "BNF <regular identifier> ::= <identifier start> [...]", "note": "regular identifier always has a start character, so never empty"}
+{"clause": "21.3", "sr": 4, "kind": "constraint", "status": "not modelled", "where": "", "note": "empty delimited identifiers \"\" and `` are generated (seen in purdom snapshot)"}
+{"clause": "21.3", "sr": 5, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:34; src/leaf.rs:38", "note": "identifier characters are only a, b, x and doubled quotes; always short"}
+{"clause": "21.3", "sr": 6, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:43; checked src/verify.rs:448", "note": "whitespace leaf is a single space"}
+{"clause": "21.3", "sr": 7, "kind": "implementation", "status": "n/a", "where": "src/leaf.rs:43", "note": "truncating whitespace subset is IV023; code picks space only"}
+{"clause": "21.3", "sr": 8, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:48; checked src/verify.rs:461", "note": "bidi control leaf is U+2068"}
+{"clause": "21.3", "sr": 9, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:50; checked src/verify.rs:459", "note": "simple comment character is 'x', never newline"}
+{"clause": "21.3", "sr": 10, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:50; checked src/verify.rs:460", "note": "bracketed comment contents 'x' (newline inside byte strings), never */"}
+{"clause": "21.3", "sr": 11, "kind": "implementation", "status": "n/a", "where": "", "note": "whether comments may hold bidi controls is IA019"}
+{"clause": "21.3", "sr": 12, "kind": "implementation", "status": "n/a", "where": "src/leaf.rs:46", "note": "newline representation is IA023; code uses line feed"}
+{"clause": "21.3", "sr": 13, "kind": "constraint", "status": "generated", "where": "src/tree.rs:71 (lexical subtree printed as one chunk); src/tokens.rs:220 (check-grammar proof)", "note": "each lexical subtree is printed whole, proven to be a single token"}
+{"clause": "21.3", "sr": 14, "kind": "constraint", "status": "generated", "where": "src/tree.rs:75", "note": "every pair of tokens is separated by one space"}
+{"clause": "21.3", "sr": 15, "kind": "definition", "status": "n/a", "where": "", "note": "simple comment equals a newline"}
+{"clause": "21.3", "sr": 16, "kind": "definition", "status": "n/a", "where": "", "note": "bracketed comment equals newline or space"}
+{"clause": "21.3", "sr": 17, "kind": "definition", "status": "n/a", "where": "", "note": "defines case-normal form of non-delimited identifiers"}
+{"clause": "21.3", "sr": 18, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:32; checked src/verify.rs:358", "note": "regular identifiers are a, ab, abb... or x/y/z/w, never reserved words"}
+{"clause": "21.3", "sr": 19, "kind": "definition", "status": "n/a", "where": "", "note": "equivalence of two non-delimited identifiers"}
+{"clause": "21.3", "sr": 20, "kind": "definition", "status": "n/a", "where": "", "note": "equivalence of non-delimited and delimited identifiers"}
+{"clause": "21.3", "sr": 21, "kind": "definition", "status": "n/a", "where": "", "note": "equivalence of two delimited identifiers"}
+{"clause": "21.3", "sr": 22, "kind": "definition", "status": "n/a", "where": "", "note": "defines system-generated regular identifier"}
+{"clause": "21.3", "sr": 23, "kind": "definition", "status": "n/a", "where": "", "note": "conditions an implementation's fresh identifiers must meet, not the program"}
+{"clause": "21.3", "sr": 24, "kind": "implementation", "status": "n/a", "where": "", "note": "canonical name form mechanism is IW023"}
+{"clause": "21.3", "sr": 25, "kind": "definition", "status": "n/a", "where": "", "note": "keywords match case-insensitively"}
+{"clause": "21.3", "sr": 26, "kind": "definition", "status": "n/a", "where": "", "note": "defines parameter reference"}
+{"clause": "21.3", "sr": 27, "kind": "definition", "status": "n/a", "where": "", "note": "defines parameter name of a parameter reference"}
+{"clause": "21.4", "sr": 1, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:54; checked src/verify.rs:471", "note": "other language character leaf is U+00E9"}
+{"clause": "21.4", "sr": 2, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:52; checked src/verify.rs:465", "note": "other digit leaf is U+0663"}
+{"clause": "21.4", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "upper and lower Latin letters correspond"}
+{"clause": "22.1", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the inputs of program annotation"}
+{"clause": "22.1", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "program gets initial schema and graph"}
+{"clause": "22.1", "sr": 3, "kind": "catalog", "status": "not modelled", "where": "", "note": "$$name needs a request parameter holding source text; $$b is generated freely"}
+{"clause": "22.1", "sr": 4, "kind": "catalog", "status": "not modelled", "where": "", "note": "session parameter specs annotated from session parameters; no session model"}
+{"clause": "22.1", "sr": 5, "kind": "catalog", "status": "not modelled", "where": "", "note": "dynamic parameter must exist in request with compatible type; verifier types $x as unknown"}
+{"clause": "22.5", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names inputs of label-expression satisfaction"}
+{"clause": "22.5", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "recursive definition of label set satisfying a label expression"}
+{"clause": "22.5", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "truth value of satisfaction"}
+{"clause": "22.5", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "returns the truth value"}
+{"clause": "22.9", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names inputs of directory path resolution"}
+{"clause": "22.9", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "collects directory names of the path"}
+{"clause": "22.9", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "indexes the path steps"}
+{"clause": "22.9", "sr": 4, "kind": "catalog", "status": "not modelled", "where": "", "note": "each path step must name an existing directory, without confusable siblings"}
+{"clause": "22.9", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "result directory"}
+{"clause": "22.9", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "returns the directory"}
+{"clause": "22.10", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names target and value of store assignment"}
+{"clause": "22.10", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "source declared type"}
+{"clause": "22.10", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "target declared type"}
+{"clause": "22.10", "sr": 4, "kind": "type", "status": "reading", "where": "src/context/types.rs:396; checked src/verify/types.rs:334", "note": "value type must be assignable; lists and records only go to dynamic targets"}
+{"clause": "22.10", "sr": 5, "kind": "type", "status": "not modelled", "where": "src/context/types.rs:1128", "note": "any dynamic union target accepts everything; closed union components never checked"}
+{"clause": "22.10", "sr": 6, "kind": "type", "status": "not modelled", "where": "src/context/types.rs:396", "note": "node vs edge base enforced, but closed object-type subtyping is not"}
+{"clause": "22.10", "sr": 7, "kind": "type", "status": "reading", "where": "src/context/types.rs:396; checked src/verify/types.rs:342", "note": "list sources only assign to a dynamic target, elements not followed"}
+{"clause": "22.10", "sr": 8, "kind": "type", "status": "reading", "where": "src/context/types.rs:396; checked src/verify/types.rs:358", "note": "record sources only assign to a dynamic target"}
+{"clause": "22.10", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "returns control"}
+{"clause": "22.13", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "lists which constructs are equality operations"}
+{"clause": "22.13", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "lists operands of equality operations"}
+{"clause": "22.14", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "lists which constructs are ordering operations"}
+{"clause": "22.14", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "lists operands of ordering operations"}
+{"clause": "22.15", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "lists which constructs are grouping operations"}
+{"clause": "22.15", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "lists operands of grouping operations"}
+{"clause": "22.16", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "collation determination returns COLL"}
+{"clause": "22.16", "sr": 2, "kind": "implementation", "status": "n/a", "where": "", "note": "default collation is ID022"}
+{"clause": "22.16", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "returns the collation"}
+{"clause": "22.17", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names inputs of property value type combination"}
+{"clause": "22.17", "sr": 2, "kind": "catalog", "status": "not modelled", "where": "", "note": "combined property type over a graph type's property declarations"}
+{"clause": "22.17", "sr": 3, "kind": "catalog", "status": "not modelled", "where": "", "note": "combined property type must be supported; needs graph types"}
+{"clause": "22.17", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "returns the type"}
+{"clause": "22.18", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names inputs of general combination"}
+{"clause": "22.18", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/types.rs:350; checked src/verify/types.rs:234", "note": "claim lacks GV65, so combination falls to 22.19"}
+{"clause": "22.18", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "non-immaterial static types"}
+{"clause": "22.18", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "defines statically combinable"}
+{"clause": "22.18", "sr": 5, "kind": "type", "status": "reading", "where": "src/context/types.rs:350", "note": "GV65 partition never used; combinations needing a union are refused"}
+{"clause": "22.18", "sr": 6, "kind": "type", "status": "reading", "where": "src/context/types.rs:350", "note": "GV65 per-part combination never used; static combination only"}
+{"clause": "22.18", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "dynamic types in the input"}
+{"clause": "22.18", "sr": 8, "kind": "definition", "status": "n/a", "where": "", "note": "union of combined and dynamic types"}
+{"clause": "22.18", "sr": 9, "kind": "type", "status": "reading", "where": "src/context/types.rs:350", "note": "no union result types are produced; GV66/GV67 not claimed"}
+{"clause": "22.18", "sr": 10, "kind": "definition", "status": "n/a", "where": "", "note": "returns the type"}
+{"clause": "22.19", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names inputs of static combination"}
+{"clause": "22.19", "sr": 2, "kind": "type", "status": "not modelled", "where": "src/context/types.rs:358", "note": "dynamic operands are combined into dynamic instead of rejected (4.14.4 leniency)"}
+{"clause": "22.19", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "nullable variants of the inputs"}
+{"clause": "22.19", "sr": 4, "kind": "type", "status": "reading", "where": "src/context/types.rs:352; checked src/verify/types.rs:235", "note": "generated CASE/COALESCE results restricted to exact numbers or NULL"}
+{"clause": "22.19", "sr": 5, "kind": "type", "status": "not modelled", "where": "", "note": "material vs nullable result not tracked; only literal NULL kept from NOT NULL"}
+{"clause": "22.19", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "returns the type"}
+{"clause": "22.20", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names inputs of type precedence"}
+{"clause": "22.20", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "defines effective binary precision"}
+{"clause": "22.20", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "defines record type for a property type set"}
+{"clause": "22.20", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "defines REF of a node type"}
+{"clause": "22.20", "sr": 5, "kind": "implementation", "status": "n/a", "where": "", "note": "type precedence permutation is IW021 under ordering constraints"}
+{"clause": "22.20", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "returns the ordered list"}
