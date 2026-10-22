@@ -425,6 +425,28 @@ fn minima(s: State, nodes: bool, len: bool) -> State {
 }
 
 const BOUNDS: [&str; 3] = ["lower bound", "upper bound", "fixed quantifier"];
+/// The integer subtree a bound's WANT reaches into, and no further.
+const INTEGERS: [&str; 10] = [
+    "unsigned integer",
+    "unsigned decimal integer",
+    "unsigned hexadecimal integer",
+    "unsigned octal integer",
+    "unsigned binary integer",
+    "digit",
+    "standard digit",
+    "hex digit",
+    "octal digit",
+    "binary digit",
+];
+
+/// The definition an item names, a group by its owner.
+fn owner_of<'a>(item: &Item<'a>) -> Option<&'a str> {
+    match item {
+        Item::Def(d) => Some(d),
+        Item::Group(g) => g.split('/').next(),
+        _ => None,
+    }
+}
 const UNIONS: [&str; 4] = [
     "path pattern union",
     "path multiset alternation",
@@ -461,8 +483,10 @@ impl Rule for PathMinimums {
     }
 
     fn down(&self, node: &Node, inh: &State, pos: usize, _left: &[State], out: &mut State) {
-        let asks = BOUNDS.contains(&node.def) && node.items[pos] == Item::Def("unsigned integer");
-        if asks || inh.has(WANT) {
+        let child = owner_of(&node.items[pos]);
+        let asks = BOUNDS.contains(&node.def) && child == Some("unsigned integer");
+        let within = inh.has(WANT) && child.is_some_and(|c| INTEGERS.contains(&c));
+        if asks || within {
             out.set(WANT, true);
         }
     }
@@ -617,7 +641,11 @@ impl Rule for SimplifiedShape {
         true
     }
 
-    fn down(&self, node: &Node, inh: &State, _pos: usize, _left: &[State], out: &mut State) {
+    fn down(&self, node: &Node, inh: &State, pos: usize, _left: &[State], out: &mut State) {
+        // The context reaches simplified nodes only, not the label names inside them.
+        if !owner_of(&node.items[pos]).is_some_and(|c| c.starts_with("simplified ")) {
+            return;
+        }
         let opens = matches!(
             node.def,
             "simplified negation" | "simplified conjunction" | "simplified direction override"

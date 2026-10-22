@@ -100,7 +100,12 @@ cached set, without losing a production or cdrc pair
    `research/static-semantics-exists-table-2026-10-22.md`. the statement kind
    (9.1 SR 5 to 7 and the rest) is still open
 2. **path pattern minimums** (about 230). rules: 16.7 SR 8, 9, 16, 20, 16.12 SR
-   1 to 4, 16.4 SR 12, and 16.11 SR 3 for bounds. two facts per path pattern
+   1 to 4, 16.4 SR 12, and 16.11 SR 3 for bounds. **done on `tushar/exists-table`
+   (2026-10-23) but SR 9 and 16.11 SR 3's upper-below-lower**: three automata
+   in `src/refine.rs` (`PathMinimums`, `SimplifiedShape`, `SelectiveAlone`),
+   the twin in `src/verify.rs`; see
+   `research/static-semantics-path-minimums-2026-10-23.md`, including how the
+   grammar blew up once and what cut it. two facts per path pattern
    node: whether it can have length 0 and whether it can match 0 nodes,
    synthesized bottom up (an edge has length 1, `?` and `*` make 0 possible,
    concatenation adds). checked at the path pattern, the subpath, and inside

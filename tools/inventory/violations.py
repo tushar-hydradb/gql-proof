@@ -53,7 +53,7 @@ def _(s):
     # An abbreviated edge right after MATCH, a comma or a prefix, then `?`, `*`, `{0}` or
     # `{,`: a path pattern that can match no node. Text level, a lower bound.
     zero = r"(?:\?|\*|\{\s*(?:0[xob])?0+\s*\}|\{\s*,)"
-    return re.search(PREFIXES + r"\s*\(?\s*" + EDGE + r"\s*\)?\s*" + zero + r"\s*(?:FINISH|RETURN|WHERE|,|KEEP|$)", s) is not None
+    return re.search(PREFIXES + r"\s*\(?\s*" + EDGE + r"\s*\)?\s*" + zero + r"\s*(?:FINISH|RETURN|,|KEEP|$)", s) is not None
 
 @check("16.12: quantifier or ? beside & or ! or a direction override in a simplified pattern")
 def _(s):
