@@ -75,7 +75,7 @@
 {"clause": "11.1", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "Rewrites a bare name to a variable or a catalog graph reference."}
 {"clause": "11.1", "sr": 3, "kind": "type", "status": "reading", "where": "src/context/types.rs:879; src/verify/types.rs:1450", "note": "Value used as graph must be graph reference typed; generator allows only dynamic values. CURRENT_GRAPH site check not modelled."}
 {"clause": "11.2", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the binding table expression."}
-{"clause": "11.2", "sr": 2, "kind": "type", "status": "not modelled", "where": "", "note": "Nested table query must yield a table; a FINISH or catalog body is not rejected."}
+{"clause": "11.2", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1136", "note": "nested table body's declared type is not the empty type (as 19.4 SR 5)"}
 {"clause": "11.2", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "Rewrites a bare name to a variable or a catalog table reference."}
 {"clause": "11.2", "sr": 4, "kind": "type", "status": "reading", "where": "src/context/types.rs:879; src/verify/types.rs:1455", "note": "Value used as table must be table reference typed; generator allows only dynamic values."}
 {"clause": "11.3", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Inserts implicit VARIABLE keyword."}
@@ -680,7 +680,7 @@
 {"clause": "19.4", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "EXISTS over a graph pattern rewritten to MATCH ... RETURN"}
 {"clause": "19.4", "sr": 3, "kind": "definition", "status": "n/a", "where": "", "note": "EXISTS over a match block rewritten to ... RETURN"}
 {"clause": "19.4", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "names the nested query specification"}
-{"clause": "19.4", "sr": 5, "kind": "type", "status": "not modelled", "where": "", "note": "EXISTS body must yield a binding table; FINISH or no-result bodies not excluded"}
+{"clause": "19.4", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1136", "note": "EXISTS body's declared type is not the empty type: no FINISH at the end of the emitting chain, explicit or implicit (13.1 SR 2-3), and no catalog-modifying last statement (12.1 SR 4); FINISHED survives to the consumer"}
 {"clause": "19.6", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the value type predicate and its operands"}
 {"clause": "19.6", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "names the value type predicate and its operands"}
 {"clause": "19.6", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/types.rs:963", "note": "IS TYPED predicate is boolean"}
@@ -730,12 +730,12 @@
 {"clause": "20.5", "sr": 8, "kind": "type", "status": "generated", "where": "src/context/types.rs:1052", "note": "LET-IN expression's type is its body's"}
 {"clause": "20.6", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
 {"clause": "20.6", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
-{"clause": "20.6", "sr": 3, "kind": "type", "status": "checked", "where": "src/verify/types.rs:1698", "note": "VALUE subquery must return exactly one column; generator does not restrict"}
+{"clause": "20.6", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/scope.rs:1136", "note": "VALUE body returns exactly one column (its label has one output); the column's type is not compared to the use"}
 {"clause": "20.6", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
 {"clause": "20.6", "sr": 5, "kind": "constraint", "status": "not modelled", "where": "", "note": "VALUE subquery's last statement must be a linear query statement"}
 {"clause": "20.6", "sr": 6, "kind": "constraint", "status": "not modelled", "where": "", "note": "VALUE subquery's emitting result statement must not be omitted"}
 {"clause": "20.6", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
-{"clause": "20.6", "sr": 8, "kind": "constraint", "status": "not modelled", "where": "", "note": "VALUE subquery result statement must contain a RETURN"}
+{"clause": "20.6", "sr": 8, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:1136", "note": "VALUE body's declared type is not the empty type (as 19.4 SR 5); the body being a query (SR 5) and present (SR 6) stay open"}
 {"clause": "20.6", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
 {"clause": "20.6", "sr": 10, "kind": "constraint", "status": "not modelled", "where": "", "note": "VALUE subquery needs LIMIT 1, or an ungrouped single aggregate return item"}
 {"clause": "20.6", "sr": 11, "kind": "type", "status": "reading", "where": "src/context/scope.rs:1128", "note": "subquery sees outer record; generator allows no outer references at all"}

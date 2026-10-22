@@ -90,7 +90,12 @@ cached set, without losing a production or cdrc pair
    a NEXT boundary, a composite query's operands). scope's flags (`gf` in
    `scope.rs`) already carry RESULT, FINISHED, CLOSES and NEEDS_TABLE, which
    9.2 SR 7 partly rides on: read those before adding. a witness stays for each
-   target: `EXISTS { MATCH (x) RETURN x }` covers what `EXISTS { FINISH }` did
+   target: `EXISTS { MATCH (x) RETURN x }` covers what `EXISTS { FINISH }` did.
+   **done on `tushar/exists-table` (2026-10-22) for the result shape**: 19.4
+   SR 5, 20.6 SR 3 and 8, 11.2 SR 2, by `FINISHED` meaning "the empty type"
+   and surviving to the consumers; see
+   `research/static-semantics-exists-table-2026-10-22.md`. the statement kind
+   (9.1 SR 5 to 7 and the rest) is still open
 2. **path pattern minimums** (about 230). rules: 16.7 SR 8, 9, 16, 20, 16.12 SR
    1 to 4, 16.4 SR 12, and 16.11 SR 3 for bounds. two facts per path pattern
    node: whether it can have length 0 and whether it can match 0 nodes,
@@ -133,6 +138,17 @@ suite keeps only never raises
   confirm against the code before building, and correct the jsonl when wrong
 - **this is the 2024 text**: cor 1 amends 13 of the rules (14.7, 14.10 to 14.12,
   15.1, 16.8, 18.1, 18.2, 18.9, 20.7, 22.17); read the amended text for those
+- **ambiguous parses**: `{ FINISH }` is a nested query specification and a
+  nested data-modifying procedure, `CALL { .. }` is a query, a data-modifying
+  and a catalog-modifying statement. a rule must hold under every parse, since
+  the engine's probe test accepts any tree and the checker test wants one
+  verdict per tree. the test verifiers now run the syntax rules
+  (`with_syntax_rules`), which keeps out the parses 13.1 SR 5 forbids, as the
+  refine automata do for the generator
+- **the next smallest witness**: closing a class makes extraction pick the next
+  cheapest body, which may break the next rule (`VALUE { FINISH }` became
+  `VALUE { RETURN NO BINDINGS }`, 20.6 SR 3). run
+  `generated_trees_pass_the_checkers` before the 11 minute run
 - **double quotes**: `""` is an empty string literal in gql, not an identifier;
   only empty backticks are the 21.3 SR 4 case
 - **the engine's codes**: turbolay refuses `EXISTS { FINISH }` correctly but as

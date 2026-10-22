@@ -1,19 +1,21 @@
-use gql_proof::ISO_BNF_XML;
 use gql_proof::bnf;
 use gql_proof::cfg::Cfg;
 use gql_proof::parse::Parser;
 use gql_proof::tokens::Grammar;
 use gql_proof::verify::{Verifier, Violation, scope};
+use gql_proof::{ISO_BNF_XML, MatchModeDefault};
 use std::cell::RefCell;
 use std::sync::LazyLock;
 
 static ISO_BNF: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static ISO: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO_BNF));
 
-/// The scoping violations of `text`, the same for every tree of it the verifier accepts.
+/// The scoping violations of `text`, the same for every tree of it the verifier accepts (with
+/// the syntax rules on: a tree that breaks 13.1 SR 5 is not one the generator makes).
 fn violations(text: &str) -> Vec<Violation> {
     let tokens = Grammar::new(&ISO_BNF);
-    let verifier = Verifier::new(Grammar::new(&ISO_BNF));
+    let verifier =
+        Verifier::new(Grammar::new(&ISO_BNF)).with_syntax_rules(MatchModeDefault::Portable);
     let parser = Parser::new(&ISO, &tokens, "GQL-program").unwrap();
     let verdicts = RefCell::new(Vec::new());
     // Accept no tree, so the parser offers every one up to its limit.
@@ -427,9 +429,32 @@ fn focused_statements() {
     );
     // 14.2 SR 5
     bad("MATCH (a) FINISH UNION MATCH (a) FINISH", "14.2 SR 5");
+    bad("{ FINISH } UNION RETURN 1 AS x", "14.2 SR 5");
     // 16.14 SR 4: an unaliased yield item is a binding variable
     bad(
         "RETURN 1 AS \"x\" NEXT YIELD \"x\" RETURN 1 AS y",
         "16.14 SR 4",
     );
+}
+
+#[test]
+fn a_subquery_body_yields_a_table() {
+    ok("RETURN EXISTS { RETURN 1 AS y } AS x");
+    ok("RETURN EXISTS { MATCH (y) RETURN y } AS x");
+    ok("RETURN EXISTS { FINISH NEXT RETURN 1 AS y } AS x");
+    ok("RETURN VALUE { RETURN 1 AS y } AS x");
+    ok("{ FINISH } NEXT RETURN 1 AS x");
+    bad("RETURN EXISTS { FINISH } AS x", "19.4 SR 5");
+    bad("RETURN EXISTS { { FINISH } } AS x", "19.4 SR 5");
+    bad(
+        "RETURN EXISTS { RETURN 1 AS y NEXT FINISH } AS x",
+        "19.4 SR 5",
+    );
+    bad("RETURN EXISTS { MATCH (y) FINISH } AS x", "19.4 SR 5");
+    bad("RETURN VALUE { FINISH } AS x", "20.6 SR 8");
+    // 13.1 SR 3: a data-modifying body without a result statement finishes implicitly.
+    bad("RETURN EXISTS { INSERT (y) } AS x", "19.4 SR 5");
+    bad("RETURN EXISTS { CALL { FINISH } } AS x", "19.4 SR 5");
+    // 12.1 SR 4: a catalog-modifying statement has the empty type.
+    bad("RETURN EXISTS { CREATE SCHEMA /s } AS x", "19.4 SR 5");
 }
