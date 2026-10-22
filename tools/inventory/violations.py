@@ -84,6 +84,17 @@ def _(s): return "$$" in s
 @check("14.12 SR 7: SELECT * with GROUP BY")
 def _(s): return re.search(r"\bSELECT\s+(ALL\s+|DISTINCT\s+)?\*.*\bGROUP\s+BY\b", s) is not None
 
+# Not a syntax rule: valid GQL that raises at run time. 4.4.4 invalidates a reference whose
+# referent is deleted, and touching its content raises 22G11. No rule in the generator keeps
+# it out (typestate), so a list holds such sentences or not by which witness extraction picks.
+@check("4.4.4, 22G11 (dynamic): a variable used after DELETE")
+def _(s):
+    for m in re.finditer(r"\bDELETE\s+(?:DETACH\s+|NODETACH\s+)?([a-z]\w*)", s):
+        v, rest = m.group(1), s[m.end():]
+        if re.search(rf"\b(SET|REMOVE)\s+{v}\b|\b{v}\s*\.\s*\w|\b{v}\s*=\s*\{{|,\s*{v}\s*(IS|:)", rest):
+            return True
+    return False
+
 for path in sys.argv[1:]:
     rows = []
     for line in open(path):

@@ -186,3 +186,52 @@ the agents' notes, in our words; grouped by area in the next section
 - citation ranges like "16.10 SR 3, 16.9 SR 2" were parsed by `cites.py` as also
   citing 16.10 SR 16; the agents ignored such keys, the counts don't use the
   cites
+
+## luck: a class of sentences gone by witness choice, not by a rule
+
+the typed two variable list of `tushar/prune` was regenerated between two runs
+(`ef00fdb`: extraction over the claim refined grammar, the smallest context
+first). `violations.py` on both:
+
+```
+                                     before    after
+sentences                             1,228    1,310
+21.3 SR 4   empty identifier             24       21
+16.11 SR 3  upper bound 0                 1        1
+18.9 SR 7   zero length                   3        3
+20.6        VALUE not one value           1        1
+8.2 SR 2    two access modes              4        3
+20.24 SR 3  TRIM with bare FROM           2        2
+22.1 SR 3   $$ with no request           10        8
+14.12 SR 7  SELECT * and GROUP BY         1        1
+22G11       variable used after DELETE   17        0
+```
+
+every static class survives the regeneration with new witnesses (`MATCH <- {
+, 0b0 }`, `RETURN VALUE { FINISH } AS x`, `CALL $$b ( )`). only the use after
+delete class is gone, and no rule took it out: nothing in scope, types or the
+checkers tracks a deleted variable (the two commits in between are `d831c27`,
+which types what DELETE deletes, 13.5 SR 5, and `ef00fdb`). it went because
+the smaller witnesses happen not to put an access after a DELETE. the earlier
+list had, among the 17:
+
+```
+START TRANSACTION USE CURRENT_PROPERTY_GRAPH INSERT ( x ) INSERT ( y )
+DELETE y DELETE x SET x = { } , y : a
+```
+
+everything here is deterministic, so this is not randomness. it is a property
+that holds of the current output and not of the generator: a different target
+set, cap or tie-break can bring the class back and nothing would say so. a
+property of the generator has to hold for every witness it could pick, and
+only a rule in the label (here typestate: live, deleted or maybe deleted per
+variable, and whether the table is surely not empty) makes it so
+
+until that rule exists, two checks keep it visible:
+
+- `violations.py` now flags a variable used after DELETE (4.4.4, 22G11), so a
+  list that regains the class says so
+- a witness shuffle: run extraction with the tie-breaks between equally small
+  witnesses permuted by seed. a class that appears under some seeds and not
+  others is one no rule governs; a rule enforced by construction keeps it out
+  under every seed. that turns luck into a test
