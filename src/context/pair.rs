@@ -6,7 +6,7 @@
 //! carry its entries along. A step of the pair is a step of `A` followed by each of `B`'s
 //! labels for it: `B` can reject or fan out, never relink.
 
-use super::{Context, FactSpec, Link, Masks, Projection};
+use super::{Context, FactSpec, Link, Masks, Projection, Slot};
 use crate::refine::Node;
 use std::fmt::Debug;
 
@@ -80,6 +80,10 @@ pub trait Under<A: Context> {
     /// As [`Context::compatible`].
     fn compatible(&self, _node: &Node, _pos: usize, _partial: u32, _child: u32) -> bool {
         true
+    }
+    /// As [`Context::narrower`], on `B`'s part; the slots are `A`'s.
+    fn narrower(&self, _partial: &Self::Label, _map: &[Option<Slot>], _target: &Self::Label) -> bool {
+        false
     }
 }
 
@@ -231,6 +235,10 @@ impl<A: Context, B: Under<A>> Context for Typed<A, B> {
     fn compatible(&self, node: &Node, pos: usize, partial: u64, child: u64) -> bool {
         self.a.compatible(node, pos, partial >> 32, child >> 32)
             && self.b.compatible(node, pos, partial as u32, child as u32)
+    }
+
+    fn narrower(&self, (_, p): &Self::Label, map: &[Option<Slot>], (_, t): &Self::Label) -> bool {
+        self.b.narrower(p, map, t)
     }
 }
 

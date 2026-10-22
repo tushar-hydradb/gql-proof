@@ -183,7 +183,8 @@ fn kind_bits(k: Kind) -> Option<u8> {
         Kind::Path => Some(PATH),
         Kind::Element => Some(NODE | EDGE),
         Kind::Value => Some(VALUE_BITS),
-        Kind::Any | Kind::Group => None,
+        // A DELETE item's class is the item's own check.
+        Kind::Any | Kind::Group | Kind::Deletable => None,
     }
 }
 
@@ -378,7 +379,9 @@ fn combine(classes: &[Class]) -> Option<Class> {
             (None, c) => c,
             (Some(Opaque), _) | (_, Opaque) => return None,
             (Some(Dynamic), _) | (_, Dynamic) => Dynamic,
-            (Some(a), b) if a == b && a != Record => a,
+            // Two lists or two records combine only if their elements do, which is not
+            // followed (the reading above): never here.
+            (Some(a), b) if a == b && !matches!(a, Record | List) => a,
             (Some(a), b) if a.numeric() && b.numeric() => Approx,
             (Some(ZonedDatetime | LocalDatetime), ZonedDatetime | LocalDatetime) => ZonedDatetime,
             (Some(ZonedTime | LocalTime), ZonedTime | LocalTime) => ZonedTime,
@@ -502,6 +505,7 @@ const READS: &[&str] = &[
     "object expression primary",
     "graph reference value expression",
     "binding table reference value expression",
+    "delete item",
 ];
 
 /// Where a class is used up: nothing above reads it.
@@ -510,6 +514,7 @@ const CONSUMERS: &[&str] = &[
     "let variable definition",
     "sort key",
     "return item",
+    "delete item",
 ];
 
 /// Where a result folds: the CASE family, and a list's elements (20.17 SR 3, 22.19).
@@ -535,6 +540,11 @@ pub struct Types {
     /// The most variables a label holds a type constraint on
     /// (`research/types-cutoff-2026-10-22.md`).
     typed: usize,
+    /// An expression node is checked at the push of its last child, not at finish: the
+    /// partial label after that child is already the node's label, not the classes of every
+    /// child side by side (see [`Types::folds`]). Off only to measure, and to check the
+    /// labels are the same (`pruning_is_exact`).
+    pub fold: bool,
 }
 
 /// Where each input slot of a step went: its output slot, or the entry it closed with.
@@ -666,6 +676,30 @@ impl Types {
         Types {
             expressions: seen,
             typed: 2,
+            fold: true,
+        }
+    }
+
+    /// 20.7 SR 2, checked as soon as both sides are there: a simple CASE's operand must be a
+    /// class every when operand so far accepts (`operand`), or no completion finishes.
+    fn case_operand_fits(&self, node: &Node, kids: &[Option<Ty>], operand: Option<u8>) -> bool {
+        let Some(m) = operand else { return true };
+        if node.def != "simple case" {
+            return true;
+        }
+        let at = node.items.iter().position(|i| *i == Item::Def("case operand"));
+        let Some(Some(c)) = at.and_then(|p| kids.get(p)) else {
+            return true;
+        };
+        let fits = |c: Class| {
+            OPERANDS
+                .iter()
+                .position(|o| *o == c)
+                .is_some_and(|i| m & 1 << i != 0)
+        };
+        match c {
+            Ty::Is(c) => fits(*c),
+            Ty::Slot(_, mask) => members(*mask).any(fits),
         }
     }
 
@@ -706,11 +740,15 @@ impl Types {
     }
 
     /// Whether an expression definition is checked at the push of its last child instead of
-    /// at finish. Definitions outside the expression grammar keep their finish: their arms
-    /// read what scope's finish says.
+    /// at finish (`fold`). Exact because such a definition binds no variable: what scope says
+    /// of each slot is the same after that push and after the finish, so the classes chosen
+    /// for deferred slots and the needs written are the ones finish would choose. Definitions
+    /// outside the expression grammar keep their finish: their arms read what scope's finish
+    /// says.
     fn folds(&self, node: &Node, pos: usize) -> bool {
         let own = owner(node.def);
-        self.expression(node.def)
+        self.fold
+            && self.expression(node.def)
             && !READS.contains(&own)
             && !CONSUMERS.contains(&own)
             && own != "for ordinality or offset"
@@ -832,6 +870,15 @@ impl Types {
             | "power function"
             | "square root" => check(typed, Some(Approx)),
             "character string function" => Some(Some(Str)),
+            // 20.23 SR 2, 4 and 20.24 SR 3: what TRIM trims, and what it trims with, are
+            // strings.
+            "trim operands" => check(classed.iter().all(|c| fits(Some(*c), |c| c == Str)), Some(Str)),
+            // 20.24 SR 3 and 20.23 SR 2, 4 for byte strings: both operands are byte strings.
+            "byte string trim operands" => {
+                check(classed.iter().all(|c| fits(Some(*c), |c| c == Bytes)), Some(Bytes))
+            }
+            // 13.5 SR 5: what DELETE deletes is a node or an edge.
+            "delete item" => check(fits(only, |c| matches!(c, Node | Edge)), only),
             "byte string function" => Some(Some(Bytes)),
             "list value function" => Some(Some(List)),
             // The categories over an untyped primary (20.21 SR 3, 20.23 SR 2, 4, 20.15 SR 1,
@@ -1335,6 +1382,18 @@ impl Types {
                     }
                     out.class = Some(Ty::Slot(s, kept));
                 }
+                // A deferred class the node does not pass on is settled here as far as the
+                // sites below settled it: the reference went through them, so its variable
+                // must be one of the classes they let through, whatever else is chosen.
+                for (&s, &m) in &slots {
+                    if matches!(out.class, Some(Ty::Slot(t, _)) if t == s) {
+                        continue;
+                    }
+                    match meet(vars[s as usize], Allow(m)) {
+                        Some(e) => vars[s as usize] = e,
+                        None => return vec![],
+                    }
+                }
                 out.vars = vars;
                 return vec![out];
             }
@@ -1446,6 +1505,9 @@ impl Under<Scope> for Types {
         let class = child.and_then(|c| r.ty(partial.vars.len(), c.class));
         out.kids
             .push(if self.reads(node.def) { class } else { None });
+        if !self.case_operand_fits(node, &out.kids, out.operand) {
+            return vec![];
+        }
         if !reconcile(&mut out.vars, a.out) || !self.cap(&mut out.vars) {
             return vec![];
         }
@@ -1661,6 +1723,17 @@ impl Under<Scope> for Types {
             Some(Site::Nullif) => narrowed(l.class),
             None => 0,
         }
+    }
+
+    /// A set only shrinks along a walk (every step meets), so a partial asking more of a slot
+    /// than the target does of the slot it becomes cannot finish within the target.
+    fn narrower(&self, partial: &Label, map: &[Option<Slot>], target: &Label) -> bool {
+        map.iter().enumerate().any(|(j, o)| {
+            o.is_some_and(|o| {
+                let (p, t) = (partial.vars.get(j), target.vars.get(o as usize));
+                matches!((p, t), (Some(p), Some(t)) if !within(*t, *p))
+            })
+        })
     }
 
     fn compatible(&self, node: &Node, pos: usize, partial: u32, child: u32) -> bool {

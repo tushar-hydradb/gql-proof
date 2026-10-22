@@ -188,10 +188,20 @@ fn symbolic_below(cfg: &Cfg, nt: NtId, seen: &mut BTreeSet<NtId>, out: &mut BTre
     }
 }
 
-/// Every target of the enabled criteria present in a tree of `cfg`, refined or not.
+/// Every target of the enabled criteria present in a tree of `cfg`, refined or not: a
+/// production counts as its ISO production, so a refined copy covers the target of
+/// `targets` over the ISO grammar.
 pub fn observe(cfg: &Cfg, root: &Node, c: Criteria) -> BTreeSet<Target> {
     let mut out = BTreeSet::new();
-    walk(cfg, root, ROOT, &mut Vec::new(), c, &mut out);
+    walk(cfg, root, ROOT, &mut Vec::new(), c, false, &mut out);
+    out
+}
+
+/// As `observe`, with each production as the tree uses it: in a refined grammar every copy
+/// is a target of its own, as `targets` over that grammar lists them.
+pub fn observe_refined(cfg: &Cfg, root: &Node, c: Criteria) -> BTreeSet<Target> {
+    let mut out = BTreeSet::new();
+    walk(cfg, root, ROOT, &mut Vec::new(), c, true, &mut out);
     out
 }
 
@@ -201,6 +211,7 @@ fn walk(
     occ: OccId,
     window: &mut Vec<OccId>,
     c: Criteria,
+    refined: bool,
     out: &mut BTreeSet<Target>,
 ) {
     let symbolic = occ != ROOT && cfg.occs[occ as usize].symbolic;
@@ -212,12 +223,13 @@ fn walk(
     }
     if let (Sym::Nt(nt), Some(p)) = (node.sym, node.prod) {
         if c.cdrc {
-            out.insert(Target::Cdrc(occ, cfg.prods[p as usize].unrefined));
+            let as_is = if refined { p } else { cfg.prods[p as usize].unrefined };
+            out.insert(Target::Cdrc(occ, as_is));
         }
         if descends(cfg, nt, c) {
             let prod = &cfg.prods[p as usize];
             for (child, &child_occ) in node.children.iter().zip(&prod.occ) {
-                walk(cfg, child, child_occ, window, c, out);
+                walk(cfg, child, child_occ, window, c, refined, out);
             }
         }
     }

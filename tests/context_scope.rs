@@ -48,11 +48,15 @@ fn probes() {
         "MATCH (x) RETURN x, count(*) AS y GROUP BY x",
         "MATCH (x) RETURN x ORDER BY x",
         "LET x = 1 RETURN LET y = x IN y END AS z",
+        // 13.5 SR 5: DELETE names a node, an edge or a value (its type is not scope's).
+        "MATCH (x) DELETE x",
+        "LET x = 1 DELETE x",
     ] {
         assert_eq!(verdict(ok), Ok(()), "{ok:?}");
     }
     for bad in [
         "RETURN x",
+        "MATCH x = () DELETE x",
         "MATCH (x) LET x = 1 RETURN x",
         "MATCH (x)-[x]->() RETURN x",
         "MATCH (x) RETURN x NEXT RETURN y",
@@ -346,3 +350,63 @@ fn coverage_by_cap() {
         before = Some(u);
     }
 }
+
+/// The scope rule's verdict on one sentence at a cap: `GQL_TEXT='...' GQL_SLOTS=2 cargo test
+/// --release --test context_scope explain_at -- --ignored --nocapture`, with every node's
+/// labels traced.
+#[test]
+#[ignore]
+fn explain_at() {
+    use gql_proof::context::scope::{Caps, Scope};
+    use gql_proof::parse::Parser;
+    use gql_proof::tokens::Grammar;
+    use gql_proof::verify::Verifier;
+    tracing_subscriber::fmt()
+        .with_env_filter("gql_proof::context=trace")
+        .with_writer(std::io::stderr)
+        .init();
+    let text = std::env::var("GQL_TEXT").unwrap();
+    let slots: usize = std::env::var("GQL_SLOTS").ok().and_then(|s| s.parse().ok()).unwrap_or(2);
+    let rule = Scope {
+        caps: Caps {
+            slots,
+            references: slots,
+        },
+    };
+    let tokens = Grammar::new(&ISO);
+    let verifier = Verifier::new(Grammar::new(&ISO));
+    let mut parser = Parser::new(&BASE, &tokens, "GQL-program").unwrap();
+    parser.limit = 8192;
+    let trees = std::cell::RefCell::new(Vec::new());
+    let _ = parser.parse(&text, |n| {
+        if verifier.verify(&n.export(&BASE), &n.render(&BASE)).is_empty() {
+            trees.borrow_mut().push(n.export(&BASE));
+        }
+        false
+    });
+    for t in trees.borrow().iter() {
+        eprintln!("verdict: {:?}", gql_proof::context::accepts(&rule, t));
+    }
+}
+
+/// Per-target extraction against the emitted grammar at a cap (`GQL_SLOTS`, 1 by default):
+/// see `common::extraction_matches_emission`.
+#[test]
+#[ignore]
+fn extraction_matches_emission() {
+    use gql_proof::context::scope::Caps;
+    let slots: usize = std::env::var("GQL_SLOTS").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
+    let rule = Scope {
+        caps: Caps {
+            slots,
+            references: slots,
+        },
+    };
+    let options = Options {
+        progress: false,
+        ..Options::default()
+    };
+    common::extraction_matches_emission(&BASE, &rule, &options, &options, false);
+}
+
+mod common;

@@ -79,6 +79,13 @@ pub struct EmitStats {
     pub ground_wide: u64,
     pub ground_failed: u64,
     pub ground_nanos: u64,
+    /// Inside the ground walks: candidates tried at a position, candidates refused for
+    /// having no witness (`child_ok`), finished labels refused by `accept`.
+    pub ground_candidates: u64,
+    pub ground_child_rejected: u64,
+    pub ground_accept_rejected: u64,
+    /// Partial labels cut for already asking more than the target (`Context::narrower`).
+    pub ground_narrowed: u64,
     pub nanos: u64,
 }
 

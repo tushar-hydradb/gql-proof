@@ -102,6 +102,10 @@ fn typed_sentences_pass() {
         // Past the typed cap the definitions' classes are forgotten, not the sentence.
         "LET x = 1, y = 2, z = 3 RETURN x AS w",
         "LET x = 1, y = 'a' RETURN x + 1 AS w",
+        // 13.5 SR 5: DELETE takes a node or an edge (`LET y = x DELETE y` is a documented
+        // narrowing: a value variable defined by another variable is opaque).
+        "MATCH (x) DELETE x",
+        "MATCH (x)-[y]->() DETACH DELETE y",
     ]
     .into_iter()
     .filter_map(|ok| verdict(ok).err().map(|e| format!("{ok:?}: {e:.300}")))
@@ -135,6 +139,10 @@ fn untyped_sentences_are_refused() {
         "LET x = 1 RETURN x.k AS y",
         "MATCH (x) RETURN x ORDER BY x",
         "RETURN 'a' AS x NEXT RETURN x + 1 AS y",
+        // 13.5 SR 5: not a value of another type, nor a path.
+        "LET x = true DELETE x",
+        "MATCH (x) DELETE CURRENT_DATE",
+        "MATCH x = () DELETE x",
     ]
     .into_iter()
     .filter(|bad| verdict(bad).is_ok())
@@ -150,17 +158,19 @@ fn untyped_sentences_are_refused() {
 fn census() {
     use gql_proof::context::scope::Caps;
     use std::collections::BTreeMap;
+    let slots = env_num("GQL_SLOTS", 1);
     let rule = Typed::new(
         Scope {
             caps: Caps {
-                slots: 1,
-                references: 1,
+                slots,
+                references: slots,
             },
         },
         Types::new(&BASE),
     );
     let options = Options {
         progress: false,
+        join: std::env::var("GQL_JOIN").is_ok(),
         ..Options::default()
     };
     let analyzed = gql_proof::context::analyze(&BASE, &rule, &options).unwrap();
@@ -168,19 +178,55 @@ fn census() {
         .map(|nt| (analyzed.labels(nt).count(), nt))
         .collect();
     widest.sort_unstable_by(|a, b| b.cmp(a));
+    // Over every nonterminal: labels against distinct scope parts, distinct view shapes of
+    // those (what types reads of scope), and distinct type parts.
+    let (mut all, mut all_scope, mut all_views, mut all_types) = (0, 0, 0, 0);
+    let shape = |a: &gql_proof::context::scope::Label| -> String {
+        (0..a.width()).map(|s| format!("{:?}", a.view(s))).collect::<Vec<_>>().join("|")
+    };
+    for &(n, nt) in &widest {
+        let mut scope = BTreeSet::new();
+        let mut views = BTreeSet::new();
+        let mut types = BTreeSet::new();
+        for (a, b) in analyzed.labels(nt) {
+            scope.insert(a);
+            views.insert(shape(a));
+            types.insert(b);
+        }
+        all += n;
+        all_scope += scope.len();
+        all_views += views.len();
+        all_types += types.len();
+    }
+    eprintln!(
+        "all nonterminals: {all} labels, {all_scope} scope parts, {all_views} view shapes, {all_types} type parts"
+    );
     for &(n, nt) in widest.iter().take(12) {
         let mut scope = BTreeSet::new();
+        let mut views: BTreeMap<String, BTreeSet<&gql_proof::context::scope::Label>> =
+            BTreeMap::new();
+        let mut per_scope: BTreeMap<&gql_proof::context::scope::Label, usize> = BTreeMap::new();
+        let mut types = BTreeSet::new();
         let mut classes: BTreeMap<String, usize> = BTreeMap::new();
         let mut entries: BTreeMap<String, usize> = BTreeMap::new();
         for (a, b) in analyzed.labels(nt) {
             scope.insert(a);
+            views.entry(shape(a)).or_default().insert(a);
+            *per_scope.entry(a).or_default() += 1;
+            types.insert(b);
             *classes.entry(format!("{:?}", b.class())).or_default() += 1;
             *entries.entry(format!("{:?}", b.vars())).or_default() += 1;
         }
+        let max_per_scope = per_scope.values().copied().max().unwrap_or(0);
+        let max_per_view = views.values().map(BTreeSet::len).max().unwrap_or(0);
         eprintln!(
-            "{n:>6} <{}>: {} scope labels, {} classes, {} entry lists",
+            "{n:>6} <{}>: {} scope labels ({} view shapes, up to {} scope labels per shape), {} type parts (up to {} per scope label), {} classes, {} entry lists",
             BASE.nts[nt as usize].name,
             scope.len(),
+            views.len(),
+            max_per_view,
+            types.len(),
+            max_per_scope,
             classes.len(),
             entries.len()
         );
@@ -209,17 +255,21 @@ fn pair_waste() {
     use gql_proof::refine::{Node, items_of};
     use std::collections::BTreeMap;
     type L = <Typed<Scope, Types> as Context>::Label;
+    let slots = env_num("GQL_SLOTS", 1);
+    // Only productions whose description holds this text, if given.
+    let only = std::env::var("GQL_PRODS").ok();
     let rule = Typed::new(
         Scope {
             caps: Caps {
-                slots: 1,
-                references: 1,
+                slots,
+                references: slots,
             },
         },
         Types::new(&BASE),
     );
     let options = Options {
         progress: false,
+        join: std::env::var("GQL_JOIN").is_ok(),
         ..Options::default()
     };
     let analyzed = gql_proof::context::analyze(&BASE, &rule, &options).unwrap();
@@ -249,6 +299,11 @@ fn pair_waste() {
     for (p, prod) in BASE.prods.iter().enumerate() {
         let children = prod.rhs.iter().filter(|s| matches!(s, Sym::Nt(_))).count();
         if children < 2 {
+            continue;
+        }
+        if let Some(only) = &only
+            && !gql_proof::describe(&BASE, p as u32).contains(only.as_str())
+        {
             continue;
         }
         let items = items_of(&BASE, prod);
@@ -664,4 +719,197 @@ fn generated_trees_pass_the_checkers() {
         eprintln!("{f}");
     }
     assert!(failed.is_empty());
+}
+
+/// A number from the environment, for the measuring tests.
+fn env_num(name: &str, default: usize) -> usize {
+    std::env::var(name)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(default)
+}
+
+/// Each pruning of the types rule gives every nonterminal exactly the labels the rule gives
+/// without it: `fold` (an expression node evaluated at its last push) and `keys` (child
+/// labels paired by key). `GQL_OFF` names the prunings the plain run turns off (`fold`,
+/// `keys`, or `fold,keys`); `GQL_SLOTS` sets the cap; joins off, so the sets are canonical.
+#[test]
+#[ignore]
+fn pruning_is_exact() {
+    use gql_proof::context::scope::Caps;
+    let slots = env_num("GQL_SLOTS", 1);
+    let off = std::env::var("GQL_OFF").unwrap_or_else(|_| "fold".into());
+    let run = |pruned: bool| {
+        let mut types = Types::new(&BASE);
+        if !pruned {
+            types.fold = !off.contains("fold");
+        }
+        let rule = Typed::new(
+            Scope {
+                caps: Caps {
+                    slots,
+                    references: slots,
+                },
+            },
+            types,
+        );
+        let options = Options {
+            progress: false,
+            keys: pruned || !off.contains("keys"),
+            ..Options::default()
+        };
+        let began = std::time::Instant::now();
+        let analyzed = gql_proof::context::analyze(&BASE, &rule, &options).unwrap();
+        let sets: Vec<BTreeSet<String>> = (0..BASE.nts.len() as u32)
+            .map(|nt| analyzed.labels(nt).map(|l| format!("{l:?}")).collect())
+            .collect();
+        eprintln!(
+            "pruned {pruned}: {} labels, {:?}",
+            sets.iter().map(BTreeSet::len).sum::<usize>(),
+            began.elapsed()
+        );
+        sets
+    };
+    let (plain, folded) = (run(false), run(true));
+    let mut differ = 0;
+    for (nt, (a, b)) in plain.iter().zip(&folded).enumerate() {
+        if a != b {
+            differ += 1;
+            if differ <= 8 {
+                let only_a: Vec<&String> = a.difference(b).take(3).collect();
+                let only_b: Vec<&String> = b.difference(a).take(3).collect();
+                eprintln!(
+                    "<{}>: {} vs {} labels\n  only plain: {only_a:?}\n  only pruned: {only_b:?}",
+                    BASE.nts[nt].name,
+                    a.len(),
+                    b.len()
+                );
+            }
+        }
+    }
+    assert_eq!(differ, 0, "{differ} nonterminals differ");
+}
+
+/// With joins, a label a join replaced keeps its made labels: kept layers still hold it as
+/// the option it was when scanned, and grounding reads its parts (`Engine::add`).
+#[test]
+fn subsumed_options_keep_their_parts() {
+    use gql_proof::context::scope::Caps;
+    let rule = Typed::new(
+        Scope {
+            caps: Caps {
+                slots: 1,
+                references: 1,
+            },
+        },
+        Types::new(&BASE),
+    );
+    let options = Options {
+        progress: false,
+        join: true,
+        keys: true,
+        ..Options::default()
+    };
+    let analyzed = gql_proof::context::analyze(&BASE, &rule, &options).unwrap();
+    let (subsumed, orphaned) = analyzed.orphaned_options();
+    eprintln!("{subsumed} subsumed options in kept layers, {orphaned} without parts");
+    assert!(subsumed > 0, "the census found nothing to check");
+    assert_eq!(orphaned, 0);
+}
+
+/// Per-target extraction against the emitted grammar, typed, without joins, at a cap
+/// (`GQL_SLOTS`, 1 by default): see `common::extraction_matches_emission`.
+#[test]
+#[ignore]
+fn extraction_matches_emission() {
+    use gql_proof::context::scope::Caps;
+    let slots: usize = std::env::var("GQL_SLOTS").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
+    let rule = Typed::new(
+        Scope {
+            caps: Caps {
+                slots,
+                references: slots,
+            },
+        },
+        Types::new(&BASE),
+    );
+    let options = Options {
+        progress: false,
+        keys: true,
+        ..Options::default()
+    };
+    // `GQL_JOIN`: the extraction reads the joined fixed point; the oracle stays unjoined.
+    let extract = Options {
+        join: std::env::var("GQL_JOIN").is_ok(),
+        ..options.clone()
+    };
+    common::extraction_matches_emission(&BASE, &rule, &options, &extract, true);
+}
+
+mod common;
+
+/// With joins, every ground of every made label is a ground of some label of the exact
+/// (unjoined) fixed point: a joined label never stands for a tree that does not exist. One
+/// variable; prints the phantoms per nonterminal, worst first. `GQL_NT` narrows the print to
+/// one nonterminal and lists its phantoms with the made labels they come from.
+#[test]
+#[ignore]
+fn joined_grounds_are_exact() {
+    use gql_proof::context::Context;
+    use gql_proof::context::scope::Caps;
+    use std::collections::BTreeMap;
+    let rule = Typed::new(
+        Scope {
+            caps: Caps {
+                slots: 1,
+                references: 1,
+            },
+        },
+        Types::new(&BASE),
+    );
+    let run = |join: bool| {
+        gql_proof::context::analyze(
+            &BASE,
+            &rule,
+            &Options {
+                progress: false,
+                join,
+                keys: true,
+                ..Options::default()
+            },
+        )
+        .unwrap()
+    };
+    let (exact, joined) = (run(false), run(true));
+    let only = std::env::var("GQL_NT").ok();
+    let mut rows: Vec<(usize, usize, String)> = Vec::new();
+    let mut total = 0;
+    for nt in 0..BASE.nts.len() as u32 {
+        let truth: BTreeSet<<Typed<Scope, Types> as Context>::Label> =
+            exact.labels(nt).flat_map(|l| rule.grounds(l)).collect();
+        let mut phantoms: BTreeMap<_, Vec<String>> = BTreeMap::new();
+        for m in joined.made(nt) {
+            for g in rule.grounds(m) {
+                if !truth.contains(&g) {
+                    phantoms.entry(g).or_default().push(rule.show(m));
+                }
+            }
+        }
+        if phantoms.is_empty() {
+            continue;
+        }
+        total += phantoms.len();
+        rows.push((phantoms.len(), truth.len(), BASE.nts[nt as usize].name.clone()));
+        if only.as_deref() == Some(BASE.nts[nt as usize].name.as_str()) {
+            for (g, from) in phantoms.iter().take(12) {
+                eprintln!("  phantom [{}] from {:?}", rule.show(g), from);
+            }
+        }
+    }
+    rows.sort_unstable_by(|a, b| b.cmp(a));
+    eprintln!("{total} phantom grounds over {} nonterminals", rows.len());
+    for (n, truth, name) in rows.iter().take(20) {
+        eprintln!("  {n:>6} phantoms, {truth:>6} true grounds  <{name}>");
+    }
+    assert_eq!(total, 0);
 }

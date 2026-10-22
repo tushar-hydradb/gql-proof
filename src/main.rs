@@ -83,6 +83,28 @@ struct ContextArgs {
     /// Seeds to generate with, for `--phase generate`.
     #[arg(long, default_value_t = 2)]
     seeds: u64,
+    /// With `--phase cover`: every production of X used at every place X occurs.
+    #[arg(long)]
+    cdrc: bool,
+    /// With `--phase cover`: print the sentences, not only the tally.
+    #[arg(long)]
+    sentences: bool,
+    /// With `--sentences`: one json line per sentence (`sentence`, `target`), as the engine
+    /// probes read.
+    #[arg(long)]
+    jsonl: bool,
+    /// Compile the Syntax Rules a grammar can express (16.4 SR 6, 16.4 SR 14, 13.1 SR 5)
+    /// and the claim's conformance rules into the grammar first, as `purdom` does. `none`
+    /// runs over the ISO grammar as it is; `all` and `syntax` are the same here, scoping
+    /// being the context rule's.
+    #[arg(long, value_enum, default_value_t = Rules::None)]
+    rules: Rules,
+    /// With `--rules`: the optional features claimed, as for `purdom`.
+    #[arg(long, default_value = "all")]
+    claim: String,
+    /// With `--rules`: the match mode a graph pattern without one gets (ID086).
+    #[arg(long, value_enum, default_value_t = Id086::Portable)]
+    match_mode_default: Id086,
     /// Keep every fact in every label, even ones nothing above reads.
     #[arg(long)]
     no_live: bool,
@@ -95,6 +117,9 @@ struct ContextArgs {
     /// Skip pairs the rule's join keys rule out.
     #[arg(long)]
     keys: bool,
+    /// With `--rule types`: check expression nodes at finish, not at their last child.
+    #[arg(long)]
+    no_fold: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, ValueEnum)]
@@ -109,6 +134,8 @@ enum ContextRule {
 #[derive(Clone, Copy, PartialEq, PartialOrd, ValueEnum)]
 enum ContextPhase {
     Fixpoint,
+    /// One tree per coverage target straight from the fixed point, no grammar emitted.
+    Cover,
     Emit,
     Generate,
 }
@@ -292,14 +319,22 @@ fn parse_length(s: &str) -> Result<Length, String> {
 }
 
 fn main() -> Result<()> {
-    let result = match Cli::parse().cmd {
-        Cmd::Purdom(args) => purdom(args),
-        Cmd::CheckGrammar(args) => check_grammar(args),
-        Cmd::Negatives(args) => negatives(args),
-        Cmd::Features(args) => features(args),
-        Cmd::Cover(args) => cover(args),
-        Cmd::Context(args) => context(args),
-    };
+    let cmd = Cli::parse().cmd;
+    // The context engine's extraction searches recurse once per tree level and per right
+    // hand side position, deeper than the main thread's stack: run every command on a wide
+    // one.
+    let result = std::thread::Builder::new()
+        .stack_size(1 << 30)
+        .spawn(move || match cmd {
+            Cmd::Purdom(args) => purdom(args),
+            Cmd::CheckGrammar(args) => check_grammar(args),
+            Cmd::Negatives(args) => negatives(args),
+            Cmd::Features(args) => features(args),
+            Cmd::Cover(args) => cover(args),
+            Cmd::Context(args) => context(args),
+        })?
+        .join()
+        .unwrap_or_else(|e| std::panic::resume_unwind(e));
     // A closed pipe (`| head`) is the reader being done, not an error.
     match result {
         Err(e)
@@ -339,8 +374,35 @@ fn context(args: ContextArgs) -> Result<()> {
         .init();
 
     let bnf = bnf::parse(ISO_BNF_XML)?;
-    let base = Cfg::from_bnf(&bnf);
-    let start = base.require(&args.start)?;
+    let iso = Cfg::from_bnf(&bnf);
+    let iso_start = iso.require(&args.start)?;
+    // With `--rules`: the grammar the syntax rules and the claim refined, and a verifier of
+    // the same rules for the trees extracted from it, as for `purdom`.
+    let (base, start, verifier) = if args.rules == Rules::None {
+        (iso, iso_start, None)
+    } else {
+        let id086 = MatchModeDefault::from(args.match_mode_default);
+        let conformance = Conformance::load(CONFORMANCE_JSON)?;
+        let claim = Claim::parse(&args.claim, &conformance)?;
+        let forbidden = conformance.forbidden(&claim);
+        let mut rules = all_rules(id086);
+        rules.push(Box::new(ClaimRules::new(&iso, iso_start, &forbidden, &[])?));
+        let refined = refine(&iso, &rules, iso_start)?;
+        eprintln!(
+            "refined by the syntax rules and the claim ({} of {} features): {} nonterminals, {} productions (ISO: {}, {})",
+            claim.features.len(),
+            conformance.features.len(),
+            refined.cfg.nts.len(),
+            refined.cfg.prods.len(),
+            iso.nts.len(),
+            iso.prods.len()
+        );
+        let verifier = Verifier::new(Grammar::new(&bnf))
+            .with_syntax_rules(id086)
+            .with_conformance(forbidden);
+        (refined.cfg, refined.start, Some(verifier))
+    };
+    let verifier = verifier.as_ref();
     let options = gql_proof::context::Options {
         progress: true,
         deadline: args.deadline.map(std::time::Duration::from_secs),
@@ -358,14 +420,20 @@ fn context(args: ContextArgs) -> Result<()> {
         },
     };
     match args.rule {
-        ContextRule::None => {
-            context_run(&base, start, &gql_proof::context::Nothing, &options, &args)
-        }
-        ContextRule::Scope => context_run(&base, start, &scope, &options, &args),
+        ContextRule::None => context_run(
+            &base,
+            start,
+            &gql_proof::context::Nothing,
+            &options,
+            &args,
+            verifier,
+        ),
+        ContextRule::Scope => context_run(&base, start, &scope, &options, &args, verifier),
         ContextRule::Types => {
-            let types = gql_proof::context::types::Types::with_typed(&base, args.typed);
+            let mut types = gql_proof::context::types::Types::with_typed(&base, args.typed);
+            types.fold = !args.no_fold;
             let pair = gql_proof::context::pair::Typed::new(scope, types);
-            context_run(&base, start, &pair, &options, &args)
+            context_run(&base, start, &pair, &options, &args, verifier)
         }
     }
 }
@@ -376,6 +444,7 @@ fn context_run<C: gql_proof::context::Context>(
     ctx: &C,
     options: &gql_proof::context::Options,
     args: &ContextArgs,
+    verifier: Option<&Verifier>,
 ) -> Result<()> {
     let analyzed = gql_proof::context::analyze(base, ctx, options)?;
     if let Some(which) = &args.production {
@@ -395,6 +464,127 @@ fn context_run<C: gql_proof::context::Context>(
         eprint!("{}", profile.stats.summary(args.top));
     }
     let mut stats = analyzed.stats();
+    if args.phase == ContextPhase::Cover {
+        let began = std::time::Instant::now();
+        let names: Vec<String> = ["x", "y", "z", "w"].iter().map(|s| s.to_string()).collect();
+        let analysis = Analysis::new(base, &StubProvider);
+        let extractor = analyzed.extractor(start, &StubProvider);
+        let criteria = Criteria {
+            cdrc: args.cdrc,
+            k: 0,
+            lexical: false,
+        };
+        let template = |nt: u32| {
+            gql_proof::leaf::LeafProvider::token(&StubProvider, base.base(nt))
+                .and_then(|t| analysis.spell(nt, t))
+        };
+        let covered = extractor.cover(
+            criteria,
+            &names,
+            |nt, s| analysis.spell(nt, s),
+            &template,
+            &mut StubProvider,
+            1,
+            true,
+        );
+        let (mut failed, mut untyped) = (0, 0);
+        for (root, covers) in &covered.trees {
+            let plain = root.export(base);
+            let sentence = root.render(base);
+            // The syntax rules and the claim's conformance rules, when the grammar was refined
+            // by them: a tree of the refined grammar must satisfy them.
+            let mut violations = match verifier {
+                Some(v) => v.verify(&plain, &sentence),
+                None => Vec::new(),
+            };
+            // A tree of the grammar it was extracted from: each node's children spell its
+            // production's right hand side.
+            if let Err(err) = root.validate(base) {
+                violations.push(gql_proof::verify::Violation {
+                    path: String::new(),
+                    rule: "the grammar",
+                    detail: err,
+                });
+            }
+            violations.extend(gql_proof::verify::scope::check(&plain));
+            let scoped = violations.is_empty();
+            if args.rule == ContextRule::Types {
+                violations.extend(gql_proof::verify::types::check(&plain));
+            }
+            if let Err(err) = gql_proof::context::accepts(ctx, &plain) {
+                violations.push(gql_proof::verify::Violation {
+                    path: String::new(),
+                    rule: "the rule itself",
+                    detail: err,
+                });
+            }
+            if !violations.is_empty() {
+                if scoped {
+                    untyped += 1;
+                } else {
+                    failed += 1;
+                }
+                if failed + untyped <= 5 {
+                    eprintln!("{sentence}\n  {violations:?}");
+                    if std::env::var_os("GQL_DEBUG_TREE").is_some() {
+                        let mut ps = Vec::new();
+                        root.prods(&mut ps);
+                        for p in ps {
+                            eprintln!("    {}", describe(base, p));
+                        }
+                    }
+                }
+            }
+            if args.sentences && args.jsonl {
+                let record = serde_json::json!({
+                    "target": covers.to_string(),
+                    "sentence": sentence,
+                });
+                println!("{record}");
+            } else if args.sentences {
+                println!("# {covers}\n{sentence}");
+            }
+        }
+        let s = &covered.stats;
+        eprintln!(
+            "extracted {} trees in {:?}: {} ahead tables ({:.1} s), {} witness searches, {} context searches",
+            covered.trees.len(),
+            began.elapsed(),
+            s.ahead_tables,
+            s.ahead_nanos as f64 / 1e9,
+            s.witness_searches,
+            s.context_searches
+        );
+        eprintln!(
+            "productions: {} of {} covered, {} never; {failed} trees fail the syntax rules or the scope checker, {untyped} only the types checker or the rule",
+            covered.productions.covered,
+            covered.productions.total,
+            covered.productions.never.len()
+        );
+        for n in covered.productions.never.iter().take(args.top) {
+            eprintln!("  never: {n}");
+        }
+        if !covered.productions.unused.is_empty() {
+            eprintln!(
+                "  {} extracted for, then spelled or templated away:",
+                covered.productions.unused.len()
+            );
+            for n in covered.productions.unused.iter().take(args.top) {
+                eprintln!("    {n}");
+            }
+        }
+        if args.cdrc {
+            eprintln!(
+                "cdrc: {} of {} covered, {} never",
+                covered.cdrc.covered,
+                covered.cdrc.total,
+                covered.cdrc.never.len()
+            );
+            for n in covered.cdrc.never.iter().take(args.top) {
+                eprintln!("  never: {n}");
+            }
+        }
+    }
     if args.phase >= ContextPhase::Emit {
         let built = analyzed.emit(start, "x")?;
         stats = built.stats.clone();

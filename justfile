@@ -76,6 +76,20 @@ turbolay worktree claim="claims/turbolay.claim":
     (cd {{worktree}} && GQL_PROOF_IN=$out/turbolay-sentences.jsonl GQL_PROOF_OUT=$out/turbolay-results.jsonl cargo test --release -q -p hydradb-cypher-engine --test zz_gql_proof >/dev/null)
     python3 -I tools/engines/report.py target/engines/turbolay-results.jsonl
 
+# one scope- and type-coherent sentence per coverage target of the claim-refined grammar
+# (the typed fixed point, extracted per target), run on the gql engine in a turbolay
+# worktree, then the report. about 8 minutes at two variables
+turbolay-typed worktree slots="2" claim="claims/turbolay.claim":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    grep -q '^serde_json' {{worktree}}/crates/cypher-engine/Cargo.toml || { echo "add serde_json = { workspace = true } to [dev-dependencies] of {{worktree}}/crates/cypher-engine/Cargo.toml" >&2; exit 1; }
+    mkdir -p target/engines
+    cargo run --release -q -- context --rule types --slots {{slots}} --join --keys --phase cover --cdrc --sentences --jsonl --rules all --claim {{claim}} > target/engines/turbolay-typed-sentences.jsonl
+    cp tools/engines/turbolay_probe.rs {{worktree}}/crates/cypher-engine/tests/zz_gql_proof.rs
+    out=$PWD/target/engines
+    (cd {{worktree}} && GQL_PROOF_IN=$out/turbolay-typed-sentences.jsonl GQL_PROOF_OUT=$out/turbolay-typed-results.jsonl cargo test --release -q -p hydradb-cypher-engine --test zz_gql_proof >/dev/null)
+    python3 -I tools/engines/report.py target/engines/turbolay-typed-results.jsonl
+
 # Every query turbolay#261's generators build, read with the iso grammar, scoping judged by
 # the automaton and the checker. The dump is appended to the worktree's test file for one
 # run and removed again.
