@@ -832,6 +832,16 @@ impl<'a, C: Context> Engine<'a, C> {
         // First the instance's own options, made ground; failing that, any option at the
         // other positions: a choice may need another sibling (an edge's binder, not the
         // node's the instance had), not another ground of the same one.
+        let began = Instant::now();
+        let done = |kind: Option<bool>| {
+            let mut stats = self.stats.borrow_mut();
+            match kind {
+                Some(false) => stats.emit.ground_narrow += 1,
+                Some(true) => stats.emit.ground_wide += 1,
+                None => stats.emit.ground_failed += 1,
+            }
+            stats.emit.ground_nanos += began.elapsed().as_nanos() as u64;
+        };
         for wide in [false, true] {
             let walk = Walk {
                 p,
@@ -856,9 +866,11 @@ impl<'a, C: Context> Engine<'a, C> {
                     links: steps.into_iter().map(|(l, _)| l).collect(),
                     finish,
                 };
+                done(Some(wide));
                 return Some(((chosen, shape), out));
             }
         }
+        done(None);
         None
     }
 
@@ -910,9 +922,7 @@ impl<'a, C: Context> Engine<'a, C> {
                 steps.pop();
             }
         }
-        if w.wide {
-            w.failed.borrow_mut().insert((pos, partial));
-        }
+        w.failed.borrow_mut().insert((pos, partial));
         None
     }
 
@@ -1244,12 +1254,14 @@ impl<'a, C: Context> Analyzed<'a, C> {
                                 let mut cs = Vec::new();
                                 for ((pos, o), _, instance) in all {
                                     for g in e.ground_options(prod.rhs[pos], &o) {
-                                        cs.push((pos, g.clone()));
+                                        // With no ground instance at all, no tree takes
+                                        // this choice here: it is no choice to cover.
                                         let Some((ground, made)) =
                                             e.ground(p, &instance, Some((pos, &g)), &|_| true)
                                         else {
                                             continue;
                                         };
+                                        cs.push((pos, g.clone()));
                                         for end in ctx.grounds(&made) {
                                             pending
                                                 .entry((p, end))
@@ -1340,6 +1352,30 @@ impl<'a, C: Context> Analyzed<'a, C> {
                     .collect();
                 if open.is_empty() {
                     continue;
+                }
+                if e.options.progress && said.elapsed() > Duration::from_secs(5) {
+                    let s = e.stats.borrow();
+                    eprintln!(
+                        "{}: emission fallback, production {p}, {} open choices, {} nonterminals, ground instances {} / {} wide / {} failed ({:.1} s), {:?}",
+                        ctx.name(),
+                        open.len(),
+                        out.nts.len(),
+                        s.emit.ground_narrow,
+                        s.emit.ground_wide,
+                        s.emit.ground_failed,
+                        s.emit.ground_nanos as f64 / 1e9,
+                        began.elapsed()
+                    );
+                    said = Instant::now();
+                }
+                if let Some(deadline) = e.options.deadline
+                    && began.elapsed() > deadline
+                {
+                    bail!(
+                        "{}: emission not done after {deadline:?} (in the fallback)\n{}",
+                        ctx.name(),
+                        self.stats().summary(12)
+                    );
                 }
                 // One pass to whichever reached label is cheapest, for every open option at once;
                 // again only once more labels of its left hand side are reached.

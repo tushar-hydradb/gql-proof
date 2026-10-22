@@ -73,6 +73,12 @@ pub struct EmitStats {
     pub fallback_runs: u64,
     /// Instances the fallback passes emitted.
     pub fallback_emitted: u64,
+    /// With joins: instances made ground with their own options, with any option (wide),
+    /// not at all, and the time those searches took.
+    pub ground_narrow: u64,
+    pub ground_wide: u64,
+    pub ground_failed: u64,
+    pub ground_nanos: u64,
     pub nanos: u64,
 }
 
@@ -225,6 +231,16 @@ impl Stats {
                 e.fallback_emitted,
                 ms(e.nanos)
             );
+            if e.ground_narrow + e.ground_wide + e.ground_failed > 0 {
+                let _ = writeln!(
+                    s,
+                    "ground instances: {} from their own options, {} wide, {} failed, {:.1} ms",
+                    e.ground_narrow,
+                    e.ground_wide,
+                    e.ground_failed,
+                    ms(e.ground_nanos)
+                );
+            }
         }
         s
     }
