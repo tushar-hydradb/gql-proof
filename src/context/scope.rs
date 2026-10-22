@@ -33,6 +33,12 @@
 //!   declares each name once (16.5 SR 10-11)
 //! - a nested `{ ... }` data-modifying procedure leaves nothing referenceable behind, and
 //!   neither do binding variable definitions (they bind the record)
+//! - an EXISTS, VALUE or nested binding table body does not have the empty type (19.4 SR 5,
+//!   20.6 SR 8, 11.2 SR 2): its last statement is not FINISH, explicit or implicit (13.1 SR
+//!   2-3), nor catalog-modifying (12.1 SR 4); a VALUE body returns one column (20.6 SR 3) and
+//!   at most one row by a single aggregate without GROUP BY (20.6 SR 10 b; the LIMIT 1 way, SR
+//!   10 a, is not generated). A FINISH operand reached through a nested query specification
+//!   is read as 14.2 SR 5's too
 //! - at most [`SLOTS`] variables in one subtree's label: a longer list of distinct names is
 //!   not generated (coverage counts occurrences, and fewer names reach the same ones)
 
@@ -147,6 +153,9 @@ mod gf {
     /// The statement does not pass on the table it gets (a RETURN replaces it).
     pub const CLOSES: u32 = 1 << 1;
     pub const RESULT: u32 = 1 << 2;
+    /// The subtree's declared type is the empty type, not a binding table type: FINISH
+    /// (14.10 SR 5), explicit or implicit (13.1 SR 2-3), or a catalog-modifying statement
+    /// (12.1 SR 4). A statement sequence keeps the last statement's (9.2 SR 13).
     pub const FINISHED: u32 = 1 << 3;
     /// A RETURN without DISTINCT, aggregates or GROUP BY (14.10 SR 4).
     pub const PLAIN: u32 = 1 << 4;
@@ -172,6 +181,9 @@ mod gf {
     pub const TOKENS: u32 = 1 << 18;
     /// A nested query somewhere below (in an expression), for a sort key.
     pub const QUERY: u32 = 1 << 19;
+    /// The result statement returns at most one row: a single aggregate return item without
+    /// GROUP BY (20.6 SR 10 b). A statement sequence keeps the last statement's.
+    pub const ONE_ROW: u32 = 1 << 20;
     /// A NEXT statement: its needs are met by the statement before only.
     pub const NEXT: u32 = 1 << 21;
     /// A yield item read as a procedure's result, not a column of the statement before.
@@ -694,7 +706,7 @@ impl Scope {
                     }
                 }
                 // The output is the last statement's.
-                let keep = gf::RESULT | gf::FINISHED | gf::PLAIN | gf::CLOSES;
+                let keep = gf::RESULT | gf::FINISHED | gf::PLAIN | gf::CLOSES | gf::ONE_ROW;
                 d.flags = (d.flags & !keep) | (child.flags & keep);
                 if partial.has(gf::CLOSES) {
                     d.flags |= gf::CLOSES;
@@ -1060,7 +1072,7 @@ impl Scope {
             "inline procedure call" => {
                 d.update(|v| v.without(vf::LISTED));
                 d.set(gf::STATEMENT, true);
-                d.flags &= !(gf::RESULT | gf::CLOSES | gf::FINISHED);
+                d.flags &= !(gf::RESULT | gf::CLOSES | gf::FINISHED | gf::ONE_ROW);
             }
             "yield item" => return Self::yield_item(d),
             // 9.2 SR 12: what follows NEXT sees what the statement before returned.
@@ -1069,15 +1081,29 @@ impl Scope {
                 d.set(gf::STATEMENT, true);
                 d.set(gf::CLOSES, true);
             }
-            // 9.2 SR 12 b: a statement without a result leaves a unit table.
+            // 9.2 SR 12 b: a statement without a result leaves a unit table. FINISHED stays:
+            // 9.2 SR 13 makes the last statement's type the body's, and a nested query
+            // specification's consumer reads it.
             "statement" => {
                 if !d.has(gf::RESULT) {
                     d.update(|v| Var { out: None, ..v });
                     d.set(gf::CLOSES, true);
                 }
-                d.set(gf::FINISHED, false);
             }
-            "composite query statement" => d.set(gf::FINISHED, false),
+            // The program's top and CALL's wrapper: no consumer above reads these.
+            "procedure specification" => d.flags &= !(gf::FINISHED | gf::ONE_ROW),
+            // A set operation's rows are not its operands' (20.6 SR 5 a reads the emitting
+            // statement as one linear query statement).
+            "composite query expression" if node.items.len() > 1 => d.set(gf::ONE_ROW, false),
+            // 13.1 SR 2-3: without a primitive result statement, FINISH is implicit.
+            "ambient linear data-modifying statement body"
+            | "focused linear data-modifying statement body" => {
+                if !d.has(gf::RESULT) {
+                    d.set(gf::FINISHED, true);
+                }
+            }
+            // 12.1 SR 4: the empty type.
+            "linear catalog-modifying statement" => d.set(gf::FINISHED, true),
             "primitive result statement" => {
                 if node.items == [Item::Token("FINISH")] {
                     d.flags |= gf::STATEMENT | gf::CLOSES | gf::RESULT | gf::FINISHED;
@@ -1124,10 +1150,21 @@ impl Scope {
                 }
             }
             // Subqueries in expressions: nothing from outside (reading), their output unread.
+            // 19.4 SR 5, 20.6 SR 8, 11.2 SR 2: the body's declared type is a binding table
+            // type, not the empty type (`FINISHED`).
             "exists predicate"
             | "value query expression"
             | "nested binding table query specification" => {
-                if d.any(Var::reference) {
+                if d.any(Var::reference) || d.has(gf::FINISHED) {
+                    return vec![];
+                }
+                // 20.6 SR 3: a VALUE body returns exactly one column; SR 10 (reading): at
+                // most one row by a single aggregate without GROUP BY, the LIMIT 1 way is
+                // not generated (the label does not see the literal).
+                if def == "value query expression"
+                    && (!d.has(gf::ONE_ROW)
+                        || d.live().filter(|(_, v)| v.out.is_some()).count() != 1)
+                {
                     return vec![];
                 }
                 d.close(|_| true);
@@ -1180,6 +1217,7 @@ impl Scope {
                     return vec![];
                 }
                 d.close(|_| true);
+                // FINISHED stays: its declared type is its body's (9.1 SR 3).
                 d.flags |= gf::STATEMENT | gf::CLOSES;
             }
             _ => {}
@@ -1398,6 +1436,7 @@ impl Scope {
                 d.set(gf::CLOSES, true);
             }
             let plain = !d.has(gf::DISTINCT) && !d.has(gf::AGGREGATES) && !d.has(gf::GROUPED);
+            let one_row = d.has(gf::AGGREGATES) && !d.has(gf::GROUPED);
             d.update(|v| Var {
                 out: v.column,
                 column: None,
@@ -1405,6 +1444,7 @@ impl Scope {
             });
             d.flags &= !(gf::STAR | gf::DISTINCT | gf::GROUPED | gf::AGGREGATES | gf::LOOSE);
             d.set(gf::PLAIN, plain);
+            d.set(gf::ONE_ROW, one_row);
             d.set(gf::STATEMENT, true);
             out.push(d);
         }

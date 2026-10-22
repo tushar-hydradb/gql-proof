@@ -53,6 +53,16 @@ def _(s):
             return True
     return False
 
+@check("19.4 SR 5, 20.6 SR 8, 11.2 SR 2: EXISTS, VALUE or table body is FINISH")
+def _(s):
+    # The declared type of the body is the last statement's; FINISH is the empty type. Text
+    # level: only a body that is FINISH alone or ends in NEXT FINISH, a lower bound.
+    for m in re.finditer(r"\b(VALUE|EXISTS)\s*\{", s):
+        body = braces(s, m.end() - 1).strip()
+        if re.fullmatch(r"(\{\s*)*FINISH(\s*\})*", body) or re.search(r"\bNEXT\s+FINISH\s*$", body):
+            return True
+    return False
+
 @check("9.1 SR 7: data-modifying or catalog statement inside a query body")
 def _(s):
     for m in re.finditer(r"\b(VALUE|EXISTS)\s*\{", s):

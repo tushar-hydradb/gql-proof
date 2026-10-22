@@ -11,7 +11,7 @@ use gql_proof::parse::Parser;
 use gql_proof::purdom::{Analysis, Config, Generator, Length};
 use gql_proof::tokens::Grammar;
 use gql_proof::verify::Verifier;
-use gql_proof::{ISO_BNF_XML, bnf};
+use gql_proof::{ISO_BNF_XML, MatchModeDefault, bnf};
 use std::collections::BTreeSet;
 use std::sync::LazyLock;
 
@@ -26,7 +26,7 @@ fn rule() -> Typed<Scope, Types> {
 /// is, the ambiguity of the expression grammar being the types' choice.
 fn verdict(text: &str) -> Result<(), String> {
     let tokens = Grammar::new(&ISO);
-    let verifier = Verifier::new(Grammar::new(&ISO));
+    let verifier = Verifier::new(Grammar::new(&ISO)).with_syntax_rules(MatchModeDefault::Portable);
     let mut parser = Parser::new(&BASE, &tokens, "GQL-program").unwrap();
     parser.limit = 8192;
     let trees = std::cell::RefCell::new(Vec::new());
@@ -106,6 +106,12 @@ fn typed_sentences_pass() {
         // narrowing: a value variable defined by another variable is opaque).
         "MATCH (x) DELETE x",
         "MATCH (x)-[y]->() DETACH DELETE y",
+        // 19.4 SR 5, 20.6 SR 8: a body that returns is a binding table.
+        "RETURN EXISTS { RETURN 1 AS y } AS x",
+        "RETURN EXISTS { MATCH (y) RETURN y } AS x",
+        "RETURN EXISTS { FINISH NEXT RETURN 1 AS y } AS x",
+        "RETURN VALUE { RETURN count(*) AS y } AS x",
+        "{ FINISH } NEXT RETURN 1 AS x",
     ]
     .into_iter()
     .filter_map(|ok| verdict(ok).err().map(|e| format!("{ok:?}: {e:.300}")))
@@ -143,6 +149,25 @@ fn untyped_sentences_are_refused() {
         "LET x = true DELETE x",
         "MATCH (x) DELETE CURRENT_DATE",
         "MATCH x = () DELETE x",
+        // 19.4 SR 5, 20.6 SR 8: FINISH is the empty type, not a binding table.
+        "RETURN EXISTS { FINISH } AS x",
+        "RETURN EXISTS { { FINISH } } AS x",
+        "RETURN EXISTS { RETURN 1 AS y NEXT FINISH } AS x",
+        "RETURN EXISTS { MATCH (y) FINISH } AS x",
+        "RETURN VALUE { FINISH } AS x",
+        // 13.1 SR 3: a data-modifying body without a result statement finishes implicitly.
+        "RETURN EXISTS { INSERT (y) } AS x",
+        "RETURN EXISTS { CALL { FINISH } } AS x",
+        // 12.1 SR 4: a catalog-modifying statement has the empty type.
+        "RETURN EXISTS { CREATE SCHEMA /s } AS x",
+        // 20.6 SR 3: one column.
+        "RETURN VALUE { RETURN NO BINDINGS } AS x",
+        "RETURN VALUE { RETURN count(*) AS y, count(*) AS z } AS x",
+        // 20.6 SR 10: one row by a single aggregate without GROUP BY; LIMIT 1 (valid) is a
+        // documented narrowing, the label does not see the literal.
+        "RETURN VALUE { RETURN 1 AS y } AS x",
+        "RETURN VALUE { RETURN 1 AS y LIMIT 1 } AS x",
+        "RETURN VALUE { RETURN count(*) AS y UNION RETURN count(*) AS y } AS x",
     ]
     .into_iter()
     .filter(|bad| verdict(bad).is_ok())

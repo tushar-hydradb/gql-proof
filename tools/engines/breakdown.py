@@ -20,6 +20,7 @@ OURS = [
     ("positive minimum path length", "16.7 SR 8: quantified or questioned primary of length 0"),
     ("TRIM ... FROM needs", "20.24 SR 3: TRIM with a bare FROM"),
     ("under DIFFERENT EDGES a selective", "16.4 SR 12: selective pattern not alone"),
+    ("a VALUE subquery returns at most one row", "20.6 SR 10: VALUE body not one row"),
 ]
 
 

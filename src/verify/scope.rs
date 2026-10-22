@@ -1535,6 +1535,40 @@ impl<'t> Checker<'t> {
             }
             "let value expression" => self.let_value(node, env, at),
             "exists predicate" => self.exists(node, env),
+            // 20.6 SR 8 and 11.2 SR 2: the body's declared type is a binding table type, which
+            // a body whose emitting result statement is FINISH does not have (14.10 SR 5).
+            "value query expression" | "nested binding table query specification" => {
+                if let Some(pb) = first(node, "procedure body")
+                    && emits_finish(pb)
+                {
+                    let rule = if n == "value query expression" {
+                        "20.6 SR 8"
+                    } else {
+                        "11.2 SR 2"
+                    };
+                    self.report(node, rule, "the body's result statement is FINISH".into());
+                }
+                // 20.6 SR 5 a: the emitting statement is one linear query statement; SR 10:
+                // at most one row, by LIMIT 1 or a single aggregate without GROUP BY.
+                if n == "value query expression"
+                    && let Some(pb) = first(node, "procedure body")
+                {
+                    match emitting(pb) {
+                        Emitting::SetOperation => self.report(
+                            node,
+                            "20.6 SR 5",
+                            "the emitting statement is a set operation".into(),
+                        ),
+                        Emitting::Result(prs) if !returns_one_row(prs) => self.report(
+                            node,
+                            "20.6 SR 10",
+                            "the body neither ends in LIMIT 1 nor returns one aggregate".into(),
+                        ),
+                        _ => {}
+                    }
+                }
+                kids(node).into_iter().for_each(|k| self.expr(k, env, at));
+            }
             "procedure body" => {
                 self.body(
                     node,
@@ -1666,6 +1700,14 @@ impl<'t> Checker<'t> {
                 scope = self.match_statement(m, scope);
             }
         } else if let Some(pb) = first(node, "procedure body") {
+            // SR 5: the body's declared type is a binding table type (not FINISH's empty type).
+            if emits_finish(pb) {
+                self.report(
+                    node,
+                    "19.4 SR 5",
+                    "the body's result statement is FINISH".into(),
+                );
+            }
             self.body(pb, scope);
         }
     }
@@ -1998,14 +2040,121 @@ fn conjuncts<'t>(cqe: &'t Plain, out: &mut Vec<&'t Plain>) {
     }
 }
 
-/// A linear query statement that ends in FINISH (14.2 SR 5).
+/// A linear statement whose declared type is FINISH's empty type (14.3 SR 6, 13.1 SR 9, 14.10
+/// SR 5): its last element is FINISH, explicit or implicit (13.1 SR 2-3: a data-modifying
+/// statement without a primitive result statement), or a nested query specification whose
+/// body emits FINISH (20.6 SR 5 b ii). Reading: 14.2 SR 5 is applied to that too, since an
+/// empty-typed operand cannot be column name-equal (SR 10).
 fn finishes(lqs: &Plain) -> bool {
     let mut parts = Vec::new();
     steps(lqs, &mut parts);
-    parts.last().is_some_and(|p| {
-        name(p) == Some("primitive result statement")
-            && kids(p).iter().any(|k| keyword(k, "FINISH"))
+    parts.last().is_some_and(|p| match name(p) {
+        Some("primitive result statement") => kids(p).iter().any(|k| keyword(k, "FINISH")),
+        // Either body's declared type is its own (9.1 SR 2-3).
+        Some("nested query specification" | "nested data-modifying procedure specification") => {
+            first(p, "procedure body").is_some_and(emits_finish)
+        }
+        // 13.1 SR 2-3.
+        _ => name(lqs) == Some("linear data-modifying statement"),
     })
+}
+
+/// What a procedure body emits (20.6 SR 4-5): the primitive result statement its last linear
+/// query statement ends in, through nested specifications; a set operation instead (SR 5 a
+/// wants one linear query statement); or something else (FINISH, a non-query, a SELECT).
+enum Emitting<'t> {
+    Result(&'t Plain),
+    SetOperation,
+    Other,
+}
+
+fn emitting(pb: &Plain) -> Emitting<'_> {
+    let last = own(pb, "statement block").and_then(|sb| match owns(sb, "next statement").last() {
+        Some(next) => own(next, "statement"),
+        None => own(sb, "statement"),
+    });
+    let Some(inner) = last.and_then(|st| kids(st).into_iter().next()) else {
+        return Emitting::Other;
+    };
+    let Some(cqe) = own(inner, "composite query expression") else {
+        return Emitting::Other;
+    };
+    let mut operands = Vec::new();
+    conjuncts(cqe, &mut operands);
+    let [op] = operands.as_slice() else {
+        return Emitting::SetOperation;
+    };
+    let mut parts = Vec::new();
+    steps(op, &mut parts);
+    match parts.last().map(|p| (name(p), p)) {
+        Some((Some("primitive result statement"), p)) => Emitting::Result(p),
+        Some((Some("nested query specification"), p)) => match first(p, "procedure body") {
+            Some(pb) => emitting(pb),
+            None => Emitting::Other,
+        },
+        _ => Emitting::Other,
+    }
+}
+
+/// 20.6 SR 10: the result statement ends in LIMIT 1 (a), or has no GROUP BY and its only
+/// return item directly contains an aggregate function (b).
+fn returns_one_row(prs: &Plain) -> bool {
+    let limit_one = own(prs, "order by and page statement")
+        .and_then(|ops| own(ops, "limit clause"))
+        .and_then(|lc| own(lc, "non-negative integer specification"))
+        .is_some_and(|n| unsigned(&n.text()) == Some(1));
+    let aggregate = own(prs, "return statement")
+        .and_then(|rs| own(rs, "return statement body"))
+        .is_some_and(|body| {
+            let items = items(body, &["return item"]);
+            own(body, "group by clause").is_none()
+                && matches!(items.as_slice(), [ri] if directly(ri, "aggregate function"))
+        });
+    limit_one || aggregate
+}
+
+/// The value of an <unsigned integer> as spelled (21.4: decimal, or 0x, 0o, 0b prefixed,
+/// underscores allowed).
+fn unsigned(text: &str) -> Option<u64> {
+    let t: String = text.chars().filter(|c| *c != '_').collect();
+    let lower = t.to_ascii_lowercase();
+    let (digits, radix) = match lower.as_bytes() {
+        [b'0', b'x', ..] => (&lower[2..], 16),
+        [b'0', b'o', ..] => (&lower[2..], 8),
+        [b'0', b'b', ..] => (&lower[2..], 2),
+        _ => (lower.as_str(), 10),
+    };
+    u64::from_str_radix(digits, radix).ok()
+}
+
+/// 9.2 SR 13 and 20.6 SR 4-5: a procedure body whose declared type is the empty type, its
+/// last statement being a one-operand composite or a data-modifying statement that finishes,
+/// or a catalog-modifying statement.
+fn emits_finish(pb: &Plain) -> bool {
+    let Some(sb) = own(pb, "statement block") else {
+        return false;
+    };
+    let last = match owns(sb, "next statement").last() {
+        Some(next) => own(next, "statement"),
+        None => own(sb, "statement"),
+    };
+    let Some(inner) = last.and_then(|st| kids(st).into_iter().next()) else {
+        return false;
+    };
+    match name(inner) {
+        Some("composite query statement") => {
+            let Some(cqe) = own(inner, "composite query expression") else {
+                return false;
+            };
+            let mut operands = Vec::new();
+            conjuncts(cqe, &mut operands);
+            matches!(operands.as_slice(), [op] if finishes(op))
+        }
+        Some("linear data-modifying statement") => finishes(inner),
+        // 12.1 SR 4: the empty type.
+        Some("linear catalog-modifying statement") => true,
+        _ => false,
+    }
 }
 
 fn items<'t>(st: &'t Plain, want: &[&str]) -> Vec<&'t Plain> {

@@ -497,9 +497,15 @@ fn for_sources() {
 #[test]
 fn subqueries() {
     // 20.6
-    ok("RETURN VALUE { RETURN 1 AS z } + 1 AS x");
-    bad("RETURN VALUE { RETURN 'a' AS z } + 1 AS x", "20.21 SR 3");
-    bad("RETURN VALUE { RETURN 1 AS a, 2 AS b } AS x", "20.6 SR 3");
+    ok("RETURN VALUE { RETURN 1 AS z LIMIT 1 } + 1 AS x");
+    bad(
+        "RETURN VALUE { RETURN 'a' AS z LIMIT 1 } + 1 AS x",
+        "20.21 SR 3",
+    );
+    bad(
+        "RETURN VALUE { RETURN 1 AS a, 2 AS b LIMIT 1 } AS x",
+        "20.6 SR 3",
+    );
     // inner queries see the outer variables
     ok("LET x = 1 CALL { RETURN x + 1 AS y } RETURN y * 2 AS z");
     bad(
@@ -559,8 +565,11 @@ fn statements() {
     );
     ok("MATCH (a) RETURN a NEXT MATCH (a)-[e]->(b) RETURN b");
     ok("FILTER EXISTS { RETURN 1 AS x } FINISH");
-    ok("FILTER VALUE { RETURN TRUE AS x } FINISH");
-    bad("FILTER VALUE { RETURN 1 AS x } FINISH", "20.20 SR 3");
+    ok("FILTER VALUE { RETURN TRUE AS x LIMIT 1 } FINISH");
+    bad(
+        "FILTER VALUE { RETURN 1 AS x LIMIT 1 } FINISH",
+        "20.20 SR 3",
+    );
 }
 
 #[test]
