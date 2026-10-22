@@ -20,8 +20,8 @@
 //! a target with no tree found has none at the cap, by exhaustion.
 
 use super::{
-    AheadTable, Context, Ends, Engine, Instance, Kid, Layers, Linked, Opt, Shape,
-    assign_names, link_slots,
+    AheadTable, Context, Ends, Engine, Instance, Kid, Layers, Linked, Opt, Shape, assign_names,
+    link_slots,
 };
 use crate::cfg::{Cfg, Lit, NtId, OccId, ProdId, Sym};
 use crate::coverage::{self, Criteria, ROOT, Target};
@@ -501,7 +501,11 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                                     .join(" ")
                             })
                             .unwrap_or_default();
-                        format!("{c} {} [{}]\n      from {opts}", crate::describe(self.cfg(), *p), self.e.ctx.show(r))
+                        format!(
+                            "{c} {} [{}]\n      from {opts}",
+                            crate::describe(self.cfg(), *p),
+                            self.e.ctx.show(r)
+                        )
                     })
                     .collect()
             } else {
@@ -576,7 +580,10 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                         return XChild::Node(node.clone());
                     }
                     let Sym::Nt(c) = rhs[i] else { unreachable!() };
-                    XChild::Node(self.witness(c, l).expect("checked when the instance was made ground"))
+                    XChild::Node(
+                        self.witness(c, l)
+                            .expect("checked when the instance was made ground"),
+                    )
                 }
             })
             .collect();
@@ -676,10 +683,15 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             let Some((_, instance)) = self.e.taking(q, &pre.layers, table, j, &o, size) else {
                 continue;
             };
-            if let Some((ground, out)) =
-                self.e
-                    .ground(q, &instance, Some((j, &fixed)), &accept, &child_ok, None, &[false])
-            {
+            if let Some((ground, out)) = self.e.ground(
+                q,
+                &instance,
+                Some((j, &fixed)),
+                &accept,
+                &child_ok,
+                None,
+                &[false],
+            ) {
                 return Some(found(ground, out));
             }
             seed.get_or_insert(instance);
@@ -688,7 +700,15 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             let (r, _) = pre.ends.iter().min_by_key(|(_, (c, _, _))| *c)?;
             self.e.smallest(q, &pre.layers, &pre.ends, r)
         })?;
-        let (ground, out) = self.e.ground(q, &seed, Some((j, &fixed)), &accept, &child_ok, None, &[true])?;
+        let (ground, out) = self.e.ground(
+            q,
+            &seed,
+            Some((j, &fixed)),
+            &accept,
+            &child_ok,
+            None,
+            &[true],
+        )?;
         Some(found(ground, out))
     }
 
@@ -713,7 +733,8 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
     pub fn production_tree(&self, p: ProdId) -> Option<Rc<XNode<C::Label>>> {
         let nt = self.cfg().prods[p as usize].lhs;
         let pre = &self.prepared[p as usize];
-        let mut made: Vec<(u64, &C::Label)> = pre.ends.iter().map(|(r, (c, _, _))| (*c, r)).collect();
+        let mut made: Vec<(u64, &C::Label)> =
+            pre.ends.iter().map(|(r, (c, _, _))| (*c, r)).collect();
         made.sort_by(|a, b| a.0.cmp(&b.0));
         for (_, r) in made {
             for g in self.e.ctx.grounds(r) {
@@ -736,7 +757,8 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             return None;
         };
         let pre2 = &self.prepared[p2 as usize];
-        let mut made: Vec<(u64, &C::Label)> = pre2.ends.iter().map(|(r, (k, _, _))| (*k, r)).collect();
+        let mut made: Vec<(u64, &C::Label)> =
+            pre2.ends.iter().map(|(r, (k, _, _))| (*k, r)).collect();
         made.sort_by(|a, b| a.0.cmp(&b.0));
         for (_, r) in made {
             for g in self.e.ctx.grounds(r) {
@@ -758,7 +780,10 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                     continue;
                 };
                 let Ctx::Under {
-                    instance, out, above, ..
+                    instance,
+                    out,
+                    above,
+                    ..
                 } = &*ctx
                 else {
                     unreachable!()
@@ -840,7 +865,9 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
         spell: impl Fn(NtId, &str) -> Option<tree::Node>,
     ) -> Result<()> {
         let linking = link_slots(&XView { x, e: self.e })?;
-        assign_names(root, linking, names, spell, |nt| self.cfg().name(nt).to_string())
+        assign_names(root, linking, names, spell, |nt| {
+            self.cfg().name(nt).to_string()
+        })
     }
 
     pub fn stats(&self) -> ExtractStats {
@@ -869,7 +896,12 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
         let mut seen: BTreeSet<Target> = BTreeSet::new();
         let mut prods_seen: BTreeSet<ProdId> = BTreeSet::new();
         let mut said = Instant::now();
-        let mut extract = |t: Option<Rc<XNode<C::Label>>>, covers: String, trees: &mut Vec<(tree::Node, String)>, seen: &mut BTreeSet<Target>, prods_seen: &mut BTreeSet<ProdId>| -> bool {
+        let mut extract = |t: Option<Rc<XNode<C::Label>>>,
+                           covers: String,
+                           trees: &mut Vec<(tree::Node, String)>,
+                           seen: &mut BTreeSet<Target>,
+                           prods_seen: &mut BTreeSet<ProdId>|
+         -> bool {
             let Some(x) = t else { return false };
             let mut root = self.to_tree(&x, leaf, template, &mut rng);
             if let Err(err) = self.name(&x, &mut root, names, &spell) {
@@ -906,7 +938,9 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                 if seen.contains(t) {
                     continue;
                 }
-                let Target::Cdrc(occ, p2) = t else { unreachable!() };
+                let Target::Cdrc(occ, p2) = t else {
+                    unreachable!()
+                };
                 let found = if *occ == ROOT {
                     extract(
                         self.production_tree(*p2),
@@ -1004,7 +1038,10 @@ fn reach<C: Context>(
     let cfg = e.cfg;
     let mut reached: Vec<BTreeSet<C::Label>> = vec![BTreeSet::new(); cfg.nts.len()];
     let mut queue: std::collections::VecDeque<(NtId, C::Label)> = Default::default();
-    let mark = |nt: NtId, l: &C::Label, reached: &mut Vec<BTreeSet<C::Label>>, queue: &mut std::collections::VecDeque<(NtId, C::Label)>| {
+    let mark = |nt: NtId,
+                l: &C::Label,
+                reached: &mut Vec<BTreeSet<C::Label>>,
+                queue: &mut std::collections::VecDeque<(NtId, C::Label)>| {
         if reached[nt as usize].insert(l.clone()) {
             queue.push_back((nt, l.clone()));
         }

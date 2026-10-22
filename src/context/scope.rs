@@ -93,11 +93,9 @@ fn narrow(a: Kind, b: Kind) -> Option<Kind> {
         // Two needs chosen later: the one every variable meeting both meets.
         match (a, b) {
             (Kind::Any, Kind::Element | Kind::Deletable)
-            | (Kind::Element | Kind::Deletable, Kind::Any) => Some(if a == Kind::Any {
-                b
-            } else {
-                a
-            }),
+            | (Kind::Element | Kind::Deletable, Kind::Any) => {
+                Some(if a == Kind::Any { b } else { a })
+            }
             (Kind::Element, Kind::Deletable) | (Kind::Deletable, Kind::Element) => {
                 Some(Kind::Element)
             }

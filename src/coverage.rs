@@ -223,7 +223,11 @@ fn walk(
     }
     if let (Sym::Nt(nt), Some(p)) = (node.sym, node.prod) {
         if c.cdrc {
-            let as_is = if refined { p } else { cfg.prods[p as usize].unrefined };
+            let as_is = if refined {
+                p
+            } else {
+                cfg.prods[p as usize].unrefined
+            };
             out.insert(Target::Cdrc(occ, as_is));
         }
         if descends(cfg, nt, c) {

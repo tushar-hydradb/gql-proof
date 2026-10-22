@@ -129,7 +129,12 @@ pub trait Context {
     /// the way), and what a slot asks only grows along a walk, so a partial already asking
     /// more of a slot than `target` does there is a dead end. A rule that cannot tell says
     /// false.
-    fn narrower(&self, _partial: &Self::Label, _map: &[Option<Slot>], _target: &Self::Label) -> bool {
+    fn narrower(
+        &self,
+        _partial: &Self::Label,
+        _map: &[Option<Slot>],
+        _target: &Self::Label,
+    ) -> bool {
         false
     }
 }
@@ -375,7 +380,9 @@ impl<'a, C: Context> Engine<'a, C> {
             for (pos, layer) in kept.layers.iter().enumerate().skip(1) {
                 let Sym::Nt(c) = rhs[pos - 1] else { continue };
                 for (_, back) in layer.values() {
-                    let Some((_, Opt::Label(l), _)) = back else { continue };
+                    let Some((_, Opt::Label(l), _)) = back else {
+                        continue;
+                    };
                     if !self.live(c as usize, l) {
                         subsumed += 1;
                         if !self.parts[c as usize].contains_key(l) {
@@ -550,7 +557,12 @@ impl<'a, C: Context> Engine<'a, C> {
     }
 
     /// `options` at `pos` of `node`, grouped by the rule's key.
-    fn keyed(&self, node: &Node, pos: usize, options: Vec<(Opt<C::Label>, u64)>) -> Keyed<C::Label> {
+    fn keyed(
+        &self,
+        node: &Node,
+        pos: usize,
+        options: Vec<(Opt<C::Label>, u64)>,
+    ) -> Keyed<C::Label> {
         let len = options.len();
         let mut by = BTreeMap::<u64, Vec<_>>::new();
         for (o, size) in options {
@@ -564,7 +576,13 @@ impl<'a, C: Context> Engine<'a, C> {
     }
 
     /// The key of `partial` before `pos`, if the options there are in more than one group.
-    fn partial_key(&self, node: &Node, pos: usize, options: &Keyed<C::Label>, partial: &C::Label) -> u64 {
+    fn partial_key(
+        &self,
+        node: &Node,
+        pos: usize,
+        options: &Keyed<C::Label>,
+        partial: &C::Label,
+    ) -> u64 {
         if options.by.len() > 1 || options.by.keys().next().is_some_and(|k| *k != 0) {
             self.ctx.partial_key(node, pos, partial)
         } else {
@@ -1222,12 +1240,9 @@ impl<'a, C: Context> Engine<'a, C> {
         let mut best: Option<(u64, C::Label, C::Label, Link)> = None;
         for (partial, (cost, _)) in &layers[pos] {
             if key != 0
-                && !self.ctx.compatible(
-                    &node,
-                    pos,
-                    self.ctx.partial_key(&node, pos, partial),
-                    key,
-                )
+                && !self
+                    .ctx
+                    .compatible(&node, pos, self.ctx.partial_key(&node, pos, partial), key)
             {
                 continue;
             }
@@ -1292,7 +1307,7 @@ type Choice<L> = (usize, Opt<L>);
 type Instance<L> = (Vec<Opt<L>>, Shape);
 
 /// Reached labels of one nonterminal by join key, with their emitted ids.
-type Keyed<'a, L> = BTreeMap<Option<L>, Vec<(&'a L, NtId)>>;
+type ReachedByKey<'a, L> = BTreeMap<Option<L>, Vec<(&'a L, NtId)>>;
 
 /// Whether ground option `g` is one of the choices option `o` leaves open.
 fn opt_within<C: Context>(ctx: &C, g: &Opt<C::Label>, o: &Opt<C::Label>) -> bool {
@@ -1533,17 +1548,15 @@ impl<'a, C: Context> Analyzed<'a, C> {
                                     for g in e.ground_options(prod.rhs[pos], &o) {
                                         // With no ground instance at all, no tree takes
                                         // this choice here: it is no choice to cover.
-                                        let Some((ground, made)) =
-                                            e.ground(
-                                                p,
-                                                &instance,
-                                                Some((pos, &g)),
-                                                &|_| true,
-                                                &|_, _| true,
-                                                None,
-                                                &[false, true],
-                                            )
-                                        else {
+                                        let Some((ground, made)) = e.ground(
+                                            p,
+                                            &instance,
+                                            Some((pos, &g)),
+                                            &|_| true,
+                                            &|_, _| true,
+                                            None,
+                                            &[false, true],
+                                        ) else {
                                             continue;
                                         };
                                         cs.push((pos, g.clone()));
@@ -1675,7 +1688,7 @@ impl<'a, C: Context> Analyzed<'a, C> {
                 if join {
                     // The reached labels by join key: a label lies within another only if
                     // they share it.
-                    let mut keyed: Keyed<'_, C::Label> = BTreeMap::new();
+                    let mut keyed: ReachedByKey<'_, C::Label> = BTreeMap::new();
                     for (r, id) in reached {
                         keyed.entry(ctx.join_key(r)).or_default().push((r, *id));
                     }
@@ -1697,17 +1710,15 @@ impl<'a, C: Context> Analyzed<'a, C> {
                             .map(|(_, g)| g.clone())
                             .collect();
                         for g in wanted {
-                            let Some((ground, made)) =
-                                e.ground(
-                                    p,
-                                    &instance,
-                                    Some((pos, &g)),
-                                    &fits,
-                                    &|_, _| true,
-                                    None,
-                                    &[false, true],
-                                )
-                            else {
+                            let Some((ground, made)) = e.ground(
+                                p,
+                                &instance,
+                                Some((pos, &g)),
+                                &fits,
+                                &|_, _| true,
+                                None,
+                                &[false, true],
+                            ) else {
                                 continue;
                             };
                             let Some(id) = reached_within(&made) else {
@@ -1860,7 +1871,9 @@ impl Built {
             built: self,
             node: root,
         })?;
-        assign_names(root, linking, names, spell, |nt| self.cfg.name(nt).to_string())
+        assign_names(root, linking, names, spell, |nt| {
+            self.cfg.name(nt).to_string()
+        })
     }
 }
 

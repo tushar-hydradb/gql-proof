@@ -687,7 +687,10 @@ impl Types {
         if node.def != "simple case" {
             return true;
         }
-        let at = node.items.iter().position(|i| *i == Item::Def("case operand"));
+        let at = node
+            .items
+            .iter()
+            .position(|i| *i == Item::Def("case operand"));
         let Some(Some(c)) = at.and_then(|p| kids.get(p)) else {
             return true;
         };
@@ -872,11 +875,15 @@ impl Types {
             "character string function" => Some(Some(Str)),
             // 20.23 SR 2, 4 and 20.24 SR 3: what TRIM trims, and what it trims with, are
             // strings.
-            "trim operands" => check(classed.iter().all(|c| fits(Some(*c), |c| c == Str)), Some(Str)),
+            "trim operands" => check(
+                classed.iter().all(|c| fits(Some(*c), |c| c == Str)),
+                Some(Str),
+            ),
             // 20.24 SR 3 and 20.23 SR 2, 4 for byte strings: both operands are byte strings.
-            "byte string trim operands" => {
-                check(classed.iter().all(|c| fits(Some(*c), |c| c == Bytes)), Some(Bytes))
-            }
+            "byte string trim operands" => check(
+                classed.iter().all(|c| fits(Some(*c), |c| c == Bytes)),
+                Some(Bytes),
+            ),
             // 13.5 SR 5: what DELETE deletes is a node or an edge.
             "delete item" => check(fits(only, |c| matches!(c, Node | Edge)), only),
             "byte string function" => Some(Some(Bytes)),

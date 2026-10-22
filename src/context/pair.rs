@@ -82,7 +82,12 @@ pub trait Under<A: Context> {
         true
     }
     /// As [`Context::narrower`], on `B`'s part; the slots are `A`'s.
-    fn narrower(&self, _partial: &Self::Label, _map: &[Option<Slot>], _target: &Self::Label) -> bool {
+    fn narrower(
+        &self,
+        _partial: &Self::Label,
+        _map: &[Option<Slot>],
+        _target: &Self::Label,
+    ) -> bool {
         false
     }
 }
