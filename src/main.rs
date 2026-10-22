@@ -92,6 +92,12 @@ struct ContextArgs {
     /// Join labels the rule can join in the fixed point (no emission from them yet).
     #[arg(long)]
     join: bool,
+    /// With `--rule types`: evaluate expression nodes at finish, not at their last push.
+    #[arg(long)]
+    no_fold: bool,
+    /// With `--rule types`: pair every child label at every position, no join keys.
+    #[arg(long)]
+    no_keys: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, ValueEnum)]
@@ -359,7 +365,9 @@ fn context(args: ContextArgs) -> Result<()> {
         }
         ContextRule::Scope => context_run(&base, start, &scope, &options, &args),
         ContextRule::Types => {
-            let types = gql_proof::context::types::Types::with_typed(&base, args.typed);
+            let mut types = gql_proof::context::types::Types::with_typed(&base, args.typed);
+            types.fold = !args.no_fold;
+            types.keys = !args.no_keys;
             let pair = gql_proof::context::pair::Typed::new(scope, types);
             context_run(&base, start, &pair, &options, &args)
         }

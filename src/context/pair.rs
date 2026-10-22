@@ -61,6 +61,20 @@ pub trait Under<A: Context> {
     fn join(&self, _a: &A::Label, _x: &Self::Label, _y: &Self::Label) -> Option<Self::Label> {
         None
     }
+    /// As [`Context::key`]; `A` keys nothing.
+    fn key(&self, _node: &Node, _pos: usize, _a: &A::Label, _child: &Self::Label) -> Option<u64> {
+        None
+    }
+    /// As [`Context::wanted`].
+    fn wanted(
+        &self,
+        _node: &Node,
+        _pos: usize,
+        _a: &A::Label,
+        _partial: &Self::Label,
+    ) -> Option<Vec<u64>> {
+        None
+    }
 }
 
 /// `A` and `B` together, as one [`Context`].
@@ -185,6 +199,14 @@ impl<A: Context, B: Under<A>> Context for Typed<A, B> {
             return None;
         }
         Some((a.clone(), self.b.join(a, x, y)?))
+    }
+
+    fn key(&self, node: &Node, pos: usize, (a, b): &Self::Label) -> Option<u64> {
+        self.b.key(node, pos, a, b)
+    }
+
+    fn wanted(&self, node: &Node, pos: usize, (a, b): &Self::Label) -> Option<Vec<u64>> {
+        self.b.wanted(node, pos, a, b)
     }
 }
 

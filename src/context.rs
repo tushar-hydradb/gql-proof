@@ -99,6 +99,40 @@ pub trait Context {
     fn join(&self, _a: &Self::Label, _b: &Self::Label) -> Option<Self::Label> {
         None
     }
+    /// A key the child labels at `pos` of `node` are grouped by, so that a scan pushes a
+    /// partial label only with the groups [`Context::wanted`] names (sideways information
+    /// passing, a hash join in place of the nested loop). The rule promises that `push`
+    /// rejects every pair whose keys are both given and differ, so the labels found are the
+    /// same. `None` is a wildcard: tried with every partial label.
+    fn key(&self, _node: &Node, _pos: usize, _child: &Self::Label) -> Option<u64> {
+        None
+    }
+    /// The keys of the child labels `partial` may be pushed with at `pos` (the wildcards are
+    /// always tried); `None` for all of them.
+    fn wanted(&self, _node: &Node, _pos: usize, _partial: &Self::Label) -> Option<Vec<u64>> {
+        None
+    }
+}
+
+/// A position's options grouped by [`Context::key`]: the wildcards, and each key's.
+struct Keyed<L> {
+    any: Vec<(Opt<L>, u64)>,
+    by: BTreeMap<u64, Vec<(Opt<L>, u64)>>,
+    len: usize,
+}
+
+impl<L> Keyed<L> {
+    /// The options a partial label with `wanted` keys is pushed with.
+    fn for_keys(&self, wanted: Option<Vec<u64>>) -> Vec<&(Opt<L>, u64)> {
+        match wanted {
+            None => self.any.iter().chain(self.by.values().flatten()).collect(),
+            Some(keys) => self
+                .any
+                .iter()
+                .chain(keys.iter().filter_map(|k| self.by.get(k)).flatten())
+                .collect(),
+        }
+    }
 }
 
 /// What [`Context::project`] makes of a label.
@@ -411,6 +445,23 @@ impl<'a, C: Context> Engine<'a, C> {
         out
     }
 
+    /// `options` at `pos` of `node`, grouped by the rule's key.
+    fn keyed(&self, node: &Node, pos: usize, options: Vec<(Opt<C::Label>, u64)>) -> Keyed<C::Label> {
+        let len = options.len();
+        let (mut any, mut by) = (Vec::new(), BTreeMap::<u64, Vec<_>>::new());
+        for (o, size) in options {
+            let key = match &o {
+                Opt::Label(l) => self.ctx.key(node, pos, l),
+                Opt::Token => None,
+            };
+            match key {
+                None => any.push((o, size)),
+                Some(k) => by.entry(k).or_default().push((o, size)),
+            }
+        }
+        Keyed { any, by, len }
+    }
+
     /// Every partial label reachable after each position of `p`, with its smallest size and
     /// the step that reached it.
     fn layers(&self, p: ProdId) -> Vec<BTreeMap<C::Label, Back<C::Label>>> {
@@ -419,10 +470,13 @@ impl<'a, C: Context> Engine<'a, C> {
         let node = self.node(p);
         let mut layers = vec![BTreeMap::from([(self.ctx.empty(&node), (1, None))])];
         for (pos, &sym) in self.cfg.prods[p as usize].rhs.iter().enumerate() {
-            let options = self.options(sym);
+            let options = self.keyed(&node, pos, self.options(sym));
             let mut next: BTreeMap<C::Label, Back<C::Label>> = BTreeMap::new();
             for (partial, (cost, _)) in &layers[pos] {
-                for (o, size) in &options {
+                let wanted = (options.len > options.any.len())
+                    .then(|| self.ctx.wanted(&node, pos, partial))
+                    .flatten();
+                for (o, size) in options.for_keys(wanted) {
                     for (q, link) in self.push(p, &node, pos, partial, o) {
                         let c = cost + size;
                         if next.get(&q).is_none_or(|(old, _)| c < *old) {
@@ -475,6 +529,7 @@ impl<'a, C: Context> Engine<'a, C> {
                     .map(|l| (Opt::Label(l.clone()), self.labels[c as usize][l]))
                     .collect(),
             };
+            let (all, new) = (self.keyed(&node, pos, all), self.keyed(&node, pos, new));
             if let Sym::Nt(c) = sym {
                 kept.seen[pos] = self.order[c as usize].len();
             }
@@ -493,8 +548,14 @@ impl<'a, C: Context> Engine<'a, C> {
                 .collect();
             let mut added = Vec::new();
             for (partials, options) in [(&fresh_costs, &all), (&old, &new)] {
+                if options.len == 0 {
+                    continue;
+                }
                 for (partial, cost) in partials {
-                    for (o, size) in options {
+                    let wanted = (options.len > options.any.len())
+                        .then(|| self.ctx.wanted(&node, pos, partial))
+                        .flatten();
+                    for (o, size) in options.for_keys(wanted) {
                         for (q, link) in self.push(p, &node, pos, partial, o) {
                             let c = cost + size;
                             let next = &mut kept.layers[pos + 1];
@@ -782,10 +843,13 @@ impl<'a, C: Context> Engine<'a, C> {
             }
         }
         for pos in (0..n).rev() {
-            let options = self.options(rhs[pos]);
+            let options = self.keyed(&node, pos, self.options(rhs[pos]));
             let mut here = BTreeMap::new();
             for partial in layers[pos].keys() {
-                for (o, size) in &options {
+                let wanted = (options.len > options.any.len())
+                    .then(|| self.ctx.wanted(&node, pos, partial))
+                    .flatten();
+                for (o, size) in options.for_keys(wanted) {
                     for (q, link) in self.push(p, &node, pos, partial, o) {
                         let Some((rest, _, _)) = ahead[pos + 1].get(&q) else {
                             continue;
@@ -807,9 +871,19 @@ impl<'a, C: Context> Engine<'a, C> {
         let mut out = Vec::new();
         for (pos, options) in wanted.into_iter().enumerate() {
             for (o, size) in options {
+                let key = match &o {
+                    Opt::Label(l) => self.ctx.key(&node, pos, l),
+                    Opt::Token => None,
+                };
                 // The best (partial before, step) taking `o` here.
                 let mut best: Option<(u64, C::Label, C::Label, Link)> = None;
                 for (partial, (cost, _)) in &layers[pos] {
+                    if let Some(k) = key
+                        && let Some(wanted) = self.ctx.wanted(&node, pos, partial)
+                        && !wanted.contains(&k)
+                    {
+                        continue;
+                    }
                     for (q, link) in self.push(p, &node, pos, partial, &o) {
                         let Some((rest, _, _)) = ahead[pos + 1].get(&q) else {
                             continue;

@@ -509,6 +509,50 @@ pub struct Types {
     /// The most variables a label holds a type constraint on
     /// (`research/types-cutoff-2026-10-22.md`).
     typed: usize,
+    /// An expression node is evaluated at the push of its last child, not at finish: the
+    /// partial label after that child is already the node's label, not the classes of every
+    /// child side by side (see [`Types::fold_at`]).
+    pub fold: bool,
+    /// The two operands of a comparison and of NULLIF are paired by comparability family,
+    /// and a simple CASE's operand with the when lists that accept its class
+    /// (`Under::key`, `Under::wanted`): the pairs skipped are ones the push rejects.
+    pub keys: bool,
+}
+
+/// 22.13, 22.14 read as a join key: two classes are comparable only within a family (the
+/// numbers; nodes with nodes; edges with edges; each other class with itself), except the
+/// wildcards (null, dynamic), which compare with anything. An opaque value compares with
+/// nothing, so its family is its own and only the wildcards reach it.
+fn family(t: Option<Ty>) -> Option<u64> {
+    match t? {
+        Ty::Slot(..) => None,
+        Ty::Is(Null | Dynamic) => None,
+        Ty::Is(Exact | Approx) => Some(0),
+        Ty::Is(c) => Some(10 + c as u64),
+    }
+}
+
+/// The when-list masks (bits over [`OPERANDS`]) a simple CASE operand of class `t` may meet.
+fn operand_masks(t: Option<Ty>) -> Vec<u64> {
+    let bits: u8 = match t {
+        Some(Ty::Is(c)) => OPERANDS
+            .iter()
+            .position(|o| *o == c)
+            .map_or(0, |i| 1 << i),
+        Some(Ty::Slot(_, mask)) => members(mask)
+            .filter_map(|c| OPERANDS.iter().position(|o| *o == c))
+            .fold(0, |m, i| m | 1 << i),
+        None => 0,
+    };
+    (1u64..1 << OPERANDS.len())
+        .filter(|m| m & bits as u64 != 0)
+        .collect()
+}
+
+/// How a position's child labels are keyed (see [`Types::keyed_at`]).
+enum Keying {
+    Family,
+    Operand,
 }
 
 /// Where each input slot of a step went: its output slot, or the entry it closed with.
@@ -640,6 +684,75 @@ impl Types {
         Types {
             expressions: seen,
             typed: 2,
+            fold: true,
+            keys: true,
+        }
+    }
+
+    /// Where a position's child labels are keyed (`keys`): the second operand of a
+    /// comparison or NULLIF, by family, against the first's; a simple CASE's when list, by
+    /// its operand mask, against the operand's class. The position of the first operand's
+    /// class in `kids` comes with it.
+    fn keyed_at(&self, node: &Node, pos: usize) -> Option<(Keying, usize)> {
+        if !self.keys {
+            return None;
+        }
+        let item = node.items.get(pos)?;
+        match (node.def, item) {
+            ("comparison predicate", Item::Def("comparison predicate part 2")) => {
+                Some((Keying::Family, 0))
+            }
+            ("case abbreviation", Item::Def("value expression"))
+                if pos == 4 && node.items.first() == Some(&Item::Token("NULLIF")) =>
+            {
+                Some((Keying::Family, 2))
+            }
+            ("simple case", Item::Group("simple case/rep1")) => {
+                let operand = node.items.iter().position(|i| *i == Item::Def("case operand"))?;
+                Some((Keying::Operand, operand))
+            }
+            _ => None,
+        }
+    }
+
+    /// The position at whose push `node` is evaluated (`fold`), if before its finish: an
+    /// expression node, at its last child that carries a class. The children after it
+    /// (parentheses, keywords) add nothing, and its finish only carries the label through
+    /// scope's finishing link. Exact because such a node binds no variable: what scope says
+    /// of each slot is the same after that push and after the finish, so the classes chosen
+    /// for deferred slots, and the needs written, are the ones finish would choose. Binders
+    /// and consumers (`READS`) give their new variable its class from scope's finished label,
+    /// so they are evaluated there.
+    fn fold_at(&self, node: &Node) -> Option<usize> {
+        if !self.fold || !self.expression(node.def) || READS.contains(&owner(node.def)) {
+            return None;
+        }
+        node.items.iter().rposition(|i| match i {
+            Item::Def(d) | Item::Group(d) => self.reads(d),
+            _ => false,
+        })
+    }
+
+    /// 20.7 SR 2, checked as soon as both sides are there: a simple CASE's operand must be a
+    /// class every when operand so far accepts (`operand`), or no completion finishes.
+    fn case_operand_fits(&self, node: &Node, kids: &[Option<Ty>], operand: Option<u8>) -> bool {
+        let Some(m) = operand else { return true };
+        if node.def != "simple case" {
+            return true;
+        }
+        let at = node.items.iter().position(|i| *i == Item::Def("case operand"));
+        let Some(Some(c)) = at.and_then(|p| kids.get(p)) else {
+            return true;
+        };
+        let fits = |c: Class| {
+            OPERANDS
+                .iter()
+                .position(|o| *o == c)
+                .is_some_and(|i| m & 1 << i != 0)
+        };
+        match c {
+            Ty::Is(c) => fits(*c),
+            Ty::Slot(_, mask) => members(*mask).any(fits),
         }
     }
 
@@ -1349,7 +1462,7 @@ impl Under<Scope> for Types {
     fn push(
         &self,
         node: &Node,
-        _: usize,
+        pos: usize,
         partial: &Label,
         child: Option<&Label>,
         a: Step<'_, Scoped>,
@@ -1366,8 +1479,10 @@ impl Under<Scope> for Types {
         let Some(r) = Relinked::new(&inputs, &views, a.link, width) else {
             return vec![];
         };
+        // Evaluated at an earlier push: the label is carried through the rest.
+        let folded = self.fold_at(node).is_some_and(|f| f < pos);
         let mut out = Label {
-            class: None,
+            class: if folded { r.ty(0, partial.class) } else { None },
             vars: r.vars.clone(),
             facts: partial.facts,
             target: partial.target,
@@ -1392,6 +1507,17 @@ impl Under<Scope> for Types {
         let class = child.and_then(|c| r.ty(partial.vars.len(), c.class));
         out.kids
             .push(if self.reads(node.def) { class } else { None });
+        if !self.case_operand_fits(node, &out.kids, out.operand) {
+            return vec![];
+        }
+        if self.fold_at(node) == Some(pos) {
+            let mut outs = self.finish_node(node, &out, a.out);
+            for l in &mut outs {
+                l.kids.clear();
+            }
+            outs.retain_mut(|l| reconcile(&mut l.vars, a.out) && self.cap(&mut l.vars));
+            return outs;
+        }
         if !reconcile(&mut out.vars, a.out) || !self.cap(&mut out.vars) {
             return vec![];
         }
@@ -1409,7 +1535,16 @@ impl Under<Scope> for Types {
             ..partial.clone()
         };
         let def = node.def;
-        let mut out = self.finish_node(node, &acc, a.out);
+        let mut out = if self.fold_at(node).is_some() {
+            // Evaluated at a push: the class, deferred or not, through the link.
+            vec![Label {
+                class: r.ty(0, partial.class),
+                kids: Vec::new(),
+                ..acc
+            }]
+        } else {
+            self.finish_node(node, &acc, a.out)
+        };
         for l in &mut out {
             // 10.3: a new value variable has its definition's class.
             if matches!(def, "let variable definition" | "value variable definition") {
@@ -1501,6 +1636,22 @@ impl Under<Scope> for Types {
 
     fn join_key(&self, _: &Scoped, l: &Label) -> Option<Label> {
         Some(l.without_needs())
+    }
+
+    fn key(&self, node: &Node, pos: usize, _: &Scoped, child: &Label) -> Option<u64> {
+        match self.keyed_at(node, pos)?.0 {
+            Keying::Family => family(child.class),
+            Keying::Operand => child.operand.map(u64::from),
+        }
+    }
+
+    fn wanted(&self, node: &Node, pos: usize, _: &Scoped, partial: &Label) -> Option<Vec<u64>> {
+        let (keying, at) = self.keyed_at(node, pos)?;
+        let first = partial.kids.get(at).copied().flatten();
+        match keying {
+            Keying::Family => Some(family(first).into_iter().collect()).filter(|k: &Vec<u64>| !k.is_empty()),
+            Keying::Operand => Some(operand_masks(first)),
+        }
     }
 
     /// Exact in two cases: one label's sets all lie within the other's (it is the other), or
