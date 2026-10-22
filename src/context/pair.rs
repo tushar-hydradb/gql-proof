@@ -61,6 +61,14 @@ pub trait Under<A: Context> {
     fn join(&self, _a: &A::Label, _x: &Self::Label, _y: &Self::Label) -> Option<Self::Label> {
         None
     }
+    /// As [`Context::grounds`].
+    fn grounds(&self, _a: &A::Label, label: &Self::Label) -> Vec<Self::Label> {
+        vec![label.clone()]
+    }
+    /// As [`Context::within`], under one label of `A`.
+    fn within(&self, _a: &A::Label, x: &Self::Label, y: &Self::Label) -> bool {
+        x == y
+    }
 }
 
 /// `A` and `B` together, as one [`Context`].
@@ -185,6 +193,18 @@ impl<A: Context, B: Under<A>> Context for Typed<A, B> {
             return None;
         }
         Some((a.clone(), self.b.join(a, x, y)?))
+    }
+
+    fn grounds(&self, (a, b): &Self::Label) -> Vec<Self::Label> {
+        self.b
+            .grounds(a, b)
+            .into_iter()
+            .map(|g| (a.clone(), g))
+            .collect()
+    }
+
+    fn within(&self, (a, x): &Self::Label, (a2, y): &Self::Label) -> bool {
+        a == a2 && self.b.within(a, x, y)
     }
 }
 

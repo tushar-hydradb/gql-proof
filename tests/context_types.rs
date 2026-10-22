@@ -521,6 +521,86 @@ fn typing_estimate() {
     }
 }
 
+/// What an emitted grammar can derive, by base id: productions, cdrc pairs (occurrence,
+/// production) and two-step chains.
+fn uses(cfg: &Cfg) -> [BTreeSet<(u32, u32, u32, u32)>; 3] {
+    use gql_proof::cfg::Sym;
+    let mut out: [BTreeSet<(u32, u32, u32, u32)>; 3] = Default::default();
+    for q in &cfg.prods {
+        out[0].insert((q.unrefined, 0, 0, 0));
+        for (i, sym) in q.rhs.iter().enumerate() {
+            let Sym::Nt(c) = sym else { continue };
+            for &p in &cfg.nts[*c as usize].prods {
+                let pp = &cfg.prods[p as usize];
+                out[1].insert((q.occ[i], pp.unrefined, 0, 0));
+                for (j, s2) in pp.rhs.iter().enumerate() {
+                    let Sym::Nt(g) = s2 else { continue };
+                    for &r in &cfg.nts[*g as usize].prods {
+                        out[2].insert((
+                            q.occ[i],
+                            pp.unrefined,
+                            pp.occ[j],
+                            cfg.prods[r as usize].unrefined,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Joins change how the fixed point counts, not what the emitted grammar can derive: the same
+/// productions, cdrc pairs and two-step chains at one variable, with and without.
+/// `cargo test --release --test context_types joins_keep_coverage -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn joins_keep_coverage() {
+    use gql_proof::context::scope::Caps;
+    let start = BASE.require("GQL-program").unwrap();
+    let rule = Typed::new(
+        Scope {
+            caps: Caps {
+                slots: 1,
+                references: 1,
+            },
+        },
+        Types::new(&BASE),
+    );
+    let run = |join: bool| {
+        let options = Options {
+            progress: false,
+            join,
+            ..Options::default()
+        };
+        let built = build(&BASE, &rule, start, "x", &options).unwrap();
+        eprintln!(
+            "join {join}: {} nonterminals, {} productions",
+            built.cfg.nts.len(),
+            built.cfg.prods.len()
+        );
+        uses(&built.cfg)
+    };
+    let (plain, joined) = (run(false), run(true));
+    for &(p, ..) in plain[0].difference(&joined[0]) {
+        eprintln!("  only without joins: {}", gql_proof::describe(&BASE, p));
+    }
+    for (what, (a, b)) in ["productions", "cdrc pairs", "two-step chains"]
+        .iter()
+        .zip(plain.iter().zip(&joined))
+    {
+        eprintln!(
+            "{what}: {} without joins, {} with; {} only without, {} only with",
+            a.len(),
+            b.len(),
+            a.difference(b).count(),
+            b.difference(a).count()
+        );
+    }
+    assert_eq!(plain[0], joined[0]);
+    assert_eq!(plain[1], joined[1]);
+}
+
 /// Every tree generated at one variable passes both checkers.
 #[test]
 fn generated_trees_pass_the_checkers() {

@@ -99,6 +99,16 @@ pub trait Context {
     fn join(&self, _a: &Self::Label, _b: &Self::Label) -> Option<Self::Label> {
         None
     }
+    /// The ground labels a joined one stands for: each choice it leaves open, made. Emission
+    /// emits only ground labels, so the grammar it makes stays context free and sound.
+    fn grounds(&self, label: &Self::Label) -> Vec<Self::Label> {
+        vec![label.clone()]
+    }
+    /// Whether trees with label `b` fit wherever `a` is asked for: `a` is `b` with choices
+    /// made.
+    fn within(&self, a: &Self::Label, b: &Self::Label) -> bool {
+        a == b
+    }
 }
 
 /// What [`Context::project`] makes of a label.
@@ -295,6 +305,22 @@ impl<'a, C: Context> Engine<'a, C> {
     /// Whether label `l` of `nt` is still pushed (not replaced by a join).
     fn live(&self, nt: usize, l: &C::Label) -> bool {
         !self.subsumed[nt].contains(l)
+    }
+
+    /// The ground options option `o` at a position holding `sym` stands for: the grounds of
+    /// the labels productions made that it joined. Not the joined label's own grounds: a label
+    /// that asks nothing of a variable absorbs one that asks for a node (its trees fit
+    /// anywhere), but the node's trees are other trees, and emission must still reach them.
+    fn ground_options(&self, sym: Sym, o: &Opt<C::Label>) -> Vec<Opt<C::Label>> {
+        let (Sym::Nt(c), Opt::Label(l)) = (sym, o) else {
+            return vec![o.clone()];
+        };
+        let made = match self.parts[c as usize].get(l) {
+            Some(parts) => parts.clone(),
+            None => vec![l.clone()],
+        };
+        let grounds: BTreeSet<C::Label> = made.iter().flat_map(|m| self.ctx.grounds(m)).collect();
+        grounds.into_iter().map(Opt::Label).collect()
     }
 
     fn prod_stats<'s>(&self, stats: &'s mut Stats, p: ProdId) -> &'s mut ProdStats {
@@ -739,6 +765,127 @@ impl<'a, C: Context> Engine<'a, C> {
         ))
     }
 
+    /// With `join`: the smallest instance of `p` giving a label ground label `target` lies
+    /// within, made ground (see [`Engine::ground`]).
+    fn smallest_ground(
+        &self,
+        p: ProdId,
+        layers: &Layers<C::Label>,
+        ends: &Ends<C::Label>,
+        target: &C::Label,
+    ) -> Option<Instance<C::Label>> {
+        let mut made: Vec<(u64, &C::Label)> = ends
+            .iter()
+            .filter(|(r, _)| self.ctx.within(target, r))
+            .map(|(r, (cost, _, _))| (*cost, r))
+            .collect();
+        made.sort();
+        made.into_iter().find_map(|(_, r)| {
+            let instance = self.smallest(p, layers, ends, r)?;
+            let (ground, _) = self.ground(p, &instance, None, &|l| self.ctx.within(target, l))?;
+            Some(ground)
+        })
+    }
+
+    /// `instance` of `p` with every child label one of its grounds (the option `fixed` names
+    /// at its position), linked as the instance is, giving a label `accept` takes; with that
+    /// label. A joined label is valid for each of its grounds, but an emitted nonterminal must
+    /// make one choice, or a tree could pair one child's choice with another's.
+    fn ground(
+        &self,
+        p: ProdId,
+        (opts, shape): &Instance<C::Label>,
+        fixed: Option<(usize, &Opt<C::Label>)>,
+        accept: &dyn Fn(&C::Label) -> bool,
+    ) -> Option<(Instance<C::Label>, C::Label)> {
+        let node = self.node(p);
+        // First the instance's own options, made ground; failing that, any option at the
+        // other positions: a choice may need another sibling (an edge's binder, not the
+        // node's the instance had), not another ground of the same one.
+        for wide in [false, true] {
+            let walk = Walk {
+                p,
+                node: &node,
+                opts,
+                shape,
+                fixed,
+                accept,
+                wide,
+                failed: RefCell::new(BTreeSet::new()),
+            };
+            let mut chosen = Vec::with_capacity(opts.len());
+            let mut steps = Vec::with_capacity(opts.len());
+            let empty = self.ctx.empty(&node);
+            if let Some((out, finish)) =
+                self.ground_from(&walk, empty.clone(), &mut chosen, &mut steps)
+            {
+                let mut partial = vec![self.ctx.slots(&empty)];
+                partial.extend(steps.iter().map(|(_, n)| *n));
+                let shape = Shape {
+                    partial,
+                    links: steps.into_iter().map(|(l, _)| l).collect(),
+                    finish,
+                };
+                return Some(((chosen, shape), out));
+            }
+        }
+        None
+    }
+
+    /// One position of [`Engine::ground`]'s walk: `steps` holds each step's link and the
+    /// slots of the partial label after it.
+    fn ground_from(
+        &self,
+        w: &Walk<'_, C::Label>,
+        partial: C::Label,
+        chosen: &mut Vec<Opt<C::Label>>,
+        steps: &mut Vec<(Link, usize)>,
+    ) -> Option<(C::Label, Link)> {
+        let pos = chosen.len();
+        if pos == w.opts.len() {
+            return self
+                .finish(w.p, w.node, &partial)
+                .into_iter()
+                .find(|(l, link)| (w.wide || *link == w.shape.finish) && (w.accept)(l));
+        }
+        if w.failed.borrow().contains(&(pos, partial.clone())) {
+            return None;
+        }
+        let sym = self.cfg.prods[w.p as usize].rhs[pos];
+        let candidates: Vec<Opt<C::Label>> = match w.fixed {
+            Some((at, o)) if at == pos => vec![o.clone()],
+            _ if w.wide => {
+                let mut all = self.ground_options(sym, &w.opts[pos]);
+                for (o, _) in self.options(sym) {
+                    all.extend(self.ground_options(sym, &o));
+                }
+                let mut seen = BTreeSet::new();
+                all.retain(|o| seen.insert(o.clone()));
+                all
+            }
+            _ => self.ground_options(sym, &w.opts[pos]),
+        };
+        for candidate in candidates {
+            for (q, link) in self.push(w.p, w.node, pos, &partial, &candidate) {
+                if !w.wide && link != w.shape.links[pos] {
+                    continue;
+                }
+                let slots = self.ctx.slots(&q);
+                chosen.push(candidate.clone());
+                steps.push((link, slots));
+                if let Some(found) = self.ground_from(w, q, chosen, steps) {
+                    return Some(found);
+                }
+                chosen.pop();
+                steps.pop();
+            }
+        }
+        if w.wide {
+            w.failed.borrow_mut().insert((pos, partial));
+        }
+        None
+    }
+
     /// For every position and every option there that `open` asks for, the smallest
     /// instance of `p` giving a label `target` accepts that takes it, with the label each
     /// gives.
@@ -864,6 +1011,30 @@ type Choice<L> = (usize, Opt<L>);
 /// The options an instance takes at each position, and how its slots link.
 type Instance<L> = (Vec<Opt<L>>, Shape);
 
+/// Whether ground option `g` is one of the choices option `o` leaves open.
+fn opt_within<C: Context>(ctx: &C, g: &Opt<C::Label>, o: &Opt<C::Label>) -> bool {
+    match (g, o) {
+        (Opt::Token, Opt::Token) => true,
+        (Opt::Label(a), Opt::Label(b)) => ctx.within(a, b),
+        _ => false,
+    }
+}
+
+/// What [`Engine::ground`] walks: an instance of production `p`, the option fixed at one
+/// position, and what the label it gives must satisfy.
+struct Walk<'w, L> {
+    p: ProdId,
+    node: &'w Node<'w>,
+    opts: &'w [Opt<L>],
+    shape: &'w Shape,
+    fixed: Option<(usize, &'w Opt<L>)>,
+    accept: &'w dyn Fn(&L) -> bool,
+    /// Any option at the other positions, not only the instance's, and any links.
+    wide: bool,
+    /// Partial labels at a position no completion was found from.
+    failed: RefCell<BTreeSet<(usize, L)>>,
+}
+
 /// The grammar whose derivation trees are, up to the names of variables, exactly `cfg`'s
 /// that `ctx` accepts and that are reachable from `start`. `placeholder` spells every
 /// variable until [`Built::name`] names them.
@@ -935,14 +1106,13 @@ impl<'a, C: Context> Analyzed<'a, C> {
     pub fn emit(&self, start: NtId, placeholder: &str) -> Result<Built> {
         let _span = tracing::info_span!("emit").entered();
         let (cfg, ctx, e) = (self.e.cfg, self.e.ctx, &self.e);
-        if e.options.join {
-            bail!(
-                "{}: emission from joined labels is not built yet",
-                ctx.name()
-            );
+        let join = e.options.join;
+        if join && !e.options.single_pass {
+            bail!("{}: emission from joined labels is single pass", ctx.name());
         }
         let tops: Vec<C::Label> = e.labels[start as usize]
             .keys()
+            .filter(|l| e.live(start as usize, l))
             .filter(|l| e.options.any_top || ctx.top(l))
             .cloned()
             .collect();
@@ -1029,17 +1199,44 @@ impl<'a, C: Context> Analyzed<'a, C> {
                     });
                     // The smallest instance, so this label can always finish, and the ones that take
                     // an option no instance took yet.
-                    let mut chosen: BTreeSet<Instance<C::Label>> =
-                        e.smallest(p, layers, ends, &l).into_iter().collect();
+                    let smallest = if join {
+                        e.smallest_ground(p, layers, ends, &l)
+                    } else {
+                        e.smallest(p, layers, ends, &l)
+                    };
+                    let mut chosen: BTreeSet<Instance<C::Label>> = smallest.into_iter().collect();
                     if !chosen.is_empty() && e.options.single_pass {
                         if let std::collections::btree_map::Entry::Vacant(slot) = choices.entry(p) {
                             let all = e.instances(p, layers, |_| true, |_, _| true);
-                            slot.insert(all.iter().map(|(c, _, _)| c.clone()).collect());
-                            for (choice, end, instance) in all {
-                                pending
-                                    .entry((p, end))
-                                    .or_default()
-                                    .push((choice, instance));
+                            if join {
+                                // Each ground of each option is a choice of its own, so every
+                                // choice a joined label leaves open is taken somewhere.
+                                let mut cs = Vec::new();
+                                for ((pos, o), _, instance) in all {
+                                    for g in e.ground_options(prod.rhs[pos], &o) {
+                                        cs.push((pos, g.clone()));
+                                        let Some((ground, made)) =
+                                            e.ground(p, &instance, Some((pos, &g)), &|_| true)
+                                        else {
+                                            continue;
+                                        };
+                                        for end in ctx.grounds(&made) {
+                                            pending
+                                                .entry((p, end))
+                                                .or_default()
+                                                .push(((pos, g.clone()), ground.clone()));
+                                        }
+                                    }
+                                }
+                                slot.insert(cs);
+                            } else {
+                                slot.insert(all.iter().map(|(c, _, _)| c.clone()).collect());
+                                for (choice, end, instance) in all {
+                                    pending
+                                        .entry((p, end))
+                                        .or_default()
+                                        .push((choice, instance));
+                                }
                             }
                         }
                         for (choice, instance) in
@@ -1124,6 +1321,36 @@ impl<'a, C: Context> Analyzed<'a, C> {
                 }
                 tried.insert(p, reached.len());
                 e.stats.borrow_mut().emit.fallback_runs += 1;
+                if join {
+                    let fits = |l: &C::Label| reached.keys().any(|r| ctx.within(r, l));
+                    let found = e.instances(p, &layers[&p].0, fits, |pos, o| {
+                        open.iter()
+                            .any(|(at, g)| *at == pos && opt_within(ctx, g, o))
+                    });
+                    for ((pos, o), _, instance) in found {
+                        let wanted: Vec<Opt<C::Label>> = open
+                            .iter()
+                            .filter(|(at, g)| *at == pos && opt_within(ctx, g, &o))
+                            .map(|(_, g)| g.clone())
+                            .collect();
+                        for g in wanted {
+                            let Some((ground, made)) =
+                                e.ground(p, &instance, Some((pos, &g)), &fits)
+                            else {
+                                continue;
+                            };
+                            let Some(r) = reached.keys().find(|r| ctx.within(r, &made)) else {
+                                continue;
+                            };
+                            open.remove(&(pos, g.clone()));
+                            if taken.insert((p, (pos, g))) {
+                                e.stats.borrow_mut().emit.fallback_emitted += 1;
+                                out.add(&mut prods, &mut shapes, reached[r], prod, ground);
+                            }
+                        }
+                    }
+                    continue;
+                }
                 let found = e.instances(
                     p,
                     &layers[&p].0,

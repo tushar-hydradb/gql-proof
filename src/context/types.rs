@@ -1510,12 +1510,6 @@ impl Under<Scope> for Types {
         if x.without_needs() != y.without_needs() {
             return None;
         }
-        // Whether every context `b` takes also takes `a`'s trees: `a`'s set inside `b`'s.
-        let within = |a: Entry, b: Entry| match (a, b) {
-            (_, Free) => true,
-            (Allow(p), Allow(q)) => p & !q == 0,
-            (a, b) => a == b,
-        };
         let pairs = || x.vars.iter().zip(&y.vars);
         if pairs().all(|(a, b)| within(*b, *a)) {
             return Some(x.clone());
@@ -1536,5 +1530,41 @@ impl Under<Scope> for Types {
         let mut vars = x.vars.clone();
         vars[s] = union;
         Some(Label { vars, ..x.clone() })
+    }
+
+    /// Every set of more than one class made one class, each way.
+    fn grounds(&self, _: &Scoped, l: &Label) -> Vec<Label> {
+        let mut out = vec![l.clone()];
+        for (s, e) in l.vars.iter().enumerate() {
+            let Allow(m) = *e else { continue };
+            if m.count_ones() < 2 {
+                continue;
+            }
+            out = out
+                .into_iter()
+                .flat_map(|g| {
+                    members(m).map(move |c| {
+                        let mut g = g.clone();
+                        g.vars[s] = Allow(bit(c));
+                        g
+                    })
+                })
+                .collect();
+        }
+        out
+    }
+
+    fn within(&self, _: &Scoped, x: &Label, y: &Label) -> bool {
+        x.without_needs() == y.without_needs()
+            && x.vars.iter().zip(&y.vars).all(|(a, b)| within(*a, *b))
+    }
+}
+
+/// Whether every context `b` takes also takes `a`'s trees: `a`'s set inside `b`'s.
+fn within(a: Entry, b: Entry) -> bool {
+    match (a, b) {
+        (_, Free) => true,
+        (Allow(p), Allow(q)) => p & !q == 0,
+        (a, b) => a == b,
     }
 }
