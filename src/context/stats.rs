@@ -73,6 +73,12 @@ pub struct EmitStats {
     pub fallback_runs: u64,
     /// Instances the fallback passes emitted.
     pub fallback_emitted: u64,
+    /// With joins: instances made ground with their own options, with any option (wide),
+    /// not at all, and the time those searches took.
+    pub ground_narrow: u64,
+    pub ground_wide: u64,
+    pub ground_failed: u64,
+    pub ground_nanos: u64,
     pub nanos: u64,
 }
 
@@ -90,6 +96,8 @@ pub struct Stats {
     pub doomed: u64,
     /// Labels a join absorbed (`Options::join`).
     pub joined: u64,
+    /// Pairs not pushed because their keys rule them out (`Options::keys`).
+    pub skipped: u64,
     /// Wall time per phase, in nanoseconds.
     pub phases: BTreeMap<String, u64>,
 }
@@ -124,13 +132,14 @@ impl Stats {
         }
         let _ = writeln!(
             s,
-            "labels {}, pushes {}, partials at most {} at one position, {} labels projected, {} doomed, {} joined",
+            "labels {}, pushes {}, partials at most {} at one position, {} labels projected, {} doomed, {} joined, {} pairs skipped by keys",
             self.total_labels(),
             self.pushes(),
             self.partials_max(),
             self.projected,
             self.doomed,
-            self.joined
+            self.joined,
+            self.skipped
         );
         if !self.rounds.is_empty() {
             let _ = writeln!(s, "rounds: round  scanned  new labels  labels  ms");
@@ -222,6 +231,16 @@ impl Stats {
                 e.fallback_emitted,
                 ms(e.nanos)
             );
+            if e.ground_narrow + e.ground_wide + e.ground_failed > 0 {
+                let _ = writeln!(
+                    s,
+                    "ground instances: {} from their own options, {} wide, {} failed, {:.1} ms",
+                    e.ground_narrow,
+                    e.ground_wide,
+                    e.ground_failed,
+                    ms(e.ground_nanos)
+                );
+            }
         }
         s
     }

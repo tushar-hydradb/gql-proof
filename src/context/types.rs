@@ -253,6 +253,9 @@ pub struct Label {
     /// [`OPERANDS`]).
     operand: Option<u8>,
     kids: Vec<Option<Ty>>,
+    /// A partial label past its definition's last child, already checked (`Types::folds`):
+    /// its class and entries are the node's, and `finish` only relinks them.
+    done: bool,
 }
 
 impl Label {
@@ -509,50 +512,11 @@ pub struct Types {
     /// The most variables a label holds a type constraint on
     /// (`research/types-cutoff-2026-10-22.md`).
     typed: usize,
-    /// An expression node is evaluated at the push of its last child, not at finish: the
+    /// An expression node is checked at the push of its last child, not at finish: the
     /// partial label after that child is already the node's label, not the classes of every
-    /// child side by side (see [`Types::fold_at`]).
+    /// child side by side (see [`Types::folds`]). Off only to measure, and to check the
+    /// labels are the same (`pruning_is_exact`).
     pub fold: bool,
-    /// The two operands of a comparison and of NULLIF are paired by comparability family,
-    /// and a simple CASE's operand with the when lists that accept its class
-    /// (`Under::key`, `Under::wanted`): the pairs skipped are ones the push rejects.
-    pub keys: bool,
-}
-
-/// 22.13, 22.14 read as a join key: two classes are comparable only within a family (the
-/// numbers; nodes with nodes; edges with edges; each other class with itself), except the
-/// wildcards (null, dynamic), which compare with anything. An opaque value compares with
-/// nothing, so its family is its own and only the wildcards reach it.
-fn family(t: Option<Ty>) -> Option<u64> {
-    match t? {
-        Ty::Slot(..) => None,
-        Ty::Is(Null | Dynamic) => None,
-        Ty::Is(Exact | Approx) => Some(0),
-        Ty::Is(c) => Some(10 + c as u64),
-    }
-}
-
-/// The when-list masks (bits over [`OPERANDS`]) a simple CASE operand of class `t` may meet.
-fn operand_masks(t: Option<Ty>) -> Vec<u64> {
-    let bits: u8 = match t {
-        Some(Ty::Is(c)) => OPERANDS
-            .iter()
-            .position(|o| *o == c)
-            .map_or(0, |i| 1 << i),
-        Some(Ty::Slot(_, mask)) => members(mask)
-            .filter_map(|c| OPERANDS.iter().position(|o| *o == c))
-            .fold(0, |m, i| m | 1 << i),
-        None => 0,
-    };
-    (1u64..1 << OPERANDS.len())
-        .filter(|m| m & bits as u64 != 0)
-        .collect()
-}
-
-/// How a position's child labels are keyed (see [`Types::keyed_at`]).
-enum Keying {
-    Family,
-    Operand,
 }
 
 /// Where each input slot of a step went: its output slot, or the entry it closed with.
@@ -685,52 +649,7 @@ impl Types {
             expressions: seen,
             typed: 2,
             fold: true,
-            keys: true,
         }
-    }
-
-    /// Where a position's child labels are keyed (`keys`): the second operand of a
-    /// comparison or NULLIF, by family, against the first's; a simple CASE's when list, by
-    /// its operand mask, against the operand's class. The position of the first operand's
-    /// class in `kids` comes with it.
-    fn keyed_at(&self, node: &Node, pos: usize) -> Option<(Keying, usize)> {
-        if !self.keys {
-            return None;
-        }
-        let item = node.items.get(pos)?;
-        match (node.def, item) {
-            ("comparison predicate", Item::Def("comparison predicate part 2")) => {
-                Some((Keying::Family, 0))
-            }
-            ("case abbreviation", Item::Def("value expression"))
-                if pos == 4 && node.items.first() == Some(&Item::Token("NULLIF")) =>
-            {
-                Some((Keying::Family, 2))
-            }
-            ("simple case", Item::Group("simple case/rep1")) => {
-                let operand = node.items.iter().position(|i| *i == Item::Def("case operand"))?;
-                Some((Keying::Operand, operand))
-            }
-            _ => None,
-        }
-    }
-
-    /// The position at whose push `node` is evaluated (`fold`), if before its finish: an
-    /// expression node, at its last child that carries a class. The children after it
-    /// (parentheses, keywords) add nothing, and its finish only carries the label through
-    /// scope's finishing link. Exact because such a node binds no variable: what scope says
-    /// of each slot is the same after that push and after the finish, so the classes chosen
-    /// for deferred slots, and the needs written, are the ones finish would choose. Binders
-    /// and consumers (`READS`) give their new variable its class from scope's finished label,
-    /// so they are evaluated there.
-    fn fold_at(&self, node: &Node) -> Option<usize> {
-        if !self.fold || !self.expression(node.def) || READS.contains(&owner(node.def)) {
-            return None;
-        }
-        node.items.iter().rposition(|i| match i {
-            Item::Def(d) | Item::Group(d) => self.reads(d),
-            _ => false,
-        })
     }
 
     /// 20.7 SR 2, checked as soon as both sides are there: a simple CASE's operand must be a
@@ -790,6 +709,26 @@ impl Types {
 
     fn reads(&self, def: &str) -> bool {
         self.expression(def) || READS.contains(&owner(def))
+    }
+
+    /// Whether an expression definition is checked at the push of its last child instead of
+    /// at finish (`fold`). Exact because such a definition binds no variable: what scope says
+    /// of each slot is the same after that push and after the finish, so the classes chosen
+    /// for deferred slots and the needs written are the ones finish would choose. Definitions
+    /// outside the expression grammar keep their finish: their arms read what scope's finish
+    /// says.
+    fn folds(&self, node: &Node, pos: usize) -> bool {
+        let own = owner(node.def);
+        self.fold
+            && self.expression(node.def)
+            && !READS.contains(&own)
+            && !CONSUMERS.contains(&own)
+            && own != "for ordinality or offset"
+            && node
+                .items
+                .iter()
+                .rposition(|i| matches!(i, Item::Def(_) | Item::Group(_)))
+                == Some(pos)
     }
 
     /// The class `node` synthesizes from its children's classes, and what it passes up;
@@ -1479,10 +1418,8 @@ impl Under<Scope> for Types {
         let Some(r) = Relinked::new(&inputs, &views, a.link, width) else {
             return vec![];
         };
-        // Evaluated at an earlier push: the label is carried through the rest.
-        let folded = self.fold_at(node).is_some_and(|f| f < pos);
         let mut out = Label {
-            class: if folded { r.ty(0, partial.class) } else { None },
+            class: None,
             vars: r.vars.clone(),
             facts: partial.facts,
             target: partial.target,
@@ -1490,7 +1427,19 @@ impl Under<Scope> for Types {
             when: partial.when,
             operand: partial.operand,
             kids: partial.kids.iter().map(|k| r.ty(0, *k)).collect(),
+            done: false,
         };
+        // A token after the last child: the node is checked already.
+        if partial.done {
+            out.class = r.ty(0, partial.class);
+            out.kids.clear();
+            out.done = true;
+            return if reconcile(&mut out.vars, a.out) && self.cap(&mut out.vars) {
+                vec![out]
+            } else {
+                vec![]
+            };
+        }
         if let Some(c) = child {
             out.facts |= c.facts;
             out.target = out.target.or(c.target);
@@ -1510,16 +1459,21 @@ impl Under<Scope> for Types {
         if !self.case_operand_fits(node, &out.kids, out.operand) {
             return vec![];
         }
-        if self.fold_at(node) == Some(pos) {
-            let mut outs = self.finish_node(node, &out, a.out);
-            for l in &mut outs {
-                l.kids.clear();
-            }
-            outs.retain_mut(|l| reconcile(&mut l.vars, a.out) && self.cap(&mut l.vars));
-            return outs;
-        }
         if !reconcile(&mut out.vars, a.out) || !self.cap(&mut out.vars) {
             return vec![];
+        }
+        // At the last child, check the node now: the partial labels after it are the node's
+        // labels, not every combination of its children's classes.
+        if self.folds(node, pos) {
+            return self
+                .finish_node(node, &out, a.out)
+                .into_iter()
+                .filter_map(|mut l| {
+                    l.kids.clear();
+                    l.done = true;
+                    (reconcile(&mut l.vars, a.out) && self.cap(&mut l.vars)).then_some(l)
+                })
+                .collect();
         }
         vec![out]
     }
@@ -1529,22 +1483,26 @@ impl Under<Scope> for Types {
         let Some(r) = Relinked::new(&partial.vars, &views(a.partial), a.link, width) else {
             return vec![];
         };
+        if partial.done {
+            let mut l = Label {
+                class: r.ty(0, partial.class),
+                vars: r.vars.clone(),
+                done: false,
+                ..partial.clone()
+            };
+            return if reconcile(&mut l.vars, a.out) && self.cap(&mut l.vars) {
+                vec![l]
+            } else {
+                vec![]
+            };
+        }
         let acc = Label {
             vars: r.vars.clone(),
             kids: partial.kids.iter().map(|k| r.ty(0, *k)).collect(),
             ..partial.clone()
         };
         let def = node.def;
-        let mut out = if self.fold_at(node).is_some() {
-            // Evaluated at a push: the class, deferred or not, through the link.
-            vec![Label {
-                class: r.ty(0, partial.class),
-                kids: Vec::new(),
-                ..acc
-            }]
-        } else {
-            self.finish_node(node, &acc, a.out)
-        };
+        let mut out = self.finish_node(node, &acc, a.out);
         for l in &mut out {
             // 10.3: a new value variable has its definition's class.
             if matches!(def, "let variable definition" | "value variable definition") {
@@ -1638,22 +1596,6 @@ impl Under<Scope> for Types {
         Some(l.without_needs())
     }
 
-    fn key(&self, node: &Node, pos: usize, _: &Scoped, child: &Label) -> Option<u64> {
-        match self.keyed_at(node, pos)?.0 {
-            Keying::Family => family(child.class),
-            Keying::Operand => child.operand.map(u64::from),
-        }
-    }
-
-    fn wanted(&self, node: &Node, pos: usize, _: &Scoped, partial: &Label) -> Option<Vec<u64>> {
-        let (keying, at) = self.keyed_at(node, pos)?;
-        let first = partial.kids.get(at).copied().flatten();
-        match keying {
-            Keying::Family => Some(family(first).into_iter().collect()).filter(|k: &Vec<u64>| !k.is_empty()),
-            Keying::Operand => Some(operand_masks(first)),
-        }
-    }
-
     /// Exact in two cases: one label's sets all lie within the other's (it is the other), or
     /// the two differ in one variable's set only (the union). Two variables apart is a
     /// relation no pair of sets says.
@@ -1661,12 +1603,6 @@ impl Under<Scope> for Types {
         if x.without_needs() != y.without_needs() {
             return None;
         }
-        // Whether every context `b` takes also takes `a`'s trees: `a`'s set inside `b`'s.
-        let within = |a: Entry, b: Entry| match (a, b) {
-            (_, Free) => true,
-            (Allow(p), Allow(q)) => p & !q == 0,
-            (a, b) => a == b,
-        };
         let pairs = || x.vars.iter().zip(&y.vars);
         if pairs().all(|(a, b)| within(*b, *a)) {
             return Some(x.clone());
@@ -1687,5 +1623,134 @@ impl Under<Scope> for Types {
         let mut vars = x.vars.clone();
         vars[s] = union;
         Some(Label { vars, ..x.clone() })
+    }
+
+    /// Every set of more than one class made one class, each way.
+    fn grounds(&self, _: &Scoped, l: &Label) -> Vec<Label> {
+        let mut out = vec![l.clone()];
+        for (s, e) in l.vars.iter().enumerate() {
+            let Allow(m) = *e else { continue };
+            if m.count_ones() < 2 {
+                continue;
+            }
+            out = out
+                .into_iter()
+                .flat_map(|g| {
+                    members(m).map(move |c| {
+                        let mut g = g.clone();
+                        g.vars[s] = Allow(bit(c));
+                        g
+                    })
+                })
+                .collect();
+        }
+        out
+    }
+
+    fn within(&self, _: &Scoped, x: &Label, y: &Label) -> bool {
+        x.without_needs() == y.without_needs()
+            && x.vars.iter().zip(&y.vars).all(|(a, b)| within(*a, *b))
+    }
+
+    fn partial_key(&self, node: &Node, pos: usize, l: &Label) -> u32 {
+        let kid = |i: usize| l.kids.get(i).copied().flatten();
+        match Site::of(node, pos) {
+            Some(Site::Compare) => family(kid(0)),
+            Some(Site::Case) => match kid(1) {
+                Some(Ty::Is(c)) => OPERANDS
+                    .iter()
+                    .position(|o| *o == c)
+                    .map_or(BAD, |i| i as u32 + 1),
+                _ => 0,
+            },
+            Some(Site::Nullif) => narrowed(kid(2)),
+            None => 0,
+        }
+    }
+
+    fn child_key(&self, node: &Node, pos: usize, l: &Label) -> u32 {
+        match Site::of(node, pos) {
+            Some(Site::Compare) => family(l.class),
+            Some(Site::Case) => l.operand.map_or(0, u32::from),
+            Some(Site::Nullif) => narrowed(l.class),
+            None => 0,
+        }
+    }
+
+    fn compatible(&self, node: &Node, pos: usize, partial: u32, child: u32) -> bool {
+        match Site::of(node, pos) {
+            // 22.13, 22.14: as `comparable`, by family.
+            Some(Site::Compare) => match (partial, child) {
+                (OPAQUE, _) | (_, OPAQUE) => false,
+                (0, _) | (_, 0) => true,
+                (NEVER, _) | (_, NEVER) => false,
+                (a, b) => a == b,
+            },
+            // 20.7 SR 2: the operand is one every when operand accepts.
+            Some(Site::Case) => match (partial, child) {
+                (BAD, _) => false,
+                (0, _) | (_, 0) => true,
+                (k, mask) => mask & 1 << (k - 1) != 0,
+            },
+            // NULLIF's arguments are exact numbers or nulls (reading).
+            Some(Site::Nullif) => partial != BAD && child != BAD,
+            None => true,
+        }
+    }
+}
+
+/// Where the rule gives join keys: the second operand of a comparison, the when clauses of a
+/// simple CASE, the second argument of NULLIF.
+enum Site {
+    Compare,
+    Case,
+    Nullif,
+}
+
+impl Site {
+    fn of(node: &Node, pos: usize) -> Option<Site> {
+        match (node.def, pos) {
+            ("comparison predicate", 1) => Some(Site::Compare),
+            ("simple case", 2) => Some(Site::Case),
+            ("case abbreviation", 4) if node.items.first() == Some(&Item::Token("NULLIF")) => {
+                Some(Site::Nullif)
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Keys: 0 is a wildcard (no class yet, a deferred one, null, dynamic).
+const BAD: u32 = 0xff;
+const OPAQUE: u32 = 1;
+const NEVER: u32 = 2;
+
+/// A class's comparability family (`comparable`): numbers together, every other scalar, node
+/// and edge apart; lists, records and paths compare with nothing but a wildcard, opaque with
+/// nothing at all.
+fn family(t: Option<Ty>) -> u32 {
+    match t {
+        Some(Ty::Is(Null | Dynamic)) | Some(Ty::Slot(..)) | None => 0,
+        Some(Ty::Is(Opaque)) => OPAQUE,
+        Some(Ty::Is(List | Record | Path)) => NEVER,
+        Some(Ty::Is(Exact | Approx)) => 3,
+        Some(Ty::Is(c)) => 10 + c as u32,
+    }
+}
+
+/// NULLIF's argument: exact or null, a wildcard, or neither.
+fn narrowed(t: Option<Ty>) -> u32 {
+    match t {
+        Some(Ty::Is(Exact | Null)) | Some(Ty::Slot(..)) | None => 0,
+        Some(_) => BAD,
+    }
+}
+
+/// Whether every context `b` takes also takes `a`'s trees: `a`'s set inside `b`'s.
+fn within(a: Entry, b: Entry) -> bool {
+    match (a, b) {
+        (_, Free) => true,
+        (Allow(p), Allow(q)) => p & !q == 0,
+        (a, b) => a == b,
     }
 }

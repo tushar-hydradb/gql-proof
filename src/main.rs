@@ -89,15 +89,15 @@ struct ContextArgs {
     /// Emit with a backward pass per parent label, as before.
     #[arg(long)]
     no_single_pass: bool,
-    /// Join labels the rule can join in the fixed point (no emission from them yet).
+    /// Join labels the rule can join in the fixed point; emission makes them ground.
     #[arg(long)]
     join: bool,
-    /// With `--rule types`: evaluate expression nodes at finish, not at their last push.
+    /// Skip pairs the rule's join keys rule out.
+    #[arg(long)]
+    keys: bool,
+    /// With `--rule types`: check expression nodes at finish, not at their last child.
     #[arg(long)]
     no_fold: bool,
-    /// With `--rule types`: pair every child label at every position, no join keys.
-    #[arg(long)]
-    no_keys: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, ValueEnum)]
@@ -352,6 +352,7 @@ fn context(args: ContextArgs) -> Result<()> {
         live: !args.no_live,
         single_pass: !args.no_single_pass,
         join: args.join,
+        keys: args.keys,
     };
     let scope = gql_proof::context::scope::Scope {
         caps: gql_proof::context::scope::Caps {
@@ -367,7 +368,6 @@ fn context(args: ContextArgs) -> Result<()> {
         ContextRule::Types => {
             let mut types = gql_proof::context::types::Types::with_typed(&base, args.typed);
             types.fold = !args.no_fold;
-            types.keys = !args.no_keys;
             let pair = gql_proof::context::pair::Typed::new(scope, types);
             context_run(&base, start, &pair, &options, &args)
         }
