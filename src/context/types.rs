@@ -118,16 +118,23 @@ pub enum Ty {
 const DOMAIN: [Class; 6] = [Exact, Str, Bool, Node, Edge, Path];
 const ANY: u8 = (1 << DOMAIN.len()) - 1;
 
-/// What a use asks of a variable.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub enum Req {
-    Node,
-    Edge,
-    /// A node or an edge.
-    Element,
-    Path,
-    /// A value used as this class.
-    Value(Class),
+/// A class's bit in a set over [`DOMAIN`], if it has one.
+fn bit(c: Class) -> u8 {
+    DOMAIN.iter().position(|d| *d == c).map_or(0, |i| 1 << i)
+}
+
+const VALUE_BITS: u8 = 0b000111;
+const NODE: u8 = 0b001000;
+const EDGE: u8 = 0b010000;
+const PATH: u8 = 0b100000;
+
+/// The classes of [`DOMAIN`] in a set.
+fn members(m: u8) -> impl Iterator<Item = Class> {
+    DOMAIN
+        .into_iter()
+        .enumerate()
+        .filter(move |(i, _)| m & 1 << i != 0)
+        .map(|(_, c)| c)
 }
 
 /// What the subtree says of one of scope's variables.
@@ -135,86 +142,71 @@ pub enum Req {
 pub enum Entry {
     #[default]
     Free,
-    Need(Req),
+    /// Its uses need its class in this set (bits over [`DOMAIN`]): a principal typing, the
+    /// choice left to its binder. Labels that differ only in one variable's set join into one
+    /// (`Under::join`).
+    Allow(u8),
     /// A value variable of this class (its definition is in the subtree).
     Has(Class),
 }
 
-use Entry::{Free, Has, Need};
+use Entry::{Allow, Free, Has};
 
-fn narrow(a: Req, b: Req) -> Option<Req> {
-    match (a, b) {
-        _ if a == b => Some(a),
-        (Req::Element, r @ (Req::Node | Req::Edge))
-        | (r @ (Req::Node | Req::Edge), Req::Element) => Some(r),
-        _ => None,
-    }
-}
-
-/// One entry for two occurrences of one variable.
+/// One entry for two occurrences of one variable: the sets intersect.
 fn meet(a: Entry, b: Entry) -> Option<Entry> {
     match (a, b) {
         (Free, e) | (e, Free) => Some(e),
         (Has(x), Has(y)) => Some(Has(if x == y { x } else { Opaque })),
-        (Has(c), Need(Req::Value(w))) | (Need(Req::Value(w)), Has(c)) => {
-            (c == w || c == Dynamic).then_some(Has(c))
+        (Has(Dynamic), Allow(m)) | (Allow(m), Has(Dynamic)) => {
+            (m & VALUE_BITS != 0).then_some(Has(Dynamic))
         }
-        (Has(_), Need(_)) | (Need(_), Has(_)) => None,
-        (Need(x), Need(y)) => narrow(x, y).map(Need),
+        (Has(c), Allow(m)) | (Allow(m), Has(c)) => (bit(c) & m != 0).then_some(Has(c)),
+        (Allow(x), Allow(y)) => (x & y != 0).then_some(Allow(x & y)),
     }
 }
 
-/// The class of a variable that closed with `e`.
+/// The class of a variable that closed with `e`: its set's one member, else opaque (which
+/// refuses more, so it stays sound).
 fn settled(e: Entry) -> Ty {
     Ty::Is(match e {
-        Has(c) | Need(Req::Value(c)) => c,
-        Need(Req::Node) => Node,
-        Need(Req::Edge) => Edge,
-        Need(Req::Path) => Path,
+        Has(c) => c,
+        Allow(m) if m.count_ones() == 1 => members(m).next().unwrap_or(Opaque),
         _ => Opaque,
     })
 }
 
-/// Whether a variable scope needs as `k` may carry `e`.
-fn fits_need(k: Kind, e: Entry) -> bool {
-    matches!(
-        (k, e),
-        (_, Free)
-            | (Kind::Any, _)
-            | (Kind::Node, Need(Req::Node | Req::Element))
-            | (Kind::Edge, Need(Req::Edge | Req::Element))
-            | (Kind::Element, Need(Req::Node | Req::Edge | Req::Element))
-            | (Kind::Path, Need(Req::Path))
-            | (Kind::Value, Need(Req::Value(_)) | Has(_))
-    )
+/// The classes scope's kind `k` allows, if it narrows anything.
+fn kind_bits(k: Kind) -> Option<u8> {
+    match k {
+        Kind::Node => Some(NODE),
+        Kind::Edge => Some(EDGE),
+        Kind::Path => Some(PATH),
+        Kind::Element => Some(NODE | EDGE),
+        Kind::Value => Some(VALUE_BITS),
+        Kind::Any | Kind::Group => None,
+    }
 }
 
-/// The classes a deferred reference to a variable may be given, and what each asks of it.
-fn domain(e: Entry, v: View) -> Vec<(Class, Req)> {
-    let value = |c: Class| (c, Req::Value(c));
-    let node = (Node, Req::Node);
-    let edge = (Edge, Req::Edge);
-    let path = (Path, Req::Path);
+/// `e` narrowed to what scope needs the variable as; `None` if nothing is left.
+fn fit_need(k: Kind, e: Entry) -> Option<Entry> {
+    match (kind_bits(k), e) {
+        (_, Free) | (None, _) => Some(e),
+        (Some(b), Allow(m)) => (m & b != 0).then_some(Allow(m & b)),
+        (Some(b), Has(_)) => (b == VALUE_BITS).then_some(e),
+    }
+}
+
+/// The classes a deferred reference to a variable may be given.
+fn domain(e: Entry, v: View) -> Vec<Class> {
     match e {
-        Has(Dynamic) => VALUES.map(value).to_vec(),
+        Has(Dynamic) => VALUES.to_vec(),
         Has(Opaque) => vec![],
-        Has(c) | Need(Req::Value(c)) => vec![value(c)],
-        Need(Req::Node) => vec![node],
-        Need(Req::Edge) => vec![edge],
-        Need(Req::Element) => vec![node, edge],
-        Need(Req::Path) => vec![path],
+        Has(c) => vec![c],
+        Allow(m) => members(m).collect(),
         Free => match v.out.or(v.decl).or(v.column).or(v.need) {
-            Some(Kind::Node) => vec![node],
-            Some(Kind::Edge) => vec![edge],
-            Some(Kind::Path) => vec![path],
-            Some(Kind::Value) => VALUES.map(value).to_vec(),
-            Some(Kind::Element) => vec![node, edge],
             Some(Kind::Group) => vec![],
-            Some(Kind::Any) | None => {
-                let mut d = VALUES.map(value).to_vec();
-                d.extend([node, edge, path]);
-                d
-            }
+            Some(k) => members(kind_bits(k).unwrap_or(ANY)).collect(),
+            None => DOMAIN.to_vec(),
         },
     }
 }
@@ -584,35 +576,41 @@ fn views(a: &Scoped) -> Vec<View> {
 /// Whether a variable scope says `v` of may carry `e`.
 fn admits(v: View, e: Entry) -> bool {
     let kind = match (v.out.or(v.decl).or(v.column), e) {
-        (Some(Kind::Node), Free | Need(Req::Node | Req::Element)) => true,
-        (Some(Kind::Edge), Free | Need(Req::Edge | Req::Element)) => true,
-        (Some(Kind::Path), Free | Need(Req::Path)) => true,
-        (Some(Kind::Node | Kind::Edge | Kind::Path), _) => false,
-        (Some(Kind::Value), Need(_)) => v.need.is_some(),
+        (Some(k @ (Kind::Node | Kind::Edge | Kind::Path)), Allow(m)) => {
+            kind_bits(k).is_some_and(|b| m & b != 0)
+        }
+        (Some(Kind::Node | Kind::Edge | Kind::Path), Has(_)) => false,
+        (Some(Kind::Value), Allow(_)) => v.need.is_some(),
         _ => true,
     };
-    kind && v.need.is_none_or(|k| fits_need(k, e))
+    kind && v.need.is_none_or(|k| fit_need(k, e).is_some())
 }
 
 /// Entries checked against scope's variables after a step: a node, edge or path variable
-/// takes only a need of its kind (and, met, owes nothing more); a value variable bound with
-/// no class from its definition is opaque.
+/// takes only a set holding its kind (and, met, owes nothing more); a value variable bound
+/// with no class from its definition is opaque; what scope needs a variable as narrows its set.
 fn reconcile(vars: &mut [Entry], a: &Scoped) -> bool {
     for (s, e) in vars.iter_mut().enumerate() {
         let v = a.view(s);
         let bound = v.out.or(v.decl).or(v.column);
         *e = match (bound, *e) {
-            (Some(Kind::Node), Free | Need(Req::Node | Req::Element)) => Free,
-            (Some(Kind::Edge), Free | Need(Req::Edge | Req::Element)) => Free,
-            (Some(Kind::Path), Free | Need(Req::Path)) => Free,
+            (Some(Kind::Node | Kind::Edge | Kind::Path), Free) => Free,
+            (Some(k @ (Kind::Node | Kind::Edge | Kind::Path)), Allow(m))
+                if kind_bits(k).is_some_and(|b| m & b != 0) =>
+            {
+                Free
+            }
             (Some(Kind::Node | Kind::Edge | Kind::Path), _) => return false,
             (Some(Kind::Value), Free) if v.need.is_none() => Has(Opaque),
-            (Some(Kind::Value), Need(_)) if v.need.is_none() => return false,
+            (Some(Kind::Value), Allow(_)) if v.need.is_none() => return false,
             (None, Free) if v.new => Has(Opaque),
             (_, e) => e,
         };
-        if v.need.is_some_and(|k| !fits_need(k, *e)) {
-            return false;
+        if let Some(k) = v.need {
+            match fit_need(k, *e) {
+                Some(n) => *e = n,
+                None => return false,
+            }
         }
     }
     true
@@ -1246,7 +1244,7 @@ impl Types {
             && let Some(Some(Ty::Slot(s, _))) = kids.first()
         {
             let s = *s as usize;
-            vars[s] = match meet(vars[s], Need(Req::Element)) {
+            vars[s] = match meet(vars[s], Allow(NODE | EDGE)) {
                 Some(e) => e,
                 None => return vec![],
             };
@@ -1309,14 +1307,9 @@ impl Types {
             for (pick, vars) in &picks {
                 let allowed = domain(vars[s as usize], a.view(s as usize))
                     .into_iter()
-                    .filter(|(c, _)| {
-                        DOMAIN
-                            .iter()
-                            .position(|d| d == c)
-                            .is_some_and(|i| m & 1 << i != 0)
-                    });
-                for (c, req) in allowed {
-                    let Some(e) = meet(vars[s as usize], Need(req)) else {
+                    .filter(|c| bit(*c) & m != 0);
+                for c in allowed {
+                    let Some(e) = meet(vars[s as usize], Allow(bit(c))) else {
                         continue;
                     };
                     let mut pick = pick.clone();
@@ -1475,7 +1468,12 @@ impl Under<Scope> for Types {
         for (i, e) in l.vars.iter().enumerate() {
             match e {
                 Free => {}
-                Need(r) => s.push_str(&format!(" {i}?{r:?}").to_lowercase()),
+                Allow(m) => {
+                    let names: Vec<String> = members(*m)
+                        .map(|c| format!("{c:?}").to_lowercase())
+                        .collect();
+                    s.push_str(&format!(" {i}?{}", names.join("|")));
+                }
                 Has(c) => s.push_str(&format!(" {i}:{c:?}").to_lowercase()),
             }
         }
