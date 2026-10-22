@@ -93,6 +93,9 @@ pub struct Kind {
     pub covered: usize,
     /// Targets no tree exists for at the cap.
     pub never: Vec<String>,
+    /// Targets a tree was extracted for that the finished tree does not use: its subtree was
+    /// spelled or templated (names, prose leaves). Neither covered nor never.
+    pub unused: Vec<String>,
 }
 
 /// What `cover` found: the trees, one per target it was extracted for, and the tally.
@@ -116,6 +119,11 @@ pub struct Extractor<'e, 'a, C: Context> {
     /// (the closure emission ran, without grounding). Necessary for every ground within one
     /// of them: a push that refuses a live label refuses every narrower one.
     reached: Vec<BTreeSet<C::Label>>,
+    /// Per nonterminal: the size of its smallest tree, and of the smallest context around it
+    /// from the start (every sibling at its smallest, up to the top); the climb takes parents
+    /// cheapest first by the latter.
+    smallest: Vec<u64>,
+    above: Vec<u64>,
     witnesses: RefCell<BTreeMap<(NtId, C::Label), Option<Rc<XNode<C::Label>>>>>,
     contexts: RefCell<BTreeMap<(NtId, C::Label), Option<Rc<Ctx<C::Label>>>>>,
     /// The searches in progress (true for a context search), and the shallowest one the
@@ -136,6 +144,47 @@ pub struct Extractor<'e, 'a, C: Context> {
 /// A search in progress: its kind (0 a witness, 1 a context, 2 a joined-level context), the
 /// nonterminal and the label.
 type Key<L> = (u8, NtId, L);
+
+/// A size no tree has: a nonterminal with no label, or no context from the start.
+const FAR: u64 = u64::MAX / 4;
+
+/// Per nonterminal: the size of the smallest context around it from `start`, every sibling
+/// on the way at its smallest tree (Knuth's shortest derivation, upward); `FAR` where no
+/// context exists. Grammar order breaks ties.
+fn above(cfg: &Cfg, smallest: &[u64], start: NtId) -> Vec<u64> {
+    let size = |sym: Sym| match sym {
+        Sym::Lit(_) => 1,
+        Sym::Nt(c) => smallest[c as usize],
+    };
+    let mut above = vec![FAR; cfg.nts.len()];
+    above[start as usize] = 0;
+    loop {
+        let mut changed = false;
+        for prod in &cfg.prods {
+            let base = above[prod.lhs as usize];
+            if base >= FAR {
+                continue;
+            }
+            for (j, &sym) in prod.rhs.iter().enumerate() {
+                let Sym::Nt(c) = sym else { continue };
+                let siblings = prod
+                    .rhs
+                    .iter()
+                    .enumerate()
+                    .filter(|&(k, _)| k != j)
+                    .fold(1u64, |acc, (_, &s)| acc.saturating_add(size(s)));
+                let cost = base.saturating_add(siblings);
+                if cost < above[c as usize] {
+                    above[c as usize] = cost;
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            return above;
+        }
+    }
+}
 
 impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
     pub(super) fn new(e: &'e Engine<'a, C>, start: NtId, leaf: &dyn LeafProvider) -> Self {
@@ -211,6 +260,12 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                 began.elapsed()
             );
         }
+        let smallest: Vec<u64> = e
+            .labels
+            .iter()
+            .map(|labels| labels.values().copied().min().unwrap_or(FAR))
+            .collect();
+        let above = above(cfg, &smallest, start);
         Extractor {
             e,
             start,
@@ -218,6 +273,8 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             fillable,
             makers,
             reached,
+            smallest,
+            above,
             witnesses: RefCell::new(BTreeMap::new()),
             contexts: RefCell::new(BTreeMap::new()),
             stack: RefCell::new(Vec::new()),
@@ -232,6 +289,14 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
 
     fn cfg(&self) -> &'a Cfg {
         self.e.cfg
+    }
+
+    /// The size of the smallest tree of a symbol.
+    fn size(&self, sym: Sym) -> u64 {
+        match sym {
+            Sym::Lit(_) => 1,
+            Sym::Nt(c) => self.smallest[c as usize],
+        }
     }
 
     fn ahead(&self, p: ProdId) -> &AheadTable<C::Label> {
@@ -538,16 +603,32 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             {
                 return None;
             }
+            // The parents cheapest first, by the smallest context each gives (its siblings at
+            // their smallest, the rest of the way up at its), so the context found is the
+            // smallest rather than the first in grammar order: a bare procedure before
+            // `START TRANSACTION`, an ambient statement before a focused one.
             let cfg = self.cfg();
+            let mut parents: Vec<(u64, ProdId, usize)> = Vec::new();
             for &q in &self.e.users[nt as usize] {
                 let prod = &cfg.prods[q as usize];
+                let base = self.above[prod.lhs as usize];
                 for (j, sym) in prod.rhs.iter().enumerate() {
                     if *sym != Sym::Nt(nt) {
                         continue;
                     }
-                    if let Some(ctx) = self.under(q, j, g, None) {
-                        return Some(ctx);
-                    }
+                    let siblings = prod
+                        .rhs
+                        .iter()
+                        .enumerate()
+                        .filter(|&(k, _)| k != j)
+                        .fold(0u64, |acc, (_, &s)| acc.saturating_add(self.size(s)));
+                    parents.push((base.saturating_add(siblings), q, j));
+                }
+            }
+            parents.sort_unstable();
+            for (_, q, j) in parents {
+                if let Some(ctx) = self.under(q, j, g, None) {
+                    return Some(ctx);
                 }
             }
             None
@@ -794,7 +875,9 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             if let Err(err) = self.name(&x, &mut root, names, &spell) {
                 panic!("naming an extracted tree: {err}");
             }
-            seen.extend(coverage::observe(cfg, &root, criteria));
+            // The productions as the tree uses them: in a refined grammar, each copy is its
+            // own target.
+            seen.extend(coverage::observe_refined(cfg, &root, criteria));
             let mut ps = Vec::new();
             root.prods(&mut ps);
             prods_seen.extend(ps);
@@ -833,10 +916,14 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                         &mut prods_seen,
                     )
                 } else {
+                    // Refined copies of one ISO production share the occurrence: only the
+                    // copies whose symbol there is `p2`'s nonterminal take it.
+                    let lhs = Sym::Nt(cfg.prods[*p2 as usize].lhs);
                     positions
                         .get(occ)
                         .into_iter()
                         .flatten()
+                        .filter(|&&(q, i)| cfg.prods[q as usize].rhs[i] == lhs)
                         .any(|&(q, i)| {
                             extract(
                                 self.cdrc_tree(q, i, *p2),
@@ -885,6 +972,8 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                 &mut prods_seen,
             ) {
                 productions.never.push(crate::describe(cfg, p));
+            } else if !prods_seen.contains(&p) {
+                productions.unused.push(crate::describe(cfg, p));
             }
         }
         productions.covered = reachable.iter().filter(|p| prods_seen.contains(p)).count();

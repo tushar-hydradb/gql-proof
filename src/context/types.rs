@@ -356,7 +356,9 @@ fn combine(classes: &[Class]) -> Option<Class> {
             (None, c) => c,
             (Some(Opaque), _) | (_, Opaque) => return None,
             (Some(Dynamic), _) | (_, Dynamic) => Dynamic,
-            (Some(a), b) if a == b && a != Record => a,
+            // Two lists or two records combine only if their elements do, which is not
+            // followed (the reading above): never here.
+            (Some(a), b) if a == b && !matches!(a, Record | List) => a,
             (Some(a), b) if a.numeric() && b.numeric() => Approx,
             (Some(ZonedDatetime | LocalDatetime), ZonedDatetime | LocalDatetime) => ZonedDatetime,
             (Some(ZonedTime | LocalTime), ZonedTime | LocalTime) => ZonedTime,
@@ -848,6 +850,10 @@ impl Types {
             // 20.23 SR 2, 4 and 20.24 SR 3: what TRIM trims, and what it trims with, are
             // strings.
             "trim operands" => check(classed.iter().all(|c| fits(Some(*c), |c| c == Str)), Some(Str)),
+            // 20.24 SR 3 and 20.23 SR 2, 4 for byte strings: both operands are byte strings.
+            "byte string trim operands" => {
+                check(classed.iter().all(|c| fits(Some(*c), |c| c == Bytes)), Some(Bytes))
+            }
             // 13.5 SR 5: what DELETE deletes is a node or an edge.
             "delete item" => check(fits(only, |c| matches!(c, Node | Edge)), only),
             "byte string function" => Some(Some(Bytes)),
