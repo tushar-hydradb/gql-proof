@@ -1060,6 +1060,9 @@ type Choice<L> = (usize, Opt<L>);
 /// The options an instance takes at each position, and how its slots link.
 type Instance<L> = (Vec<Opt<L>>, Shape);
 
+/// Reached labels of one nonterminal by join key, with their emitted ids.
+type Keyed<'a, L> = BTreeMap<Option<L>, Vec<(&'a L, NtId)>>;
+
 /// Whether ground option `g` is one of the choices option `o` leaves open.
 fn opt_within<C: Context>(ctx: &C, g: &Opt<C::Label>, o: &Opt<C::Label>) -> bool {
     match (g, o) {
@@ -1401,8 +1404,7 @@ impl<'a, C: Context> Analyzed<'a, C> {
                 if join {
                     // The reached labels by join key: a label lies within another only if
                     // they share it.
-                    let mut keyed: BTreeMap<Option<C::Label>, Vec<(&C::Label, NtId)>> =
-                        BTreeMap::new();
+                    let mut keyed: Keyed<'_, C::Label> = BTreeMap::new();
                     for (r, id) in reached {
                         keyed.entry(ctx.join_key(r)).or_default().push((r, *id));
                     }
