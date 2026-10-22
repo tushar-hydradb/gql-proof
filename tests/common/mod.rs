@@ -82,7 +82,11 @@ pub fn extraction_matches_emission<C: Context>(
     // The same from the extracted trees.
     let analysis = Analysis::new(base, &StubProvider);
     let names: Vec<String> = ["x", "y", "z", "w"].iter().map(|s| s.to_string()).collect();
-    let template = |nt: u32| StubProvider.token(base.base(nt)).and_then(|t| analysis.spell(nt, t));
+    let template = |nt: u32| {
+        StubProvider
+            .token(base.base(nt))
+            .and_then(|t| analysis.spell(nt, t))
+    };
     let extractor = analyzed.extractor(start, &StubProvider);
     let covered = extractor.cover(
         Criteria {
@@ -98,7 +102,12 @@ pub fn extraction_matches_emission<C: Context>(
         false,
     );
     let (mut x_prods, mut x_pairs) = (BTreeSet::new(), BTreeSet::new());
-    fn walk(cfg: &Cfg, n: &gql_proof::tree::Node, prods: &mut BTreeSet<u32>, pairs: &mut BTreeSet<(u32, u32)>) {
+    fn walk(
+        cfg: &Cfg,
+        n: &gql_proof::tree::Node,
+        prods: &mut BTreeSet<u32>,
+        pairs: &mut BTreeSet<(u32, u32)>,
+    ) {
         let Some(p) = n.prod else { return };
         let lexical = |p: u32| cfg.nts[cfg.prods[p as usize].lhs as usize].lexical;
         if lexical(p) {
@@ -151,10 +160,16 @@ pub fn extraction_matches_emission<C: Context>(
         eprintln!("  only extraction: {}", gql_proof::describe(base, *p));
     }
     for (o, p) in e_pairs.difference(&x_pairs).take(10) {
-        eprintln!("  pair only emission: occ {o} {}", gql_proof::describe(base, *p));
+        eprintln!(
+            "  pair only emission: occ {o} {}",
+            gql_proof::describe(base, *p)
+        );
     }
     for (o, p) in x_pairs.difference(&e_pairs).take(10) {
-        eprintln!("  pair only extraction: occ {o} {}", gql_proof::describe(base, *p));
+        eprintln!(
+            "  pair only extraction: occ {o} {}",
+            gql_proof::describe(base, *p)
+        );
     }
     assert_eq!(e_prods, x_prods);
     assert_eq!(e_pairs, x_pairs);

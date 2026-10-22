@@ -366,7 +366,10 @@ fn explain_at() {
         .with_writer(std::io::stderr)
         .init();
     let text = std::env::var("GQL_TEXT").unwrap();
-    let slots: usize = std::env::var("GQL_SLOTS").ok().and_then(|s| s.parse().ok()).unwrap_or(2);
+    let slots: usize = std::env::var("GQL_SLOTS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(2);
     let rule = Scope {
         caps: Caps {
             slots,
@@ -379,7 +382,10 @@ fn explain_at() {
     parser.limit = 8192;
     let trees = std::cell::RefCell::new(Vec::new());
     let _ = parser.parse(&text, |n| {
-        if verifier.verify(&n.export(&BASE), &n.render(&BASE)).is_empty() {
+        if verifier
+            .verify(&n.export(&BASE), &n.render(&BASE))
+            .is_empty()
+        {
             trees.borrow_mut().push(n.export(&BASE));
         }
         false
@@ -395,7 +401,10 @@ fn explain_at() {
 #[ignore]
 fn extraction_matches_emission() {
     use gql_proof::context::scope::Caps;
-    let slots: usize = std::env::var("GQL_SLOTS").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
+    let slots: usize = std::env::var("GQL_SLOTS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1);
     let rule = Scope {
         caps: Caps {
             slots,

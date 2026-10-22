@@ -182,7 +182,10 @@ fn census() {
     // those (what types reads of scope), and distinct type parts.
     let (mut all, mut all_scope, mut all_views, mut all_types) = (0, 0, 0, 0);
     let shape = |a: &gql_proof::context::scope::Label| -> String {
-        (0..a.width()).map(|s| format!("{:?}", a.view(s))).collect::<Vec<_>>().join("|")
+        (0..a.width())
+            .map(|s| format!("{:?}", a.view(s)))
+            .collect::<Vec<_>>()
+            .join("|")
     };
     for &(n, nt) in &widest {
         let mut scope = BTreeSet::new();
@@ -823,7 +826,10 @@ fn subsumed_options_keep_their_parts() {
 #[ignore]
 fn extraction_matches_emission() {
     use gql_proof::context::scope::Caps;
-    let slots: usize = std::env::var("GQL_SLOTS").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
+    let slots: usize = std::env::var("GQL_SLOTS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1);
     let rule = Typed::new(
         Scope {
             caps: Caps {
@@ -899,7 +905,11 @@ fn joined_grounds_are_exact() {
             continue;
         }
         total += phantoms.len();
-        rows.push((phantoms.len(), truth.len(), BASE.nts[nt as usize].name.clone()));
+        rows.push((
+            phantoms.len(),
+            truth.len(),
+            BASE.nts[nt as usize].name.clone(),
+        ));
         if only.as_deref() == Some(BASE.nts[nt as usize].name.as_str()) {
             for (g, from) in phantoms.iter().take(12) {
                 eprintln!("  phantom [{}] from {:?}", rule.show(g), from);
