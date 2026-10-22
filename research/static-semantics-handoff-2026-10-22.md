@@ -92,8 +92,9 @@ cached set, without losing a production or cdrc pair
    9.2 SR 7 partly rides on: read those before adding. a witness stays for each
    target: `EXISTS { MATCH (x) RETURN x }` covers what `EXISTS { FINISH }` did.
    **done on `tushar/exists-table` (2026-10-22) for the result shape**: 19.4
-   SR 5, 20.6 SR 3 and 8, 11.2 SR 2, by `FINISHED` meaning "the empty type"
-   and surviving to the consumers; see
+   SR 5, 20.6 SR 3, 8 and 10 (by reading: the aggregate way, not LIMIT 1),
+   11.2 SR 2, by `FINISHED` meaning "the empty type" and `ONE_ROW` surviving
+   to the consumers; see
    `research/static-semantics-exists-table-2026-10-22.md`. the statement kind
    (9.1 SR 5 to 7 and the rest) is still open
 2. **path pattern minimums** (about 230). rules: 16.7 SR 8, 9, 16, 20, 16.12 SR

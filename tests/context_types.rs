@@ -110,7 +110,7 @@ fn typed_sentences_pass() {
         "RETURN EXISTS { RETURN 1 AS y } AS x",
         "RETURN EXISTS { MATCH (y) RETURN y } AS x",
         "RETURN EXISTS { FINISH NEXT RETURN 1 AS y } AS x",
-        "RETURN VALUE { RETURN 1 AS y } AS x",
+        "RETURN VALUE { RETURN count(*) AS y } AS x",
         "{ FINISH } NEXT RETURN 1 AS x",
     ]
     .into_iter()
@@ -162,7 +162,12 @@ fn untyped_sentences_are_refused() {
         "RETURN EXISTS { CREATE SCHEMA /s } AS x",
         // 20.6 SR 3: one column.
         "RETURN VALUE { RETURN NO BINDINGS } AS x",
-        "RETURN VALUE { RETURN 1 AS y, 2 AS z } AS x",
+        "RETURN VALUE { RETURN count(*) AS y, count(*) AS z } AS x",
+        // 20.6 SR 10: one row by a single aggregate without GROUP BY; LIMIT 1 (valid) is a
+        // documented narrowing, the label does not see the literal.
+        "RETURN VALUE { RETURN 1 AS y } AS x",
+        "RETURN VALUE { RETURN 1 AS y LIMIT 1 } AS x",
+        "RETURN VALUE { RETURN count(*) AS y UNION RETURN count(*) AS y } AS x",
     ]
     .into_iter()
     .filter(|bad| verdict(bad).is_ok())

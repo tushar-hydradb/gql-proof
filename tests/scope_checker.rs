@@ -442,7 +442,10 @@ fn a_subquery_body_yields_a_table() {
     ok("RETURN EXISTS { RETURN 1 AS y } AS x");
     ok("RETURN EXISTS { MATCH (y) RETURN y } AS x");
     ok("RETURN EXISTS { FINISH NEXT RETURN 1 AS y } AS x");
-    ok("RETURN VALUE { RETURN 1 AS y } AS x");
+    ok("RETURN VALUE { RETURN count(*) AS y } AS x");
+    ok("RETURN VALUE { RETURN 1 AS y LIMIT 1 } AS x");
+    ok("RETURN VALUE { RETURN 1 AS y LIMIT 0x1 } AS x");
+    ok("RETURN VALUE { { RETURN count(*) AS y } } AS x");
     ok("{ FINISH } NEXT RETURN 1 AS x");
     bad("RETURN EXISTS { FINISH } AS x", "19.4 SR 5");
     bad("RETURN EXISTS { { FINISH } } AS x", "19.4 SR 5");
@@ -457,4 +460,16 @@ fn a_subquery_body_yields_a_table() {
     bad("RETURN EXISTS { CALL { FINISH } } AS x", "19.4 SR 5");
     // 12.1 SR 4: a catalog-modifying statement has the empty type.
     bad("RETURN EXISTS { CREATE SCHEMA /s } AS x", "19.4 SR 5");
+    // 20.6 SR 10: at most one row.
+    bad("RETURN VALUE { RETURN 1 AS y } AS x", "20.6 SR 10");
+    bad("RETURN VALUE { RETURN 1 AS y LIMIT 2 } AS x", "20.6 SR 10");
+    bad(
+        "RETURN VALUE { MATCH (z) RETURN count(*) AS y GROUP BY z } AS x",
+        "20.6 SR 10",
+    );
+    bad(
+        "RETURN VALUE { RETURN count(*) AS y UNION RETURN count(*) AS y } AS x",
+        "20.6 SR 5",
+    );
+    bad("RETURN VALUE { { RETURN 1 AS y } } AS x", "20.6 SR 10");
 }

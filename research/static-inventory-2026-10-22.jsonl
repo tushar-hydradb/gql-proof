@@ -737,7 +737,7 @@
 {"clause": "20.6", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
 {"clause": "20.6", "sr": 8, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:1136", "note": "VALUE body's declared type is not the empty type (as 19.4 SR 5); the body being a query (SR 5) and present (SR 6) stay open"}
 {"clause": "20.6", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
-{"clause": "20.6", "sr": 10, "kind": "constraint", "status": "not modelled", "where": "", "note": "VALUE subquery needs LIMIT 1, or an ungrouped single aggregate return item"}
+{"clause": "20.6", "sr": 10, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:1136", "note": "VALUE body returns one row by a single aggregate return item without GROUP BY (b); the LIMIT 1 way (a) is not generated, the label does not see the literal"}
 {"clause": "20.6", "sr": 11, "kind": "type", "status": "reading", "where": "src/context/scope.rs:1128", "note": "subquery sees outer record; generator allows no outer references at all"}
 {"clause": "20.6", "sr": 12, "kind": "type", "status": "reading", "where": "src/context/scope.rs:1128", "note": "subquery starts from the unit table; generator never correlates"}
 {"clause": "20.6", "sr": 13, "kind": "type", "status": "reading", "where": "src/context/types.rs:815", "note": "VALUE subquery result typed opaque, used only where any type fits"}

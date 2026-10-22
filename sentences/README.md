@@ -18,12 +18,14 @@ and `tools/inventory/violations.py` read them as they are
   sentences than the default). on turbolay #243 (484d1a72): 1,174 accepted,
   breakdown in the linear doc of query problems
 - `typed-2vars-turbolay-claim-exists-table.jsonl`: the same command on
-  `tushar/exists-table` (2026-10-22), after 19.4 SR 5, 20.6 SR 3 and 8, 11.2 SR
-  2 (an EXISTS, VALUE or nested table body has a binding table type, not FINISH's
-  empty type). 2,278 rows, 2,243 distinct, 566 s, 1.26 GB; the same 2,026 cdrc
-  targets as its predecessor plus the nested-query EXISTS one, none lost. the
-  306 `EXISTS { FINISH }` witnesses became `EXISTS { <- }` (graph pattern form,
-  implicit nodes by 16.7 SR 14). turbolay #243 (484d1a72) results in
+  `tushar/exists-table` (2026-10-22), after 19.4 SR 5, 20.6 SR 3, 8 and 10,
+  11.2 SR 2 (an EXISTS, VALUE or nested table body has a binding table type,
+  not FINISH's empty type; a VALUE body one column and one row). 2,278 rows,
+  2,243 distinct, 547 s, 1.27 GB; the same 2,026 cdrc targets as its
+  predecessor plus the nested-query EXISTS one, none lost. the 306 `EXISTS {
+  FINISH }` witnesses became `EXISTS { <- }` (graph pattern form, implicit
+  nodes by 16.7 SR 14), `VALUE { FINISH }` became `VALUE { RETURN COUNT(*) AS
+  x }`. turbolay #243 (484d1a72) results in
   `research/static-semantics-exists-table-2026-10-22.md`
 - `typed-2vars-whole-grammar-before-ef00fdb.jsonl`: types under scope, 2
   variables, whole grammar (no claim), before extraction took the smallest

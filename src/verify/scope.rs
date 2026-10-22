@@ -1548,6 +1548,25 @@ impl<'t> Checker<'t> {
                     };
                     self.report(node, rule, "the body's result statement is FINISH".into());
                 }
+                // 20.6 SR 5 a: the emitting statement is one linear query statement; SR 10:
+                // at most one row, by LIMIT 1 or a single aggregate without GROUP BY.
+                if n == "value query expression"
+                    && let Some(pb) = first(node, "procedure body")
+                {
+                    match emitting(pb) {
+                        Emitting::SetOperation => self.report(
+                            node,
+                            "20.6 SR 5",
+                            "the emitting statement is a set operation".into(),
+                        ),
+                        Emitting::Result(prs) if !returns_one_row(prs) => self.report(
+                            node,
+                            "20.6 SR 10",
+                            "the body neither ends in LIMIT 1 nor returns one aggregate".into(),
+                        ),
+                        _ => {}
+                    }
+                }
                 kids(node).into_iter().for_each(|k| self.expr(k, env, at));
             }
             "procedure body" => {
@@ -2038,6 +2057,74 @@ fn finishes(lqs: &Plain) -> bool {
         // 13.1 SR 2-3.
         _ => name(lqs) == Some("linear data-modifying statement"),
     })
+}
+
+/// What a procedure body emits (20.6 SR 4-5): the primitive result statement its last linear
+/// query statement ends in, through nested specifications; a set operation instead (SR 5 a
+/// wants one linear query statement); or something else (FINISH, a non-query, a SELECT).
+enum Emitting<'t> {
+    Result(&'t Plain),
+    SetOperation,
+    Other,
+}
+
+fn emitting(pb: &Plain) -> Emitting<'_> {
+    let last = own(pb, "statement block").and_then(|sb| match owns(sb, "next statement").last() {
+        Some(next) => own(next, "statement"),
+        None => own(sb, "statement"),
+    });
+    let Some(inner) = last.and_then(|st| kids(st).into_iter().next()) else {
+        return Emitting::Other;
+    };
+    let Some(cqe) = own(inner, "composite query expression") else {
+        return Emitting::Other;
+    };
+    let mut operands = Vec::new();
+    conjuncts(cqe, &mut operands);
+    let [op] = operands.as_slice() else {
+        return Emitting::SetOperation;
+    };
+    let mut parts = Vec::new();
+    steps(op, &mut parts);
+    match parts.last().map(|p| (name(p), p)) {
+        Some((Some("primitive result statement"), p)) => Emitting::Result(p),
+        Some((Some("nested query specification"), p)) => match first(p, "procedure body") {
+            Some(pb) => emitting(pb),
+            None => Emitting::Other,
+        },
+        _ => Emitting::Other,
+    }
+}
+
+/// 20.6 SR 10: the result statement ends in LIMIT 1 (a), or has no GROUP BY and its only
+/// return item directly contains an aggregate function (b).
+fn returns_one_row(prs: &Plain) -> bool {
+    let limit_one = own(prs, "order by and page statement")
+        .and_then(|ops| own(ops, "limit clause"))
+        .and_then(|lc| own(lc, "non-negative integer specification"))
+        .is_some_and(|n| unsigned(&n.text()) == Some(1));
+    let aggregate = own(prs, "return statement")
+        .and_then(|rs| own(rs, "return statement body"))
+        .is_some_and(|body| {
+            let items = items(body, &["return item"]);
+            own(body, "group by clause").is_none()
+                && matches!(items.as_slice(), [ri] if directly(ri, "aggregate function"))
+        });
+    limit_one || aggregate
+}
+
+/// The value of an <unsigned integer> as spelled (21.4: decimal, or 0x, 0o, 0b prefixed,
+/// underscores allowed).
+fn unsigned(text: &str) -> Option<u64> {
+    let t: String = text.chars().filter(|c| *c != '_').collect();
+    let lower = t.to_ascii_lowercase();
+    let (digits, radix) = match lower.as_bytes() {
+        [b'0', b'x', ..] => (&lower[2..], 16),
+        [b'0', b'o', ..] => (&lower[2..], 8),
+        [b'0', b'b', ..] => (&lower[2..], 2),
+        _ => (lower.as_str(), 10),
+    };
+    u64::from_str_radix(digits, radix).ok()
 }
 
 /// 9.2 SR 13 and 20.6 SR 4-5: a procedure body whose declared type is the empty type, its
