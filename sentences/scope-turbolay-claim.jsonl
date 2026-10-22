@@ -1,0 +1,790 @@
+{"height":34,"length":115,"new":6155,"sentence":"LET x = CURRENT_TIMESTAMP , y = LOCAL_TIME , z = LOCAL_TIMESTAMP CALL ( z , y , x ) { FINISH } FINISH","tree":1}
+{"height":46,"length":109,"new":2145,"sentence":"MATCH ( { a : CURRENT_DATE , a : CURRENT_DATE , a : LOCAL_TIMESTAMP , a : CURRENT_TIME } ) FINISH","tree":2}
+{"height":29,"length":105,"new":6941,"sentence":"RETURN CURRENT_TIMESTAMP AS x , LOCAL_TIME AS y , LOCAL_TIMESTAMP AS z NEXT YIELD x , y , z FINISH","tree":3}
+{"height":37,"length":103,"new":207,"sentence":"VALUE x VERTEX { a BOOL , a BOOLEAN , a PATH , a ANY } = CURRENT_DATE FINISH","tree":4}
+{"height":58,"length":103,"new":271,"sentence":"ORDER BY ZONED_DATETIME ( '2024-01-01T12:00:00' ) FINISH","tree":5}
+{"height":58,"length":103,"new":61,"sentence":"ORDER BY LOCAL_DATETIME ( '2024-01-01T12:00:00' ) FINISH","tree":6}
+{"height":43,"length":102,"new":3764,"sentence":"FILTER PATH [ SESSION_USER , SESSION_USER , SESSION_USER , SESSION_USER , SESSION_USER , SESSION_USER , SESSION_USER ] FINISH","tree":7}
+{"height":46,"length":100,"new":19,"sentence":"MATCH <-/ a | a | a | a | a /- FINISH","tree":8}
+{"height":46,"length":100,"new":7,"sentence":"MATCH <-/ a |+| a |+| a |+| a |+| a /- FINISH","tree":9}
+{"height":60,"length":100,"new":144,"sentence":"FILTER TIMESTAMP '2024-01-01T12:00:00' FINISH","tree":10}
+{"height":60,"length":100,"new":1,"sentence":"FILTER DATETIME '2024-01-01T12:00:00' FINISH","tree":11}
+{"height":41,"length":95,"new":202,"sentence":"MATCH ( x ) WHERE ALL_DIFFERENT ( x , x , x , x , x ) FINISH","tree":12}
+{"height":41,"length":95,"new":19,"sentence":"MATCH ( x ) WHERE SAME ( x , x , x , x , x ) FINISH","tree":13}
+{"height":37,"length":91,"new":230,"sentence":"MATCH ( x ) RETURN x GROUP BY x , x , x , x","tree":14}
+{"height":49,"length":89,"new":3199,"sentence":"MATCH ( x ) WHERE CASE SESSION_USER WHEN IS NORMALIZED , IS SOURCE OF x THEN NULL END FINISH","tree":15}
+{"height":49,"length":89,"new":8,"sentence":"MATCH ( x ) WHERE CASE SESSION_USER WHEN IS DIRECTED , IS DESTINATION OF x THEN NULL END FINISH","tree":16}
+{"height":47,"length":88,"new":2576,"sentence":"FILTER CASE WHEN SESSION_USER THEN NULL WHEN SESSION_USER THEN NULL WHEN SESSION_USER THEN NULL END FINISH","tree":17}
+{"height":46,"length":86,"new":2,"sentence":"MATCH <-/ a | a | a a /- FINISH","tree":18}
+{"height":46,"length":86,"new":0,"sentence":"MATCH <-/ a |+| a |+| a a /- FINISH","tree":19}
+{"height":43,"length":85,"new":318,"sentence":"FILTER { x : LOCAL_TIME , y : CURRENT_DATE , z : LOCAL_TIMESTAMP } FINISH","tree":20}
+{"height":34,"length":84,"new":262,"sentence":"FOR x IN SESSION_USER WITH ORDINALITY y CALL ( y , x ) { FINISH } FINISH","tree":21}
+{"height":47,"length":83,"new":1,"sentence":"MATCH ( x ) WHERE CASE SESSION_USER WHEN IS SOURCE OF x THEN NULL END FINISH","tree":22}
+{"height":47,"length":83,"new":0,"sentence":"MATCH ( x ) WHERE CASE SESSION_USER WHEN IS DESTINATION OF x THEN NULL END FINISH","tree":23}
+{"height":39,"length":79,"new":0,"sentence":"MATCH ( x ) WHERE ALL_DIFFERENT ( x , x , x ) FINISH","tree":24}
+{"height":39,"length":79,"new":0,"sentence":"MATCH ( x ) WHERE SAME ( x , x , x ) FINISH","tree":25}
+{"height":29,"length":78,"new":485,"sentence":"CALL { FINISH } CALL { FINISH } CALL { FINISH }","tree":26}
+{"height":35,"length":77,"new":1,"sentence":"VALUE x NODE { a BOOL , a ANY } = LOCAL_TIMESTAMP FINISH","tree":27}
+{"height":27,"length":77,"new":105,"sentence":"VALUE x { y BOOL , z RECORD , w BOOLEAN } = CURRENT_TIMESTAMP FINISH","tree":28}
+{"height":34,"length":76,"new":11,"sentence":"VALUE x NODE LABELS a & a & a & a = LOCAL_TIMESTAMP FINISH","tree":29}
+{"height":42,"length":76,"new":5,"sentence":"MATCH ( x ) WHERE CASE x WHEN IS NULL THEN NULL END FINISH","tree":30}
+{"height":39,"length":76,"new":1312,"sentence":"RETURN PERCENTILE_CONT ( SESSION_USER + SESSION_USER , SESSION_USER ) AS x","tree":31}
+{"height":39,"length":76,"new":592,"sentence":"RETURN PERCENTILE_DISC ( SESSION_USER - SESSION_USER , SESSION_USER ) AS x","tree":32}
+{"height":39,"length":76,"new":0,"sentence":"RETURN PERCENTILE_DISC ( SESSION_USER , SESSION_USER + SESSION_USER ) AS x","tree":33}
+{"height":39,"length":76,"new":0,"sentence":"RETURN PERCENTILE_DISC ( SESSION_USER , SESSION_USER - SESSION_USER ) AS x","tree":34}
+{"height":49,"length":76,"new":63,"sentence":"ORDER BY DATE ( '2024-01-01' ) FINISH","tree":35}
+{"height":39,"length":75,"new":447,"sentence":"OPTIONAL { MATCH ~> MATCH <- MATCH <- } FINISH","tree":36}
+{"height":37,"length":75,"new":21,"sentence":"MATCH <-> |+| <~ |+| <-> |+| ~> |+| - FINISH","tree":37}
+{"height":37,"length":75,"new":18,"sentence":"MATCH <- | - | ~ | - | - FINISH","tree":38}
+{"height":44,"length":75,"new":0,"sentence":"MATCH ( { a : CURRENT_DATE , a : LOCAL_TIMESTAMP } ) FINISH","tree":39}
+{"height":37,"length":75,"new":0,"sentence":"MATCH ( x ) RETURN x GROUP BY x , x","tree":40}
+{"height":43,"length":75,"new":1093,"sentence":"ORDER BY MOD ( SESSION_USER + SESSION_USER , SESSION_USER ) FINISH","tree":41}
+{"height":43,"length":75,"new":0,"sentence":"ORDER BY MOD ( SESSION_USER - SESSION_USER , SESSION_USER ) FINISH","tree":42}
+{"height":43,"length":75,"new":0,"sentence":"ORDER BY MOD ( SESSION_USER , SESSION_USER + SESSION_USER ) FINISH","tree":43}
+{"height":43,"length":75,"new":0,"sentence":"ORDER BY MOD ( SESSION_USER , SESSION_USER - SESSION_USER ) FINISH","tree":44}
+{"height":43,"length":75,"new":892,"sentence":"ORDER BY LOG ( SESSION_USER + SESSION_USER , SESSION_USER ) FINISH","tree":45}
+{"height":43,"length":75,"new":0,"sentence":"ORDER BY LOG ( SESSION_USER - SESSION_USER , SESSION_USER ) FINISH","tree":46}
+{"height":43,"length":75,"new":0,"sentence":"ORDER BY LOG ( SESSION_USER , SESSION_USER + SESSION_USER ) FINISH","tree":47}
+{"height":43,"length":75,"new":0,"sentence":"ORDER BY LOG ( SESSION_USER , SESSION_USER - SESSION_USER ) FINISH","tree":48}
+{"height":43,"length":75,"new":892,"sentence":"ORDER BY POWER ( SESSION_USER + SESSION_USER , SESSION_USER ) FINISH","tree":49}
+{"height":43,"length":75,"new":0,"sentence":"ORDER BY POWER ( SESSION_USER - SESSION_USER , SESSION_USER ) FINISH","tree":50}
+{"height":43,"length":75,"new":0,"sentence":"ORDER BY POWER ( SESSION_USER , SESSION_USER + SESSION_USER ) FINISH","tree":51}
+{"height":43,"length":75,"new":0,"sentence":"ORDER BY POWER ( SESSION_USER , SESSION_USER - SESSION_USER ) FINISH","tree":52}
+{"height":26,"length":74,"new":2,"sentence":"RETURN CURRENT_TIME AS x NEXT YIELD x AS y , x AS z FINISH","tree":53}
+{"height":27,"length":74,"new":46,"sentence":"VALUE x DIRECTED RELATIONSHIP TYPE { } CONNECTING ( a TO a ) = CURRENT_DATE FINISH","tree":54}
+{"height":32,"length":74,"new":33,"sentence":"VALUE x ( ) -[ LABEL a { } ]-> ( ) = CURRENT_DATE FINISH","tree":55}
+{"height":30,"length":74,"new":2,"sentence":"VALUE x ( { } ) -[ { } ]-> ( ) = CURRENT_TIMESTAMP FINISH","tree":56}
+{"height":30,"length":74,"new":2,"sentence":"VALUE x ( ) -[ { } ]-> ( { } ) = LOCAL_TIME FINISH","tree":57}
+{"height":27,"length":74,"new":3,"sentence":"VALUE x DIRECTED RELATIONSHIP { } CONNECTING ( a -> a ) = CURRENT_TIMESTAMP FINISH","tree":58}
+{"height":44,"length":74,"new":2147,"sentence":"FILTER [ CURRENT_DATE , CURRENT_TIME , LOCAL_TIME , LOCAL_TIMESTAMP ] FINISH","tree":59}
+{"height":26,"length":73,"new":1169,"sentence":"{ FINISH } OTHERWISE { FINISH } OTHERWISE { FINISH }","tree":60}
+{"height":44,"length":73,"new":1,"sentence":"MATCH <-/ a a | a /- FINISH","tree":61}
+{"height":44,"length":73,"new":0,"sentence":"MATCH <-/ a | a a /- FINISH","tree":62}
+{"height":44,"length":73,"new":1,"sentence":"MATCH <-/ a a |+| a /- FINISH","tree":63}
+{"height":44,"length":73,"new":0,"sentence":"MATCH <-/ a |+| a a /- FINISH","tree":64}
+{"height":45,"length":73,"new":3,"sentence":"MATCH <-/ a & a & a /- FINISH","tree":65}
+{"height":27,"length":73,"new":3,"sentence":"VALUE x DIRECTED EDGE { } CONNECTING ( a <- a ) = LOCAL_TIME FINISH","tree":66}
+{"height":40,"length":73,"new":286,"sentence":"FILTER CASE SESSION_USER WHEN IS NORMALIZED THEN NULL WHEN IS NULL THEN NULL WHEN IS NORMALIZED THEN NULL END FINISH","tree":67}
+{"height":42,"length":73,"new":102,"sentence":"LET x = CURRENT_DATE FILTER CASE SESSION_USER WHEN x THEN NULL END FINISH","tree":68}
+{"height":51,"length":73,"new":2,"sentence":"FILTER DATE '2024-01-01' FINISH","tree":69}
+{"height":44,"length":72,"new":0,"sentence":"MATCH <-/ a a & a /- FINISH","tree":70}
+{"height":49,"length":72,"new":1,"sentence":"MATCH <-/ ( a | a ) /- FINISH","tree":71}
+{"height":49,"length":72,"new":0,"sentence":"MATCH <-/ ( a |+| a ) /- FINISH","tree":72}
+{"height":45,"length":71,"new":0,"sentence":"MATCH <-/ a a a /- FINISH","tree":73}
+{"height":39,"length":71,"new":6,"sentence":"MATCH ( x ) WHERE x IS NOT SOURCE OF x FINISH","tree":74}
+{"height":39,"length":71,"new":3,"sentence":"MATCH ( x ) WHERE x IS NOT DESTINATION OF x FINISH","tree":75}
+{"height":37,"length":71,"new":1,"sentence":"MATCH ( x ) WHERE ALL_DIFFERENT ( x , x ) FINISH","tree":76}
+{"height":37,"length":71,"new":1,"sentence":"MATCH ( x ) WHERE SAME ( x , x ) FINISH","tree":77}
+{"height":39,"length":71,"new":0,"sentence":"LET x = CURRENT_TIME FILTER CASE x WHEN IS NULL THEN NULL END FINISH","tree":78}
+{"height":42,"length":71,"new":1295,"sentence":"ORDER BY LEFT ( SESSION_USER , SESSION_USER + SESSION_USER ) FINISH","tree":79}
+{"height":42,"length":71,"new":1,"sentence":"ORDER BY RIGHT ( SESSION_USER , SESSION_USER - SESSION_USER ) FINISH","tree":80}
+{"height":22,"length":70,"new":3,"sentence":"VALUE x = LOCAL_TIMESTAMP VALUE y = CURRENT_DATE VALUE z = LOCAL_TIME FINISH","tree":81}
+{"height":36,"length":70,"new":526,"sentence":"MATCH <-> , ~> , - , ~> FINISH","tree":82}
+{"height":33,"length":70,"new":5,"sentence":"VALUE x ( ) -[ IS a ]-> ( ) = LOCAL_TIMESTAMP FINISH","tree":83}
+{"height":29,"length":70,"new":2,"sentence":"VALUE x ( a ) -[ { } ]-> ( ) = LOCAL_TIMESTAMP FINISH","tree":84}
+{"height":29,"length":70,"new":2,"sentence":"VALUE x ( ) -[ { } ]-> ( a ) = CURRENT_TIME FINISH","tree":85}
+{"height":29,"length":70,"new":8,"sentence":"VALUE x ( a ) <-[ { } ]- ( ) = LOCAL_TIMESTAMP FINISH","tree":86}
+{"height":29,"length":70,"new":0,"sentence":"VALUE x ( ) <-[ { } ]- ( a ) = CURRENT_TIME FINISH","tree":87}
+{"height":37,"length":70,"new":2,"sentence":"MATCH ( x ) WHERE PROPERTY_EXISTS ( x , a ) FINISH","tree":88}
+{"height":40,"length":70,"new":1289,"sentence":"FILTER COALESCE ( LOCAL_TIMESTAMP , CURRENT_DATE , CURRENT_TIME , CURRENT_DATE ) FINISH","tree":89}
+{"height":41,"length":70,"new":687,"sentence":"ORDER BY LEFT ( SESSION_USER || SESSION_USER , SESSION_USER ) FINISH","tree":90}
+{"height":45,"length":70,"new":1343,"sentence":"ORDER BY TRIM ( SESSION_USER || SESSION_USER FROM SESSION_USER ) FINISH","tree":91}
+{"height":41,"length":70,"new":1779,"sentence":"ORDER BY RIGHT ( SESSION_USER || SESSION_USER , SESSION_USER ) FINISH","tree":92}
+{"height":47,"length":70,"new":63,"sentence":"ORDER BY ZONED_TIME ( '12:00:00' ) FINISH","tree":93}
+{"height":48,"length":70,"new":61,"sentence":"ORDER BY LOCAL_TIME ( '12:00:00' ) FINISH","tree":94}
+{"height":34,"length":69,"new":1,"sentence":"LET x = CURRENT_TIMESTAMP CALL ( x ) { FINISH } FINISH","tree":95}
+{"height":34,"length":69,"new":62,"sentence":"ORDER BY CURRENT_TIMESTAMP , LOCAL_TIME , CURRENT_TIMESTAMP , CURRENT_DATE FINISH","tree":96}
+{"height":33,"length":69,"new":0,"sentence":"VALUE x ( ) -[ LABELS a ]-> ( ) = CURRENT_TIME FINISH","tree":97}
+{"height":29,"length":69,"new":2,"sentence":"VALUE x ( ) <-[ { } ]- ( ) NOT NULL = CURRENT_DATE FINISH","tree":98}
+{"height":39,"length":69,"new":10,"sentence":"MATCH ( x ) WHERE x : % FINISH","tree":99}
+{"height":45,"length":69,"new":3,"sentence":"FILTER CASE SESSION_USER WHEN : % | % THEN NULL END FINISH","tree":100}
+{"height":42,"length":69,"new":436,"sentence":"FILTER CASE SESSION_USER WHEN IS NULL , IS NORMALIZED , IS NULL , IS NULL THEN NULL END FINISH","tree":101}
+{"height":40,"length":69,"new":1675,"sentence":"ORDER BY TRIM ( SESSION_USER || SESSION_USER , SESSION_USER ) FINISH","tree":102}
+{"height":40,"length":69,"new":0,"sentence":"ORDER BY TRIM ( SESSION_USER , SESSION_USER + SESSION_USER ) FINISH","tree":103}
+{"height":40,"length":69,"new":0,"sentence":"ORDER BY TRIM ( SESSION_USER , SESSION_USER - SESSION_USER ) FINISH","tree":104}
+{"height":44,"length":69,"new":1242,"sentence":"ORDER BY TRIM ( SESSION_USER || SESSION_USER FROM SESSION_USER ) FINISH","tree":105}
+{"height":43,"length":68,"new":327,"sentence":"MATCH SIMPLE <-/ a & a * /- FINISH","tree":106}
+{"height":43,"length":68,"new":0,"sentence":"FILTER { x : CURRENT_TIMESTAMP , y : LOCAL_TIME } FINISH","tree":107}
+{"height":41,"length":68,"new":2051,"sentence":"ORDER BY SESSION_USER - SESSION_USER + SESSION_USER FINISH","tree":108}
+{"height":37,"length":67,"new":1,"sentence":"MATCH ( x ) RETURN x GROUP BY x","tree":109}
+{"height":33,"length":67,"new":16,"sentence":"VALUE x VERTEX { a :: CHAR } = LOCAL_TIMESTAMP FINISH","tree":110}
+{"height":49,"length":67,"new":2,"sentence":"FILTER TIME '12:00:00' FINISH","tree":111}
+{"height":43,"length":66,"new":2,"sentence":"MATCH ( IS % | % | % ) FINISH","tree":112}
+{"height":33,"length":66,"new":1,"sentence":"VALUE x NODE { a TYPED ANY } = LOCAL_TIME FINISH","tree":113}
+{"height":38,"length":66,"new":3,"sentence":"RETURN PERCENTILE_DISC ( DISTINCT SESSION_USER , SESSION_USER ) AS x","tree":114}
+{"height":38,"length":66,"new":1,"sentence":"RETURN PERCENTILE_CONT ( ALL SESSION_USER , SESSION_USER ) AS x","tree":115}
+{"height":42,"length":65,"new":2,"sentence":"MATCH ( IS % | % & % ) FINISH","tree":116}
+{"height":46,"length":65,"new":2,"sentence":"MATCH ( IS ( % | % ) ) FINISH","tree":117}
+{"height":26,"length":65,"new":16,"sentence":"VALUE x { y BINARY , z VARCHAR } = CURRENT_DATE FINISH","tree":118}
+{"height":39,"length":65,"new":2,"sentence":"MATCH ( x ) WHERE ELEMENT_ID ( x ) FINISH","tree":119}
+{"height":45,"length":65,"new":303,"sentence":"FILTER CASE SESSION_USER WHEN IS NORMALIZED , = SESSION_USER THEN NULL END FINISH","tree":120}
+{"height":45,"length":65,"new":3,"sentence":"FILTER CASE SESSION_USER WHEN IS NORMALIZED , IS LABELED % THEN NULL END FINISH","tree":121}
+{"height":37,"length":65,"new":1083,"sentence":"ORDER BY DURATION_BETWEEN ( CURRENT_TIMESTAMP , LOCAL_TIMESTAMP ) + SESSION_USER FINISH","tree":122}
+{"height":39,"length":65,"new":688,"sentence":"ORDER BY SESSION_USER + SESSION_USER * SESSION_USER FINISH","tree":123}
+{"height":39,"length":65,"new":588,"sentence":"ORDER BY SESSION_USER + SESSION_USER / SESSION_USER FINISH","tree":124}
+{"height":37,"length":64,"new":272,"sentence":"MATCH <- |+| ~> |+| -> ~ FINISH","tree":125}
+{"height":37,"length":64,"new":0,"sentence":"MATCH -> | - | -> ~> FINISH","tree":126}
+{"height":43,"length":64,"new":0,"sentence":"MATCH ( IS % & % & % ) FINISH","tree":127}
+{"height":25,"length":64,"new":38,"sentence":"VALUE x BYTES | BOOL | ANY | ANY = LOCAL_TIME FINISH","tree":128}
+{"height":41,"length":64,"new":0,"sentence":"FILTER PATH [ SESSION_USER , SESSION_USER , SESSION_USER ] FINISH","tree":129}
+{"height":38,"length":64,"new":587,"sentence":"ORDER BY SESSION_USER + SESSION_USER * SESSION_USER FINISH","tree":130}
+{"height":44,"length":64,"new":301,"sentence":"ORDER BY ABS ( SESSION_USER + SESSION_USER ) FINISH","tree":131}
+{"height":47,"length":63,"new":202,"sentence":"MATCH ( { a : SESSION_USER } ) FINISH","tree":132}
+{"height":43,"length":63,"new":3,"sentence":"MATCH <-/ a & a ? /- FINISH","tree":133}
+{"height":45,"length":63,"new":62,"sentence":"ORDER BY DURATION ( 'P1Y2M' ) FINISH","tree":134}
+{"height":32,"length":62,"new":0,"sentence":"VALUE x VERTEX LABELS a & a = CURRENT_TIMESTAMP FINISH","tree":135}
+{"height":42,"length":62,"new":493,"sentence":"FILTER CASE SESSION_USER WHEN IS DIRECTED THEN NULL ELSE CURRENT_DATE END FINISH","tree":136}
+{"height":43,"length":62,"new":4,"sentence":"FILTER CASE SESSION_USER WHEN IS DIRECTED , IS TYPED ANY THEN NULL END FINISH","tree":137}
+{"height":47,"length":62,"new":0,"sentence":"FILTER CASE SESSION_USER WHEN IS NULL THEN SESSION_USER END FINISH","tree":138}
+{"height":37,"length":62,"new":0,"sentence":"ORDER BY SESSION_USER + SESSION_USER + SESSION_USER FINISH","tree":139}
+{"height":37,"length":62,"new":0,"sentence":"ORDER BY SESSION_USER - SESSION_USER + SESSION_USER FINISH","tree":140}
+{"height":37,"length":62,"new":0,"sentence":"ORDER BY SESSION_USER + SESSION_USER - SESSION_USER FINISH","tree":141}
+{"height":37,"length":62,"new":0,"sentence":"ORDER BY SESSION_USER - SESSION_USER - SESSION_USER FINISH","tree":142}
+{"height":42,"length":62,"new":202,"sentence":"ORDER BY COT ( SESSION_USER + SESSION_USER ) FINISH","tree":143}
+{"height":42,"length":62,"new":1,"sentence":"ORDER BY COSH ( SESSION_USER - SESSION_USER ) FINISH","tree":144}
+{"height":39,"length":62,"new":0,"sentence":"ORDER BY SESSION_USER * SESSION_USER * SESSION_USER FINISH","tree":145}
+{"height":39,"length":62,"new":0,"sentence":"ORDER BY SESSION_USER / SESSION_USER * SESSION_USER FINISH","tree":146}
+{"height":40,"length":62,"new":575,"sentence":"ORDER BY DURATION_BETWEEN ( SESSION_USER + CURRENT_TIMESTAMP , CURRENT_DATE ) FINISH","tree":147}
+{"height":39,"length":62,"new":582,"sentence":"ORDER BY DURATION_BETWEEN ( LOCAL_TIME + SESSION_USER , CURRENT_TIMESTAMP ) FINISH","tree":148}
+{"height":39,"length":62,"new":582,"sentence":"ORDER BY DURATION_BETWEEN ( CURRENT_TIME - SESSION_USER , CURRENT_TIMESTAMP ) FINISH","tree":149}
+{"height":40,"length":62,"new":0,"sentence":"ORDER BY DURATION_BETWEEN ( CURRENT_TIMESTAMP , SESSION_USER + CURRENT_DATE ) FINISH","tree":150}
+{"height":39,"length":62,"new":0,"sentence":"ORDER BY DURATION_BETWEEN ( CURRENT_TIMESTAMP , CURRENT_TIME + SESSION_USER ) FINISH","tree":151}
+{"height":39,"length":62,"new":0,"sentence":"ORDER BY DURATION_BETWEEN ( CURRENT_TIME , CURRENT_TIMESTAMP - SESSION_USER ) FINISH","tree":152}
+{"height":42,"length":61,"new":4,"sentence":"MATCH ~/ a | a /~ FINISH","tree":153}
+{"height":42,"length":61,"new":0,"sentence":"MATCH ~/ a |+| a /~ FINISH","tree":154}
+{"height":42,"length":61,"new":4,"sentence":"MATCH -/ a | a /-> FINISH","tree":155}
+{"height":42,"length":61,"new":0,"sentence":"MATCH -/ a |+| a /-> FINISH","tree":156}
+{"height":42,"length":61,"new":3,"sentence":"MATCH <~/ a | a /~ FINISH","tree":157}
+{"height":42,"length":61,"new":0,"sentence":"MATCH <~/ a |+| a /~ FINISH","tree":158}
+{"height":42,"length":61,"new":3,"sentence":"MATCH ~/ a | a /~> FINISH","tree":159}
+{"height":42,"length":61,"new":0,"sentence":"MATCH ~/ a |+| a /~> FINISH","tree":160}
+{"height":42,"length":61,"new":2,"sentence":"MATCH <-/ a | a /-> FINISH","tree":161}
+{"height":42,"length":61,"new":0,"sentence":"MATCH <-/ a |+| a /-> FINISH","tree":162}
+{"height":42,"length":61,"new":2,"sentence":"MATCH -/ a | a /- FINISH","tree":163}
+{"height":42,"length":61,"new":0,"sentence":"MATCH -/ a |+| a /- FINISH","tree":164}
+{"height":49,"length":61,"new":3,"sentence":"MATCH <-/ ! ( a ) /- FINISH","tree":165}
+{"height":37,"length":61,"new":2,"sentence":"MATCH ( x ) WHERE x IS DIRECTED FINISH","tree":166}
+{"height":36,"length":61,"new":587,"sentence":"ORDER BY SESSION_USER + SESSION_USER * SESSION_USER FINISH","tree":167}
+{"height":36,"length":61,"new":587,"sentence":"ORDER BY SESSION_USER + SESSION_USER / SESSION_USER FINISH","tree":168}
+{"height":36,"length":61,"new":0,"sentence":"ORDER BY SESSION_USER - SESSION_USER * SESSION_USER FINISH","tree":169}
+{"height":36,"length":61,"new":0,"sentence":"ORDER BY SESSION_USER - SESSION_USER / SESSION_USER FINISH","tree":170}
+{"height":42,"length":61,"new":201,"sentence":"ORDER BY ABS ( SESSION_USER + SESSION_USER ) FINISH","tree":171}
+{"height":42,"length":61,"new":0,"sentence":"ORDER BY ABS ( SESSION_USER - SESSION_USER ) FINISH","tree":172}
+{"height":42,"length":61,"new":201,"sentence":"ORDER BY LOG10 ( SESSION_USER + SESSION_USER ) FINISH","tree":173}
+{"height":42,"length":61,"new":0,"sentence":"ORDER BY LOG10 ( SESSION_USER - SESSION_USER ) FINISH","tree":174}
+{"height":42,"length":61,"new":201,"sentence":"ORDER BY LN ( SESSION_USER + SESSION_USER ) FINISH","tree":175}
+{"height":42,"length":61,"new":0,"sentence":"ORDER BY LN ( SESSION_USER - SESSION_USER ) FINISH","tree":176}
+{"height":42,"length":61,"new":201,"sentence":"ORDER BY EXP ( SESSION_USER + SESSION_USER ) FINISH","tree":177}
+{"height":42,"length":61,"new":0,"sentence":"ORDER BY EXP ( SESSION_USER - SESSION_USER ) FINISH","tree":178}
+{"height":42,"length":61,"new":201,"sentence":"ORDER BY SQRT ( SESSION_USER + SESSION_USER ) FINISH","tree":179}
+{"height":42,"length":61,"new":0,"sentence":"ORDER BY SQRT ( SESSION_USER - SESSION_USER ) FINISH","tree":180}
+{"height":42,"length":61,"new":201,"sentence":"ORDER BY FLOOR ( SESSION_USER + SESSION_USER ) FINISH","tree":181}
+{"height":42,"length":61,"new":0,"sentence":"ORDER BY FLOOR ( SESSION_USER - SESSION_USER ) FINISH","tree":182}
+{"height":42,"length":61,"new":202,"sentence":"ORDER BY CEIL ( SESSION_USER + SESSION_USER ) FINISH","tree":183}
+{"height":42,"length":61,"new":1,"sentence":"ORDER BY CEILING ( SESSION_USER - SESSION_USER ) FINISH","tree":184}
+{"height":38,"length":61,"new":0,"sentence":"ORDER BY SESSION_USER * SESSION_USER * SESSION_USER FINISH","tree":185}
+{"height":40,"length":61,"new":0,"sentence":"ORDER BY ABS ( DURATION_BETWEEN ( CURRENT_DATE , CURRENT_TIMESTAMP ) ) FINISH","tree":186}
+{"height":42,"length":60,"new":7,"sentence":"MATCH TRAIL <-/ a { , } /- FINISH","tree":187}
+{"height":29,"length":60,"new":3,"sentence":"VALUE x VERTEX LABEL a { } = CURRENT_TIME FINISH","tree":188}
+{"height":43,"length":60,"new":1,"sentence":"FILTER CASE SESSION_USER WHEN IS NOT LABELED % THEN NULL END FINISH","tree":189}
+{"height":41,"length":60,"new":218,"sentence":"FILTER LET x = LOCAL_TIME IN SESSION_USER END FINISH","tree":190}
+{"height":39,"length":60,"new":1089,"sentence":"ORDER BY SESSION_USER || SESSION_USER || SESSION_USER FINISH","tree":191}
+{"height":39,"length":60,"new":0,"sentence":"ORDER BY SESSION_USER || SESSION_USER || SESSION_USER FINISH","tree":192}
+{"height":37,"length":60,"new":0,"sentence":"ORDER BY SESSION_USER * SESSION_USER * SESSION_USER FINISH","tree":193}
+{"height":37,"length":60,"new":0,"sentence":"ORDER BY SESSION_USER / SESSION_USER * SESSION_USER FINISH","tree":194}
+{"height":37,"length":60,"new":0,"sentence":"ORDER BY SESSION_USER * SESSION_USER / SESSION_USER FINISH","tree":195}
+{"height":37,"length":60,"new":0,"sentence":"ORDER BY SESSION_USER / SESSION_USER / SESSION_USER FINISH","tree":196}
+{"height":43,"length":60,"new":302,"sentence":"ORDER BY CARDINALITY ( SESSION_USER || SESSION_USER ) FINISH","tree":197}
+{"height":43,"length":60,"new":101,"sentence":"ORDER BY CARDINALITY ( SESSION_USER || SESSION_USER ) FINISH","tree":198}
+{"height":43,"length":60,"new":301,"sentence":"ORDER BY PATH_LENGTH ( SESSION_USER || SESSION_USER ) FINISH","tree":199}
+{"height":39,"length":60,"new":0,"sentence":"ORDER BY SESSION_USER + SESSION_USER + LOCAL_TIME FINISH","tree":200}
+{"height":37,"length":60,"new":0,"sentence":"ORDER BY SESSION_USER * SESSION_USER * SESSION_USER FINISH","tree":201}
+{"height":37,"length":60,"new":0,"sentence":"ORDER BY SESSION_USER / SESSION_USER * SESSION_USER FINISH","tree":202}
+{"height":44,"length":59,"new":5,"sentence":"MATCH SIMPLE <-/ a > + /- FINISH","tree":203}
+{"height":42,"length":59,"new":10,"sentence":"MATCH <-/ a { ٣ } /- FINISH","tree":204}
+{"height":43,"length":59,"new":103,"sentence":"FILTER CASE SESSION_USER WHEN <= CURRENT_TIMESTAMP THEN NULL END FINISH","tree":205}
+{"height":42,"length":59,"new":0,"sentence":"FILTER CASE SESSION_USER WHEN IS DIRECTED , SESSION_USER THEN NULL END FINISH","tree":206}
+{"height":42,"length":59,"new":101,"sentence":"ORDER BY SIZE ( SESSION_USER || SESSION_USER ) FINISH","tree":207}
+{"height":42,"length":59,"new":202,"sentence":"ORDER BY CHARACTER_LENGTH ( SESSION_USER || SESSION_USER ) FINISH","tree":208}
+{"height":42,"length":59,"new":202,"sentence":"ORDER BY OCTET_LENGTH ( SESSION_USER || SESSION_USER ) FINISH","tree":209}
+{"height":38,"length":59,"new":0,"sentence":"ORDER BY SESSION_USER || SESSION_USER || SESSION_USER FINISH","tree":210}
+{"height":38,"length":59,"new":0,"sentence":"ORDER BY SESSION_USER || SESSION_USER || SESSION_USER FINISH","tree":211}
+{"height":41,"length":59,"new":1,"sentence":"ORDER BY SESSION_USER || TRIM ( SESSION_USER ) FINISH","tree":212}
+{"height":41,"length":59,"new":741,"sentence":"ORDER BY LTRIM ( SESSION_USER , SESSION_USER ) FINISH","tree":213}
+{"height":42,"length":59,"new":2,"sentence":"ORDER BY RTRIM ( SESSION_USER || SESSION_USER ) FINISH","tree":214}
+{"height":41,"length":59,"new":1,"sentence":"ORDER BY LEFT ( SESSION_USER , SESSION_USER ) FINISH","tree":215}
+{"height":42,"length":59,"new":0,"sentence":"ORDER BY TRIM ( SESSION_USER || SESSION_USER ) FINISH","tree":216}
+{"height":41,"length":59,"new":26,"sentence":"FILTER X''\n''\n''\n'' FINISH","tree":217}
+{"height":41,"length":58,"new":2,"sentence":"MATCH ( IS % & ! % ) FINISH","tree":218}
+{"height":45,"length":58,"new":0,"sentence":"MATCH ( IS ! ( % ) ) FINISH","tree":219}
+{"height":45,"length":58,"new":0,"sentence":"FILTER CASE WHEN SESSION_USER THEN LOCAL_TIMESTAMP END FINISH","tree":220}
+{"height":42,"length":58,"new":0,"sentence":"ORDER BY TRIM ( SESSION_USER FROM SESSION_USER ) FINISH","tree":221}
+{"height":45,"length":57,"new":76,"sentence":"MATCH ( x WHERE SESSION_USER ) FINISH","tree":222}
+{"height":42,"length":57,"new":674,"sentence":"MATCH ( - WHERE SESSION_USER ) FINISH","tree":223}
+{"height":26,"length":57,"new":2,"sentence":"VALUE x NODE { } AS a = CURRENT_DATE FINISH","tree":224}
+{"height":30,"length":57,"new":1,"sentence":"VALUE x VERTEX : a = LOCAL_TIMESTAMP FINISH","tree":225}
+{"height":42,"length":57,"new":838,"sentence":"FILTER CURRENT_TIMESTAMP >= ( SESSION_USER ) FINISH","tree":226}
+{"height":42,"length":57,"new":1436,"sentence":"FILTER NULLIF ( SESSION_USER , CURRENT_DATE ) FINISH","tree":227}
+{"height":42,"length":57,"new":0,"sentence":"FILTER NULLIF ( LOCAL_TIMESTAMP , SESSION_USER ) FINISH","tree":228}
+{"height":42,"length":57,"new":0,"sentence":"FILTER COALESCE ( SESSION_USER , LOCAL_TIMESTAMP ) FINISH","tree":229}
+{"height":43,"length":57,"new":0,"sentence":"FILTER COALESCE ( CURRENT_TIMESTAMP , SESSION_USER ) FINISH","tree":230}
+{"height":45,"length":57,"new":70,"sentence":"FILTER CASE WHEN SESSION_USER THEN NULL ELSE NULL END FINISH","tree":231}
+{"height":40,"length":57,"new":0,"sentence":"FILTER CASE SESSION_USER WHEN IS NULL , IS DIRECTED THEN NULL END FINISH","tree":232}
+{"height":38,"length":57,"new":201,"sentence":"ORDER BY SESSION_USER || ELEMENTS ( SESSION_USER ) FINISH","tree":233}
+{"height":40,"length":57,"new":0,"sentence":"ORDER BY ELEMENTS ( SESSION_USER || SESSION_USER ) FINISH","tree":234}
+{"height":39,"length":57,"new":303,"sentence":"ORDER BY SESSION_USER || NORMALIZE ( SESSION_USER ) FINISH","tree":235}
+{"height":40,"length":57,"new":202,"sentence":"ORDER BY UPPER ( SESSION_USER || SESSION_USER ) FINISH","tree":236}
+{"height":40,"length":57,"new":0,"sentence":"ORDER BY NORMALIZE ( SESSION_USER || SESSION_USER ) FINISH","tree":237}
+{"height":35,"length":57,"new":0,"sentence":"ORDER BY DURATION_BETWEEN ( CURRENT_DATE , CURRENT_TIMESTAMP ) + LOCAL_TIME FINISH","tree":238}
+{"height":37,"length":57,"new":0,"sentence":"ORDER BY SESSION_USER + CURRENT_TIMESTAMP + SESSION_USER FINISH","tree":239}
+{"height":36,"length":57,"new":0,"sentence":"ORDER BY CURRENT_TIME + SESSION_USER + SESSION_USER FINISH","tree":240}
+{"height":36,"length":57,"new":0,"sentence":"ORDER BY CURRENT_DATE - SESSION_USER + SESSION_USER FINISH","tree":241}
+{"height":37,"length":57,"new":0,"sentence":"ORDER BY CURRENT_TIME + SESSION_USER * SESSION_USER FINISH","tree":242}
+{"height":37,"length":57,"new":0,"sentence":"ORDER BY LOCAL_TIME + SESSION_USER / SESSION_USER FINISH","tree":243}
+{"height":37,"length":57,"new":0,"sentence":"ORDER BY SESSION_USER + LOCAL_TIMESTAMP - SESSION_USER FINISH","tree":244}
+{"height":36,"length":57,"new":0,"sentence":"ORDER BY LOCAL_TIME + SESSION_USER - SESSION_USER FINISH","tree":245}
+{"height":36,"length":57,"new":0,"sentence":"ORDER BY CURRENT_TIME - SESSION_USER - SESSION_USER FINISH","tree":246}
+{"height":37,"length":57,"new":0,"sentence":"ORDER BY CURRENT_TIME - SESSION_USER * SESSION_USER FINISH","tree":247}
+{"height":37,"length":57,"new":0,"sentence":"ORDER BY LOCAL_TIME - SESSION_USER / SESSION_USER FINISH","tree":248}
+{"height":45,"length":57,"new":2,"sentence":"FILTER DURATION 'P1Y2M' FINISH","tree":249}
+{"height":40,"length":57,"new":15,"sentence":"FILTER X''\n'AEfdfd' FINISH","tree":250}
+{"height":44,"length":56,"new":2,"sentence":"MATCH <-/ ~ ! a > /- FINISH","tree":251}
+{"height":44,"length":56,"new":3,"sentence":"MATCH <-/ < ! a > /- FINISH","tree":252}
+{"height":23,"length":56,"new":12,"sentence":"VALUE x STRING ( 8 , 8 ) = CURRENT_TIME FINISH","tree":253}
+{"height":23,"length":56,"new":9,"sentence":"VALUE x BYTES ( 0xE , 9 ) = LOCAL_TIMESTAMP FINISH","tree":254}
+{"height":23,"length":56,"new":6,"sentence":"VALUE x STRING ( 0o5 , 0o5 ) = CURRENT_DATE FINISH","tree":255}
+{"height":23,"length":56,"new":6,"sentence":"VALUE x STRING ( 0b0 , 0o5 ) = LOCAL_TIME FINISH","tree":256}
+{"height":24,"length":56,"new":17,"sentence":"VALUE x DECIMAL ( ٣ , 8 ) = CURRENT_TIMESTAMP FINISH","tree":257}
+{"height":23,"length":56,"new":9,"sentence":"VALUE x ANY VALUE < PATH | ANY > = CURRENT_TIME FINISH","tree":258}
+{"height":24,"length":56,"new":5,"sentence":"VALUE x { y :: ANY } = CURRENT_TIME FINISH","tree":259}
+{"height":41,"length":56,"new":0,"sentence":"FILTER CASE SESSION_USER WHEN IS TYPED BYTES THEN NULL END FINISH","tree":260}
+{"height":45,"length":56,"new":1,"sentence":"FILTER { x : SESSION_USER } FINISH","tree":261}
+{"height":33,"length":56,"new":2024,"sentence":"FILTER SESSION_USER OR SESSION_USER OR SESSION_USER FINISH","tree":262}
+{"height":33,"length":56,"new":2024,"sentence":"FILTER SESSION_USER XOR SESSION_USER OR SESSION_USER FINISH","tree":263}
+{"height":33,"length":56,"new":0,"sentence":"FILTER SESSION_USER OR SESSION_USER XOR SESSION_USER FINISH","tree":264}
+{"height":33,"length":56,"new":0,"sentence":"FILTER SESSION_USER XOR SESSION_USER XOR SESSION_USER FINISH","tree":265}
+{"height":36,"length":56,"new":0,"sentence":"ORDER BY CURRENT_TIME + SESSION_USER * SESSION_USER FINISH","tree":266}
+{"height":36,"length":56,"new":0,"sentence":"ORDER BY CURRENT_TIMESTAMP - SESSION_USER * SESSION_USER FINISH","tree":267}
+{"height":45,"length":56,"new":11,"sentence":"FILTER X''//xxx\n'' FINISH","tree":268}
+{"height":32,"length":55,"new":6,"sentence":"LET x = CURRENT_DATE , VALUE y = CURRENT_DATE FINISH","tree":269}
+{"height":42,"length":55,"new":4,"sentence":"MATCH TRAIL <~/ a /~ * FINISH","tree":270}
+{"height":23,"length":55,"new":9,"sentence":"VALUE x FLOAT ( 8 , ٣ ) = CURRENT_DATE FINISH","tree":271}
+{"height":23,"length":55,"new":1,"sentence":"VALUE x ANY < BOOL | BINARY > = CURRENT_DATE FINISH","tree":272}
+{"height":24,"length":55,"new":0,"sentence":"VALUE x { y TYPED BINARY } = CURRENT_DATE FINISH","tree":273}
+{"height":38,"length":55,"new":0,"sentence":"FILTER LET x = CURRENT_TIMESTAMP IN CURRENT_DATE END FINISH","tree":274}
+{"height":32,"length":55,"new":1499,"sentence":"FILTER SESSION_USER OR SESSION_USER AND SESSION_USER FINISH","tree":275}
+{"height":32,"length":55,"new":0,"sentence":"FILTER SESSION_USER XOR SESSION_USER AND SESSION_USER FINISH","tree":276}
+{"height":39,"length":55,"new":0,"sentence":"FILTER ( SESSION_USER OR SESSION_USER ) FINISH","tree":277}
+{"height":39,"length":55,"new":0,"sentence":"FILTER ( SESSION_USER XOR SESSION_USER ) FINISH","tree":278}
+{"height":42,"length":55,"new":6,"sentence":"FILTER X''\n'B   b' FINISH","tree":279}
+{"height":42,"length":55,"new":3,"sentence":"FILTER X''\n'bd   ' FINISH","tree":280}
+{"height":25,"length":54,"new":6,"sentence":"{ FINISH } UNION DISTINCT { FINISH }","tree":281}
+{"height":25,"length":54,"new":0,"sentence":"{ FINISH } UNION ALL { FINISH }","tree":282}
+{"height":25,"length":54,"new":5,"sentence":"{ FINISH } EXCEPT DISTINCT { FINISH }","tree":283}
+{"height":25,"length":54,"new":0,"sentence":"{ FINISH } EXCEPT ALL { FINISH }","tree":284}
+{"height":25,"length":54,"new":5,"sentence":"{ FINISH } INTERSECT DISTINCT { FINISH }","tree":285}
+{"height":25,"length":54,"new":0,"sentence":"{ FINISH } INTERSECT ALL { FINISH }","tree":286}
+{"height":35,"length":54,"new":1,"sentence":"MATCH <~ <~ |+| <~ FINISH","tree":287}
+{"height":35,"length":54,"new":0,"sentence":"MATCH <~ |+| ~> - FINISH","tree":288}
+{"height":35,"length":54,"new":1,"sentence":"MATCH ~> <~ | <- FINISH","tree":289}
+{"height":35,"length":54,"new":0,"sentence":"MATCH <- | ~ -> FINISH","tree":290}
+{"height":38,"length":54,"new":1,"sentence":"MATCH ( ~> |+| ~ ) FINISH","tree":291}
+{"height":38,"length":54,"new":0,"sentence":"MATCH ( -> | ~> ) FINISH","tree":292}
+{"height":44,"length":54,"new":2,"sentence":"MATCH <-/ - a ? /- FINISH","tree":293}
+{"height":44,"length":54,"new":2,"sentence":"MATCH <-/ < ! a /- FINISH","tree":294}
+{"height":44,"length":54,"new":2,"sentence":"MATCH <-/ ~ ! a /- FINISH","tree":295}
+{"height":44,"length":54,"new":0,"sentence":"MATCH <-/ ! a > /- FINISH","tree":296}
+{"height":44,"length":54,"new":2,"sentence":"MATCH <-/ <~ ! a /- FINISH","tree":297}
+{"height":44,"length":54,"new":0,"sentence":"MATCH <-/ - ! a /- FINISH","tree":298}
+{"height":42,"length":54,"new":353,"sentence":"FILTER CAST ( SESSION_USER AS ANY ) FINISH","tree":299}
+{"height":42,"length":54,"new":0,"sentence":"FILTER [ CURRENT_TIMESTAMP , CURRENT_DATE ] FINISH","tree":300}
+{"height":33,"length":54,"new":0,"sentence":"FILTER SESSION_USER AND SESSION_USER AND SESSION_USER FINISH","tree":301}
+{"height":35,"length":54,"new":2,"sentence":"ORDER BY DURATION_BETWEEN ( LOCAL_TIME , CURRENT_DATE ) YEAR TO MONTH FINISH","tree":302}
+{"height":35,"length":54,"new":1,"sentence":"ORDER BY DURATION_BETWEEN ( LOCAL_TIME , CURRENT_TIME ) DAY TO SECOND FINISH","tree":303}
+{"height":36,"length":53,"new":3,"sentence":"MATCH ACYCLIC <~ { 0b0 , } FINISH","tree":304}
+{"height":36,"length":53,"new":0,"sentence":"MATCH TRAIL - { 9 , } FINISH","tree":305}
+{"height":36,"length":53,"new":1,"sentence":"MATCH TRAIL ~> { 0xc , } FINISH","tree":306}
+{"height":36,"length":53,"new":1,"sentence":"MATCH TRAIL - { 0o7 , } FINISH","tree":307}
+{"height":43,"length":53,"new":0,"sentence":"MATCH <-/ ~ a > /- FINISH","tree":308}
+{"height":43,"length":53,"new":0,"sentence":"MATCH <-/ < a > /- FINISH","tree":309}
+{"height":26,"length":53,"new":1,"sentence":"RETURN CURRENT_TIMESTAMP AS x NEXT YIELD x FINISH","tree":310}
+{"height":26,"length":53,"new":16,"sentence":"VALUE x ( { } ) = CURRENT_TIMESTAMP FINISH","tree":311}
+{"height":26,"length":53,"new":1,"sentence":"VALUE x NODE TYPE { } = LOCAL_TIMESTAMP FINISH","tree":312}
+{"height":25,"length":52,"new":1,"sentence":"{ FINISH } UNION { FINISH }","tree":313}
+{"height":25,"length":52,"new":1,"sentence":"{ FINISH } EXCEPT { FINISH }","tree":314}
+{"height":25,"length":52,"new":1,"sentence":"{ FINISH } INTERSECT { FINISH }","tree":315}
+{"height":37,"length":52,"new":8,"sentence":"MATCH ( x ) YIELD x FINISH","tree":316}
+{"height":32,"length":52,"new":5,"sentence":"MATCH x = - YIELD x FINISH","tree":317}
+{"height":36,"length":52,"new":0,"sentence":"MATCH <- <-> <~ FINISH","tree":318}
+{"height":23,"length":52,"new":2,"sentence":"VALUE x DECIMAL ( 8 ) NOT NULL = CURRENT_TIME FINISH","tree":319}
+{"height":38,"length":52,"new":1,"sentence":"FILTER CASE SESSION_USER WHEN IS NOT DIRECTED THEN NULL END FINISH","tree":320}
+{"height":39,"length":52,"new":197,"sentence":"RETURN COUNT ( SESSION_USER ) AS x","tree":321}
+{"height":33,"length":52,"new":0,"sentence":"LET x = CURRENT_DATE FILTER x FINISH","tree":322}
+{"height":41,"length":52,"new":3,"sentence":"ORDER BY TRIM ( LEADING FROM SESSION_USER ) FINISH","tree":323}
+{"height":41,"length":52,"new":1,"sentence":"ORDER BY TRIM ( TRAILING FROM SESSION_USER ) FINISH","tree":324}
+{"height":41,"length":52,"new":1,"sentence":"ORDER BY TRIM ( BOTH FROM SESSION_USER ) FINISH","tree":325}
+{"height":43,"length":52,"new":0,"sentence":"FILTER X''//x\n'' FINISH","tree":326}
+{"height":39,"length":51,"new":2408,"sentence":"MATCH SHORTEST $b GROUP ~ FINISH","tree":327}
+{"height":34,"length":51,"new":248,"sentence":"MATCH ACYCLIC <~ ~> * FINISH","tree":328}
+{"height":38,"length":51,"new":0,"sentence":"MATCH TRAIL ( ~ ) * FINISH","tree":329}
+{"height":42,"length":51,"new":1,"sentence":"MATCH ( IS ! a ) FINISH","tree":330}
+{"height":43,"length":51,"new":0,"sentence":"MATCH <-/ < a /- FINISH","tree":331}
+{"height":43,"length":51,"new":0,"sentence":"MATCH <-/ ~ a /- FINISH","tree":332}
+{"height":43,"length":51,"new":0,"sentence":"MATCH <-/ <~ a /- FINISH","tree":333}
+{"height":25,"length":51,"new":11,"sentence":"VALUE x INTEGER ( ٣ ) = LOCAL_TIME FINISH","tree":334}
+{"height":40,"length":51,"new":0,"sentence":"FILTER LOCAL_TIME >= SESSION_USER FINISH","tree":335}
+{"height":40,"length":51,"new":0,"sentence":"FILTER LOCAL_TIMESTAMP = SESSION_USER FINISH","tree":336}
+{"height":40,"length":51,"new":2,"sentence":"ORDER BY TRIM ( LEADING FROM SESSION_USER ) FINISH","tree":337}
+{"height":40,"length":51,"new":0,"sentence":"ORDER BY TRIM ( TRAILING FROM SESSION_USER ) FINISH","tree":338}
+{"height":40,"length":51,"new":0,"sentence":"ORDER BY TRIM ( BOTH FROM SESSION_USER ) FINISH","tree":339}
+{"height":43,"length":51,"new":10,"sentence":"MATCH <-/ `` /- FINISH","tree":340}
+{"height":40,"length":51,"new":3,"sentence":"FILTER X''\n'   ' FINISH","tree":341}
+{"height":40,"length":51,"new":0,"sentence":"FILTER X''\n'c b' FINISH","tree":342}
+{"height":40,"length":51,"new":1,"sentence":"FILTER X''\n'ab ' FINISH","tree":343}
+{"height":38,"length":51,"new":306,"sentence":"FILTER SESSION_USER . abbb FINISH","tree":344}
+{"height":41,"length":51,"new":5,"sentence":"FILTER X''/*\n*/'' FINISH","tree":345}
+{"height":28,"length":50,"new":0,"sentence":"RETURN CURRENT_TIMESTAMP AS x , LOCAL_TIMESTAMP AS y","tree":346}
+{"height":42,"length":50,"new":4,"sentence":"MATCH -/ a /-> ? FINISH","tree":347}
+{"height":37,"length":50,"new":3,"sentence":"MATCH ( a = ~ ) FINISH","tree":348}
+{"height":24,"length":50,"new":6,"sentence":"VALUE x INT ( 9 ) = CURRENT_TIME FINISH","tree":349}
+{"height":24,"length":50,"new":7,"sentence":"VALUE x UINT ( ٣ ) = CURRENT_TIME FINISH","tree":350}
+{"height":19,"length":50,"new":8,"sentence":"VALUE x DURATION ( DAY TO SECOND ) NOT NULL = LOCAL_TIMESTAMP FINISH","tree":351}
+{"height":22,"length":50,"new":37,"sentence":"VALUE x LIST [ 0b0 ] = CURRENT_TIMESTAMP FINISH","tree":352}
+{"height":39,"length":50,"new":0,"sentence":"FILTER SESSION_USER = SESSION_USER FINISH","tree":353}
+{"height":45,"length":50,"new":385,"sentence":"FILTER EXISTS { MATCH - } FINISH","tree":354}
+{"height":45,"length":50,"new":20,"sentence":"FILTER EXISTS ( MATCH <-> ) FINISH","tree":355}
+{"height":36,"length":50,"new":0,"sentence":"ORDER BY SESSION_USER OR SESSION_USER FINISH","tree":356}
+{"height":36,"length":50,"new":0,"sentence":"ORDER BY SESSION_USER XOR SESSION_USER FINISH","tree":357}
+{"height":41,"length":50,"new":1,"sentence":"ORDER BY SIN ( SESSION_USER ) FINISH","tree":358}
+{"height":41,"length":50,"new":1,"sentence":"ORDER BY COS ( SESSION_USER ) FINISH","tree":359}
+{"height":41,"length":50,"new":1,"sentence":"ORDER BY TAN ( SESSION_USER ) FINISH","tree":360}
+{"height":41,"length":50,"new":1,"sentence":"ORDER BY SINH ( SESSION_USER ) FINISH","tree":361}
+{"height":41,"length":50,"new":1,"sentence":"ORDER BY TANH ( SESSION_USER ) FINISH","tree":362}
+{"height":41,"length":50,"new":1,"sentence":"ORDER BY ASIN ( SESSION_USER ) FINISH","tree":363}
+{"height":41,"length":50,"new":1,"sentence":"ORDER BY ACOS ( SESSION_USER ) FINISH","tree":364}
+{"height":41,"length":50,"new":1,"sentence":"ORDER BY ATAN ( SESSION_USER ) FINISH","tree":365}
+{"height":41,"length":50,"new":1,"sentence":"ORDER BY DEGREES ( SESSION_USER ) FINISH","tree":366}
+{"height":41,"length":50,"new":1,"sentence":"ORDER BY RADIANS ( SESSION_USER ) FINISH","tree":367}
+{"height":38,"length":50,"new":2,"sentence":"ORDER BY NORMALIZE ( SESSION_USER , NFD ) FINISH","tree":368}
+{"height":38,"length":50,"new":1,"sentence":"ORDER BY NORMALIZE ( SESSION_USER , NFC ) FINISH","tree":369}
+{"height":38,"length":50,"new":1,"sentence":"ORDER BY NORMALIZE ( SESSION_USER , NFKC ) FINISH","tree":370}
+{"height":38,"length":50,"new":1,"sentence":"ORDER BY NORMALIZE ( SESSION_USER , NFKD ) FINISH","tree":371}
+{"height":37,"length":50,"new":0,"sentence":"ORDER BY SESSION_USER / SESSION_USER FINISH","tree":372}
+{"height":38,"length":50,"new":15,"sentence":"FILTER X'eBFCAf' FINISH","tree":373}
+{"height":39,"length":50,"new":1,"sentence":"FILTER X''\n'9e' FINISH","tree":374}
+{"height":39,"length":50,"new":0,"sentence":"FILTER X''\n'C9' FINISH","tree":375}
+{"height":42,"length":50,"new":1,"sentence":"FILTER X''//\n'' FINISH","tree":376}
+{"height":27,"length":49,"new":4,"sentence":"LIMIT 0xC LIMIT 0xc LIMIT 0o6 FINISH","tree":377}
+{"height":38,"length":49,"new":13,"sentence":"MATCH ANY $b <-> FINISH","tree":378}
+{"height":36,"length":49,"new":9,"sentence":"MATCH ~ { , 0b0 } FINISH","tree":379}
+{"height":36,"length":49,"new":0,"sentence":"MATCH <-> { , 9 } FINISH","tree":380}
+{"height":36,"length":49,"new":0,"sentence":"MATCH - { , 0xd } FINISH","tree":381}
+{"height":36,"length":49,"new":0,"sentence":"MATCH ~ { , 0o5 } FINISH","tree":382}
+{"height":28,"length":49,"new":3,"sentence":"RETURN COUNT ( * ) AS x GROUP BY ( )","tree":383}
+{"height":24,"length":49,"new":3,"sentence":"VALUE x ( a ) = LOCAL_TIMESTAMP FINISH","tree":384}
+{"height":38,"length":49,"new":0,"sentence":"FILTER SESSION_USER <= SESSION_USER FINISH","tree":385}
+{"height":38,"length":49,"new":0,"sentence":"FILTER CURRENT_TIMESTAMP >= SESSION_USER FINISH","tree":386}
+{"height":38,"length":49,"new":202,"sentence":"FILTER SESSION_USER <= SESSION_USER FINISH","tree":387}
+{"height":36,"length":49,"new":412,"sentence":"FILTER ( CURRENT_DATE ) IS TYPED BYTES FINISH","tree":388}
+{"height":37,"length":49,"new":0,"sentence":"FILTER CAST ( CURRENT_DATE AS ANY ) FINISH","tree":389}
+{"height":34,"length":49,"new":3,"sentence":"RETURN MAX ( DISTINCT CURRENT_DATE ) AS x","tree":390}
+{"height":35,"length":49,"new":0,"sentence":"RETURN MAX ( ALL LOCAL_TIME ) AS x","tree":391}
+{"height":45,"length":49,"new":1,"sentence":"FILTER [ SESSION_USER ] FINISH","tree":392}
+{"height":41,"length":49,"new":0,"sentence":"ORDER BY ABS ( SESSION_USER ) FINISH","tree":393}
+{"height":41,"length":49,"new":0,"sentence":"ORDER BY LOG10 ( SESSION_USER ) FINISH","tree":394}
+{"height":41,"length":49,"new":0,"sentence":"ORDER BY LN ( SESSION_USER ) FINISH","tree":395}
+{"height":41,"length":49,"new":0,"sentence":"ORDER BY EXP ( SESSION_USER ) FINISH","tree":396}
+{"height":41,"length":49,"new":0,"sentence":"ORDER BY SQRT ( SESSION_USER ) FINISH","tree":397}
+{"height":41,"length":49,"new":0,"sentence":"ORDER BY FLOOR ( SESSION_USER ) FINISH","tree":398}
+{"height":41,"length":49,"new":0,"sentence":"ORDER BY CEILING ( SESSION_USER ) FINISH","tree":399}
+{"height":41,"length":49,"new":1,"sentence":"ORDER BY TRIM ( SESSION_USER ) FINISH","tree":400}
+{"height":41,"length":49,"new":0,"sentence":"ORDER BY ABS ( SESSION_USER ) FINISH","tree":401}
+{"height":37,"length":49,"new":101,"sentence":"FILTER SESSION_USER . `` FINISH","tree":402}
+{"height":39,"length":49,"new":1,"sentence":"FILTER X''\n'Df' FINISH","tree":403}
+{"height":39,"length":49,"new":0,"sentence":"FILTER X''\n'Ea' FINISH","tree":404}
+{"height":39,"length":49,"new":0,"sentence":"FILTER X''\n'FB' FINISH","tree":405}
+{"height":39,"length":49,"new":0,"sentence":"FILTER X''\n'dB' FINISH","tree":406}
+{"height":39,"length":49,"new":0,"sentence":"FILTER X''\n'eB' FINISH","tree":407}
+{"height":39,"length":49,"new":0,"sentence":"FILTER X''\n'FA' FINISH","tree":408}
+{"height":39,"length":49,"new":0,"sentence":"FILTER X''\n'eC' FINISH","tree":409}
+{"height":39,"length":49,"new":0,"sentence":"FILTER X''\n'FD' FINISH","tree":410}
+{"height":39,"length":49,"new":0,"sentence":"FILTER X''\n'CF' FINISH","tree":411}
+{"height":39,"length":49,"new":0,"sentence":"FILTER X''\n'cc' FINISH","tree":412}
+{"height":39,"length":49,"new":13,"sentence":"FILTER .٣E8 FINISH","tree":413}
+{"height":39,"length":49,"new":3,"sentence":"FILTER 8.E8 FINISH","tree":414}
+{"height":39,"length":49,"new":3,"sentence":"FILTER ٣E+9 FINISH","tree":415}
+{"height":39,"length":49,"new":1,"sentence":"FILTER 8E-9 FINISH","tree":416}
+{"height":37,"length":49,"new":8,"sentence":"FILTER SESSION_USER . \"\" FINISH","tree":417}
+{"height":41,"length":49,"new":1,"sentence":"FILTER X''\n\n\n'' FINISH","tree":418}
+{"height":31,"length":48,"new":1,"sentence":"FOR x IN SESSION_USER || SESSION_USER FINISH","tree":419}
+{"height":27,"length":48,"new":10,"sentence":"RETURN CURRENT_TIMESTAMP AS x ORDER BY CURRENT_TIMESTAMP","tree":420}
+{"height":35,"length":48,"new":8,"sentence":"MATCH SHORTEST 0o6 WALK <~ FINISH","tree":421}
+{"height":35,"length":48,"new":5,"sentence":"MATCH SHORTEST 8 TRAIL ~> FINISH","tree":422}
+{"height":35,"length":48,"new":0,"sentence":"MATCH SHORTEST ٣ SIMPLE <-> FINISH","tree":423}
+{"height":35,"length":48,"new":0,"sentence":"MATCH SHORTEST 8 ACYCLIC <-> FINISH","tree":424}
+{"height":35,"length":48,"new":3,"sentence":"MATCH SHORTEST 0xF PATH ~ FINISH","tree":425}
+{"height":35,"length":48,"new":2,"sentence":"MATCH SHORTEST 0o3 PATHS <- FINISH","tree":426}
+{"height":41,"length":48,"new":0,"sentence":"MATCH ( IS a ) FINISH","tree":427}
+{"height":22,"length":48,"new":1,"sentence":"VALUE x STRING ( 0xE ) = CURRENT_TIMESTAMP FINISH","tree":428}
+{"height":22,"length":48,"new":2,"sentence":"VALUE x CHAR ( 0b0 ) = CURRENT_TIMESTAMP FINISH","tree":429}
+{"height":22,"length":48,"new":1,"sentence":"VALUE x VARCHAR ( ٣ ) = LOCAL_TIMESTAMP FINISH","tree":430}
+{"height":22,"length":48,"new":1,"sentence":"VALUE x BYTES ( 8 ) = LOCAL_TIMESTAMP FINISH","tree":431}
+{"height":22,"length":48,"new":1,"sentence":"VALUE x BINARY ( 0xD ) = CURRENT_TIME FINISH","tree":432}
+{"height":22,"length":48,"new":6,"sentence":"VALUE x VARBINARY ( 8 ) = CURRENT_DATE FINISH","tree":433}
+{"height":22,"length":48,"new":0,"sentence":"VALUE x CHAR ( ٣ ) = LOCAL_TIME FINISH","tree":434}
+{"height":22,"length":48,"new":0,"sentence":"VALUE x CHAR ( 0o3 ) = CURRENT_DATE FINISH","tree":435}
+{"height":22,"length":48,"new":1,"sentence":"VALUE x FLOAT ( ٣ ) = CURRENT_TIME FINISH","tree":436}
+{"height":21,"length":48,"new":1,"sentence":"VALUE x ( ) NOT NULL = LOCAL_TIME FINISH","tree":437}
+{"height":21,"length":48,"new":6,"sentence":"VALUE x ARRAY < ANY > = LOCAL_TIME FINISH","tree":438}
+{"height":21,"length":48,"new":0,"sentence":"VALUE x ARRAY < BYTES > = CURRENT_TIMESTAMP FINISH","tree":439}
+{"height":21,"length":48,"new":0,"sentence":"VALUE x LIST < PATH > = LOCAL_TIME FINISH","tree":440}
+{"height":37,"length":48,"new":0,"sentence":"FILTER SESSION_USER = SESSION_USER FINISH","tree":441}
+{"height":40,"length":48,"new":0,"sentence":"ORDER BY CARDINALITY ( SESSION_USER ) FINISH","tree":442}
+{"height":40,"length":48,"new":0,"sentence":"ORDER BY CARDINALITY ( SESSION_USER ) FINISH","tree":443}
+{"height":40,"length":48,"new":1,"sentence":"ORDER BY CHAR_LENGTH ( SESSION_USER ) FINISH","tree":444}
+{"height":40,"length":48,"new":1,"sentence":"ORDER BY BYTE_LENGTH ( SESSION_USER ) FINISH","tree":445}
+{"height":40,"length":48,"new":0,"sentence":"ORDER BY PATH_LENGTH ( SESSION_USER ) FINISH","tree":446}
+{"height":40,"length":48,"new":1,"sentence":"ORDER BY BTRIM ( SESSION_USER ) FINISH","tree":447}
+{"height":36,"length":48,"new":101,"sentence":"ORDER BY SESSION_USER + SESSION_USER FINISH","tree":448}
+{"height":40,"length":48,"new":3,"sentence":"FILTER X'C   a' FINISH","tree":449}
+{"height":40,"length":48,"new":3,"sentence":"FILTER X'bF   ' FINISH","tree":450}
+{"height":39,"length":48,"new":3,"sentence":"FILTER ٣E٣M FINISH","tree":451}
+{"height":39,"length":48,"new":2,"sentence":"FILTER ٣E٣F FINISH","tree":452}
+{"height":39,"length":48,"new":1,"sentence":"FILTER 8E8D FINISH","tree":453}
+{"height":36,"length":47,"new":1,"sentence":"MATCH SHORTEST 8 GROUPS - FINISH","tree":454}
+{"height":39,"length":47,"new":0,"sentence":"MATCH ( : % ) FINISH","tree":455}
+{"height":41,"length":47,"new":0,"sentence":"MATCH ~/ a /~ FINISH","tree":456}
+{"height":41,"length":47,"new":0,"sentence":"MATCH ~/ a /~> FINISH","tree":457}
+{"height":41,"length":47,"new":0,"sentence":"MATCH <-/ a /-> FINISH","tree":458}
+{"height":41,"length":47,"new":0,"sentence":"MATCH -/ a /- FINISH","tree":459}
+{"height":20,"length":47,"new":1,"sentence":"VALUE x DURATION ( YEAR TO MONTH ) = LOCAL_TIME FINISH","tree":460}
+{"height":35,"length":47,"new":2,"sentence":"FILTER LOCAL_TIMESTAMP < SESSION_USER FINISH","tree":461}
+{"height":35,"length":47,"new":2,"sentence":"FILTER SESSION_USER > SESSION_USER FINISH","tree":462}
+{"height":40,"length":47,"new":0,"sentence":"ORDER BY ( SESSION_USER ) FINISH","tree":463}
+{"height":41,"length":47,"new":37,"sentence":"FILTER VALUE { FINISH } FINISH","tree":464}
+{"height":35,"length":47,"new":1,"sentence":"RETURN AVG ( LOCAL_TIME ) AS x","tree":465}
+{"height":34,"length":47,"new":1,"sentence":"RETURN MIN ( CURRENT_TIME ) AS x","tree":466}
+{"height":34,"length":47,"new":1,"sentence":"RETURN SUM ( CURRENT_TIME ) AS x","tree":467}
+{"height":34,"length":47,"new":1,"sentence":"RETURN COLLECT_LIST ( CURRENT_TIMESTAMP ) AS x","tree":468}
+{"height":34,"length":47,"new":1,"sentence":"RETURN STDDEV_SAMP ( LOCAL_TIMESTAMP ) AS x","tree":469}
+{"height":34,"length":47,"new":1,"sentence":"RETURN STDDEV_POP ( LOCAL_TIMESTAMP ) AS x","tree":470}
+{"height":39,"length":47,"new":101,"sentence":"ORDER BY CARDINALITY ( SESSION_USER ) FINISH","tree":471}
+{"height":39,"length":47,"new":0,"sentence":"ORDER BY SIZE ( SESSION_USER ) FINISH","tree":472}
+{"height":39,"length":47,"new":0,"sentence":"FILTER X''\n' ' FINISH","tree":473}
+{"height":37,"length":47,"new":0,"sentence":"FILTER SESSION_USER . ab FINISH","tree":474}
+{"height":39,"length":46,"new":56,"sentence":"OPTIONAL { OPTIONAL MATCH <- } FINISH","tree":475}
+{"height":34,"length":46,"new":0,"sentence":"MATCH ~> , <-> FINISH","tree":476}
+{"height":34,"length":46,"new":0,"sentence":"MATCH - <-> ? FINISH","tree":477}
+{"height":34,"length":46,"new":1,"sentence":"MATCH <- { 0b1 } FINISH","tree":478}
+{"height":38,"length":46,"new":0,"sentence":"MATCH ( <~ ) ? FINISH","tree":479}
+{"height":37,"length":46,"new":264,"sentence":"MATCH ( ACYCLIC ~ ) FINISH","tree":480}
+{"height":34,"length":46,"new":0,"sentence":"MATCH <-> { 0xf } FINISH","tree":481}
+{"height":34,"length":46,"new":0,"sentence":"MATCH <- { 0o6 } FINISH","tree":482}
+{"height":22,"length":46,"new":3,"sentence":"VALUE x SMALL INTEGER NOT NULL = CURRENT_DATE FINISH","tree":483}
+{"height":22,"length":46,"new":3,"sentence":"VALUE x BIG INTEGER NOT NULL = CURRENT_TIME FINISH","tree":484}
+{"height":20,"length":46,"new":5,"sentence":"VALUE x TIMESTAMP WITH TIME ZONE NOT NULL = CURRENT_DATE FINISH","tree":485}
+{"height":20,"length":46,"new":4,"sentence":"VALUE x TIME WITH TIME ZONE NOT NULL = CURRENT_TIMESTAMP FINISH","tree":486}
+{"height":20,"length":46,"new":4,"sentence":"VALUE x TIME WITHOUT TIME ZONE NOT NULL = LOCAL_TIME FINISH","tree":487}
+{"height":35,"length":46,"new":2,"sentence":"FILTER CURRENT_DATE <> SESSION_USER FINISH","tree":488}
+{"height":38,"length":46,"new":1,"sentence":"ORDER BY LOWER ( SESSION_USER ) FINISH","tree":489}
+{"height":36,"length":46,"new":31,"sentence":"ORDER BY DURATION ( { } ) FINISH","tree":490}
+{"height":38,"length":46,"new":3,"sentence":"FILTER ٣.٣M FINISH","tree":491}
+{"height":19,"length":45,"new":2071,"sentence":"FINISH NEXT FINISH NEXT FINISH NEXT FINISH","tree":492}
+{"height":32,"length":45,"new":0,"sentence":"ORDER BY CURRENT_DATE , LOCAL_TIMESTAMP FINISH","tree":493}
+{"height":22,"length":45,"new":3,"sentence":"VALUE x INTEGER8 NOT NULL = CURRENT_TIMESTAMP FINISH","tree":494}
+{"height":22,"length":45,"new":3,"sentence":"VALUE x INTEGER16 NOT NULL = CURRENT_TIMESTAMP FINISH","tree":495}
+{"height":22,"length":45,"new":3,"sentence":"VALUE x INTEGER32 NOT NULL = CURRENT_DATE FINISH","tree":496}
+{"height":22,"length":45,"new":3,"sentence":"VALUE x INTEGER64 NOT NULL = LOCAL_TIMESTAMP FINISH","tree":497}
+{"height":22,"length":45,"new":3,"sentence":"VALUE x INTEGER128 NOT NULL = LOCAL_TIME FINISH","tree":498}
+{"height":22,"length":45,"new":3,"sentence":"VALUE x INTEGER256 NOT NULL = CURRENT_TIME FINISH","tree":499}
+{"height":22,"length":45,"new":2,"sentence":"VALUE x INTEGER NOT NULL = CURRENT_TIMESTAMP FINISH","tree":500}
+{"height":19,"length":45,"new":5,"sentence":"VALUE x { } NOT NULL = CURRENT_TIMESTAMP FINISH","tree":501}
+{"height":40,"length":45,"new":308,"sentence":"FILTER EXISTS { ~ } FINISH","tree":502}
+{"height":40,"length":45,"new":308,"sentence":"FILTER EXISTS ( <- ) FINISH","tree":503}
+{"height":40,"length":45,"new":36,"sentence":"FILTER EXISTS { FINISH } FINISH","tree":504}
+{"height":37,"length":45,"new":101,"sentence":"FILTER SESSION_USER . a FINISH","tree":505}
+{"height":39,"length":45,"new":1,"sentence":"FILTER PATH [ SESSION_USER ] FINISH","tree":506}
+{"height":38,"length":45,"new":0,"sentence":"ORDER BY ( CURRENT_DATE ) FINISH","tree":507}
+{"height":38,"length":45,"new":0,"sentence":"ORDER BY ( CURRENT_DATE ) FINISH","tree":508}
+{"height":40,"length":45,"new":3,"sentence":"FILTER '''' FINISH","tree":509}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x INT8 NOT NULL = LOCAL_TIMESTAMP FINISH","tree":510}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x INT16 NOT NULL = CURRENT_TIMESTAMP FINISH","tree":511}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x INT32 NOT NULL = LOCAL_TIME FINISH","tree":512}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x INT64 NOT NULL = LOCAL_TIMESTAMP FINISH","tree":513}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x INT128 NOT NULL = CURRENT_TIMESTAMP FINISH","tree":514}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x INT256 NOT NULL = LOCAL_TIME FINISH","tree":515}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x SMALLINT NOT NULL = CURRENT_TIME FINISH","tree":516}
+{"height":21,"length":44,"new":2,"sentence":"VALUE x INT NOT NULL = LOCAL_TIMESTAMP FINISH","tree":517}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x BIGINT NOT NULL = CURRENT_TIMESTAMP FINISH","tree":518}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x UINT8 NOT NULL = CURRENT_TIMESTAMP FINISH","tree":519}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x UINT16 NOT NULL = CURRENT_TIME FINISH","tree":520}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x UINT32 NOT NULL = LOCAL_TIMESTAMP FINISH","tree":521}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x UINT64 NOT NULL = LOCAL_TIME FINISH","tree":522}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x UINT128 NOT NULL = LOCAL_TIME FINISH","tree":523}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x UINT256 NOT NULL = CURRENT_TIME FINISH","tree":524}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x USMALLINT NOT NULL = LOCAL_TIME FINISH","tree":525}
+{"height":21,"length":44,"new":2,"sentence":"VALUE x UINT NOT NULL = CURRENT_TIMESTAMP FINISH","tree":526}
+{"height":21,"length":44,"new":3,"sentence":"VALUE x UBIGINT NOT NULL = LOCAL_TIMESTAMP FINISH","tree":527}
+{"height":21,"length":44,"new":2,"sentence":"VALUE x UNSIGNED SMALL INTEGER = LOCAL_TIME FINISH","tree":528}
+{"height":21,"length":44,"new":1,"sentence":"VALUE x UNSIGNED BIG INTEGER = LOCAL_TIMESTAMP FINISH","tree":529}
+{"height":20,"length":44,"new":3,"sentence":"VALUE x ZONED DATETIME NOT NULL = CURRENT_TIMESTAMP FINISH","tree":530}
+{"height":20,"length":44,"new":4,"sentence":"VALUE x LOCAL DATETIME NOT NULL = CURRENT_TIME FINISH","tree":531}
+{"height":20,"length":44,"new":3,"sentence":"VALUE x ZONED TIME NOT NULL = LOCAL_TIME FINISH","tree":532}
+{"height":20,"length":44,"new":3,"sentence":"VALUE x LOCAL TIME NOT NULL = CURRENT_TIMESTAMP FINISH","tree":533}
+{"height":20,"length":44,"new":10,"sentence":"VALUE x VERTEX NOT NULL = CURRENT_DATE FINISH","tree":534}
+{"height":20,"length":44,"new":10,"sentence":"VALUE x RELATIONSHIP NOT NULL = CURRENT_DATE FINISH","tree":535}
+{"height":22,"length":44,"new":5,"sentence":"VALUE x STRING LIST = LOCAL_TIME FINISH","tree":536}
+{"height":22,"length":44,"new":0,"sentence":"VALUE x RECORD ARRAY = LOCAL_TIME FINISH","tree":537}
+{"height":22,"length":44,"new":0,"sentence":"VALUE x ANY LIST = LOCAL_TIMESTAMP FINISH","tree":538}
+{"height":37,"length":44,"new":201,"sentence":"FILTER ( LOCAL_TIME ) IS NULL FINISH","tree":539}
+{"height":35,"length":44,"new":1,"sentence":"FILTER CAST ( NULL AS BYTES ) FINISH","tree":540}
+{"height":35,"length":44,"new":0,"sentence":"FILTER CAST ( NULL AS RECORD ) FINISH","tree":541}
+{"height":38,"length":44,"new":0,"sentence":"ORDER BY ( LOCAL_TIME ) FINISH","tree":542}
+{"height":37,"length":44,"new":0,"sentence":"ORDER BY ( CURRENT_DATE ) FINISH","tree":543}
+{"height":35,"length":44,"new":30,"sentence":"ORDER BY DATE ( { } ) FINISH","tree":544}
+{"height":35,"length":44,"new":30,"sentence":"ORDER BY ZONED_TIME ( { } ) FINISH","tree":545}
+{"height":36,"length":44,"new":0,"sentence":"ORDER BY LOCAL_TIME ( { } ) FINISH","tree":546}
+{"height":35,"length":44,"new":30,"sentence":"ORDER BY ZONED_DATETIME ( { } ) FINISH","tree":547}
+{"height":35,"length":44,"new":0,"sentence":"ORDER BY LOCAL_DATETIME ( { } ) FINISH","tree":548}
+{"height":34,"length":44,"new":5,"sentence":"LIMIT $\"xxx\" FINISH","tree":549}
+{"height":34,"length":44,"new":4,"sentence":"LIMIT $`xxx` FINISH","tree":550}
+{"height":38,"length":44,"new":3,"sentence":"FILTER X'   ' FINISH","tree":551}
+{"height":38,"length":44,"new":0,"sentence":"FILTER X'F F' FINISH","tree":552}
+{"height":38,"length":44,"new":0,"sentence":"FILTER X'cA ' FINISH","tree":553}
+{"height":37,"length":43,"new":56,"sentence":"OPTIONAL ( MATCH - ) FINISH","tree":554}
+{"height":28,"length":43,"new":1,"sentence":"FOR x IN SESSION_USER WITH OFFSET y FINISH","tree":555}
+{"height":26,"length":43,"new":5,"sentence":"RETURN CURRENT_TIMESTAMP AS x SKIP 0b0","tree":556}
+{"height":21,"length":43,"new":2,"sentence":"VALUE x SIGNED INTEGER64 = CURRENT_DATE FINISH","tree":557}
+{"height":21,"length":43,"new":1,"sentence":"VALUE x UNSIGNED INTEGER8 = CURRENT_DATE FINISH","tree":558}
+{"height":21,"length":43,"new":1,"sentence":"VALUE x UNSIGNED INTEGER16 = LOCAL_TIME FINISH","tree":559}
+{"height":21,"length":43,"new":1,"sentence":"VALUE x UNSIGNED INTEGER32 = CURRENT_TIMESTAMP FINISH","tree":560}
+{"height":21,"length":43,"new":0,"sentence":"VALUE x UNSIGNED INTEGER64 = LOCAL_TIMESTAMP FINISH","tree":561}
+{"height":21,"length":43,"new":1,"sentence":"VALUE x UNSIGNED INTEGER128 = CURRENT_TIMESTAMP FINISH","tree":562}
+{"height":21,"length":43,"new":1,"sentence":"VALUE x UNSIGNED INTEGER256 = CURRENT_TIME FINISH","tree":563}
+{"height":21,"length":43,"new":0,"sentence":"VALUE x UNSIGNED INTEGER = LOCAL_TIMESTAMP FINISH","tree":564}
+{"height":19,"length":43,"new":1,"sentence":"VALUE x TIMESTAMP WITH TIME ZONE = LOCAL_TIMESTAMP FINISH","tree":565}
+{"height":19,"length":43,"new":6,"sentence":"VALUE x TIMESTAMP WITHOUT TIME ZONE = CURRENT_DATE FINISH","tree":566}
+{"height":20,"length":43,"new":2,"sentence":"VALUE x TIMESTAMP NOT NULL = CURRENT_DATE FINISH","tree":567}
+{"height":20,"length":43,"new":4,"sentence":"VALUE x DATE NOT NULL = LOCAL_TIMESTAMP FINISH","tree":568}
+{"height":19,"length":43,"new":1,"sentence":"VALUE x TIME WITH TIME ZONE = CURRENT_DATE FINISH","tree":569}
+{"height":19,"length":43,"new":1,"sentence":"VALUE x TIME WITHOUT TIME ZONE = CURRENT_TIME FINISH","tree":570}
+{"height":19,"length":43,"new":1,"sentence":"VALUE x LIST NOT NULL = CURRENT_DATE FINISH","tree":571}
+{"height":19,"length":43,"new":1,"sentence":"VALUE x RECORD { } = CURRENT_TIMESTAMP FINISH","tree":572}
+{"height":33,"length":43,"new":1,"sentence":"FILTER SESSION_USER IS NOT TYPED RECORD FINISH","tree":573}
+{"height":33,"length":43,"new":0,"sentence":"FILTER SESSION_USER IS :: ANY FINISH","tree":574}
+{"height":36,"length":43,"new":101,"sentence":"ORDER BY ( CURRENT_TIMESTAMP ) FINISH","tree":575}
+{"height":36,"length":43,"new":0,"sentence":"ORDER BY ( CURRENT_DATE ) FINISH","tree":576}
+{"height":36,"length":43,"new":0,"sentence":"ORDER BY ( CURRENT_TIME ) FINISH","tree":577}
+{"height":37,"length":43,"new":0,"sentence":"ORDER BY ( LOCAL_TIME ) FINISH","tree":578}
+{"height":36,"length":43,"new":0,"sentence":"ORDER BY ( LOCAL_TIMESTAMP ) FINISH","tree":579}
+{"height":37,"length":43,"new":0,"sentence":"FILTER X'8f' FINISH","tree":580}
+{"height":37,"length":43,"new":0,"sentence":"FILTER X'F8' FINISH","tree":581}
+{"height":30,"length":42,"new":0,"sentence":"FINISH NEXT CALL { FINISH }","tree":582}
+{"height":30,"length":42,"new":1,"sentence":"ORDER BY CURRENT_TIMESTAMP SKIP ٣ FINISH","tree":583}
+{"height":26,"length":42,"new":0,"sentence":"RETURN CURRENT_DATE AS x LIMIT 0b1","tree":584}
+{"height":32,"length":42,"new":7,"sentence":"MATCH ALL SHORTEST WALK - FINISH","tree":585}
+{"height":32,"length":42,"new":4,"sentence":"MATCH ALL SHORTEST TRAIL ~ FINISH","tree":586}
+{"height":32,"length":42,"new":0,"sentence":"MATCH ALL SHORTEST SIMPLE <- FINISH","tree":587}
+{"height":32,"length":42,"new":0,"sentence":"MATCH ALL SHORTEST ACYCLIC ~ FINISH","tree":588}
+{"height":32,"length":42,"new":2,"sentence":"MATCH ALL SHORTEST PATH <-> FINISH","tree":589}
+{"height":32,"length":42,"new":0,"sentence":"MATCH ALL SHORTEST PATHS - FINISH","tree":590}
+{"height":32,"length":42,"new":7,"sentence":"MATCH ANY SHORTEST WALK <-> FINISH","tree":591}
+{"height":32,"length":42,"new":4,"sentence":"MATCH ANY SHORTEST TRAIL ~> FINISH","tree":592}
+{"height":32,"length":42,"new":0,"sentence":"MATCH ANY SHORTEST SIMPLE <~ FINISH","tree":593}
+{"height":32,"length":42,"new":0,"sentence":"MATCH ANY SHORTEST ACYCLIC <-> FINISH","tree":594}
+{"height":32,"length":42,"new":2,"sentence":"MATCH ANY SHORTEST PATH - FINISH","tree":595}
+{"height":32,"length":42,"new":0,"sentence":"MATCH ANY SHORTEST PATHS ~ FINISH","tree":596}
+{"height":32,"length":42,"new":2,"sentence":"MATCH SHORTEST WALK GROUP ~> FINISH","tree":597}
+{"height":32,"length":42,"new":6,"sentence":"MATCH SHORTEST TRAIL GROUPS <-> FINISH","tree":598}
+{"height":32,"length":42,"new":0,"sentence":"MATCH SHORTEST SIMPLE GROUPS ~> FINISH","tree":599}
+{"height":32,"length":42,"new":0,"sentence":"MATCH SHORTEST ACYCLIC GROUP <-> FINISH","tree":600}
+{"height":32,"length":42,"new":1,"sentence":"MATCH SHORTEST PATH GROUPS - FINISH","tree":601}
+{"height":32,"length":42,"new":0,"sentence":"MATCH SHORTEST PATHS GROUPS <~ FINISH","tree":602}
+{"height":33,"length":42,"new":0,"sentence":"MATCH TRAIL <~ + FINISH","tree":603}
+{"height":19,"length":42,"new":3,"sentence":"VALUE x FLOAT16 NOT NULL = CURRENT_TIMESTAMP FINISH","tree":604}
+{"height":19,"length":42,"new":3,"sentence":"VALUE x FLOAT32 NOT NULL = CURRENT_TIMESTAMP FINISH","tree":605}
+{"height":19,"length":42,"new":3,"sentence":"VALUE x FLOAT64 NOT NULL = LOCAL_TIMESTAMP FINISH","tree":606}
+{"height":19,"length":42,"new":3,"sentence":"VALUE x FLOAT128 NOT NULL = CURRENT_TIMESTAMP FINISH","tree":607}
+{"height":19,"length":42,"new":3,"sentence":"VALUE x FLOAT256 NOT NULL = LOCAL_TIMESTAMP FINISH","tree":608}
+{"height":20,"length":42,"new":2,"sentence":"VALUE x FLOAT NOT NULL = LOCAL_TIME FINISH","tree":609}
+{"height":19,"length":42,"new":3,"sentence":"VALUE x REAL NOT NULL = CURRENT_DATE FINISH","tree":610}
+{"height":19,"length":42,"new":6,"sentence":"VALUE x DOUBLE NOT NULL = CURRENT_DATE FINISH","tree":611}
+{"height":19,"length":42,"new":6,"sentence":"VALUE x NULL NOT NULL = CURRENT_TIME FINISH","tree":612}
+{"height":19,"length":42,"new":2,"sentence":"VALUE x ANY NODE = CURRENT_TIMESTAMP FINISH","tree":613}
+{"height":19,"length":42,"new":2,"sentence":"VALUE x ANY EDGE = CURRENT_TIME FINISH","tree":614}
+{"height":19,"length":42,"new":10,"sentence":"VALUE x PROPERTY VALUE NOT NULL = CURRENT_TIME FINISH","tree":615}
+{"height":36,"length":42,"new":202,"sentence":"FILTER SESSION_USER IS NFC NORMALIZED FINISH","tree":616}
+{"height":36,"length":42,"new":0,"sentence":"FILTER SESSION_USER IS NFD NORMALIZED FINISH","tree":617}
+{"height":36,"length":42,"new":0,"sentence":"FILTER SESSION_USER IS NFKC NORMALIZED FINISH","tree":618}
+{"height":36,"length":42,"new":0,"sentence":"FILTER SESSION_USER IS NFKD NORMALIZED FINISH","tree":619}
+{"height":37,"length":42,"new":4,"sentence":"FILTER @'' FINISH","tree":620}
+{"height":36,"length":42,"new":0,"sentence":"FILTER X'Ba' FINISH","tree":621}
+{"height":36,"length":42,"new":0,"sentence":"FILTER X'DE' FINISH","tree":622}
+{"height":36,"length":42,"new":0,"sentence":"FILTER X'EA' FINISH","tree":623}
+{"height":36,"length":42,"new":0,"sentence":"FILTER X'aA' FINISH","tree":624}
+{"height":36,"length":42,"new":0,"sentence":"FILTER X'da' FINISH","tree":625}
+{"height":36,"length":42,"new":0,"sentence":"FILTER X'fB' FINISH","tree":626}
+{"height":36,"length":42,"new":0,"sentence":"FILTER X'CD' FINISH","tree":627}
+{"height":36,"length":42,"new":0,"sentence":"FILTER X'eb' FINISH","tree":628}
+{"height":36,"length":42,"new":0,"sentence":"FILTER X'ec' FINISH","tree":629}
+{"height":36,"length":42,"new":0,"sentence":"FILTER X'ad' FINISH","tree":630}
+{"height":36,"length":42,"new":0,"sentence":"FILTER X'Ae' FINISH","tree":631}
+{"height":37,"length":42,"new":1,"sentence":"FILTER .٣F FINISH","tree":632}
+{"height":37,"length":42,"new":0,"sentence":"FILTER .9M FINISH","tree":633}
+{"height":37,"length":42,"new":0,"sentence":"FILTER ٣.F FINISH","tree":634}
+{"height":37,"length":42,"new":0,"sentence":"FILTER 9.D FINISH","tree":635}
+{"height":19,"length":41,"new":1,"sentence":"VALUE x :: BYTES = CURRENT_DATE FINISH","tree":636}
+{"height":30,"length":41,"new":1,"sentence":"ORDER BY LOCAL_TIMESTAMP LIMIT 0b0 FINISH","tree":637}
+{"height":32,"length":41,"new":260,"sentence":"MATCH DIFFERENT EDGE BINDINGS <- FINISH","tree":638}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x BOOL NOT NULL = LOCAL_TIME FINISH","tree":639}
+{"height":19,"length":41,"new":1,"sentence":"VALUE x STRING NOT NULL = CURRENT_DATE FINISH","tree":640}
+{"height":19,"length":41,"new":1,"sentence":"VALUE x CHAR NOT NULL = CURRENT_DATE FINISH","tree":641}
+{"height":19,"length":41,"new":1,"sentence":"VALUE x VARCHAR NOT NULL = CURRENT_DATE FINISH","tree":642}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x BYTES NOT NULL = LOCAL_TIME FINISH","tree":643}
+{"height":19,"length":41,"new":1,"sentence":"VALUE x BINARY NOT NULL = CURRENT_TIME FINISH","tree":644}
+{"height":19,"length":41,"new":2,"sentence":"VALUE x VARBINARY NOT NULL = CURRENT_TIME FINISH","tree":645}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x INT8 = LOCAL_TIME FINISH","tree":646}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x INT16 = CURRENT_DATE FINISH","tree":647}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x INT32 = LOCAL_TIMESTAMP FINISH","tree":648}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x INT64 = LOCAL_TIME FINISH","tree":649}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x INT128 = LOCAL_TIMESTAMP FINISH","tree":650}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x INT256 = CURRENT_TIMESTAMP FINISH","tree":651}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x SMALLINT = CURRENT_TIMESTAMP FINISH","tree":652}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x BIGINT = CURRENT_TIMESTAMP FINISH","tree":653}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x UINT8 = LOCAL_TIME FINISH","tree":654}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x UINT16 = CURRENT_TIMESTAMP FINISH","tree":655}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x UINT32 = CURRENT_TIMESTAMP FINISH","tree":656}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x UINT64 = CURRENT_DATE FINISH","tree":657}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x UINT128 = CURRENT_DATE FINISH","tree":658}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x UINT256 = CURRENT_DATE FINISH","tree":659}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x USMALLINT = CURRENT_DATE FINISH","tree":660}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x UBIGINT = LOCAL_TIME FINISH","tree":661}
+{"height":19,"length":41,"new":1,"sentence":"VALUE x ZONED DATETIME = CURRENT_DATE FINISH","tree":662}
+{"height":19,"length":41,"new":1,"sentence":"VALUE x LOCAL DATETIME = CURRENT_TIMESTAMP FINISH","tree":663}
+{"height":19,"length":41,"new":1,"sentence":"VALUE x ZONED TIME = CURRENT_TIMESTAMP FINISH","tree":664}
+{"height":19,"length":41,"new":1,"sentence":"VALUE x LOCAL TIME = CURRENT_TIME FINISH","tree":665}
+{"height":20,"length":41,"new":1,"sentence":"VALUE x PATH NOT NULL = LOCAL_TIME FINISH","tree":666}
+{"height":19,"length":41,"new":1,"sentence":"VALUE x RECORD NOT NULL = CURRENT_TIMESTAMP FINISH","tree":667}
+{"height":19,"length":41,"new":1,"sentence":"VALUE x ANY NOT NULL = LOCAL_TIMESTAMP FINISH","tree":668}
+{"height":36,"length":41,"new":1,"sentence":"FILTER SESSION_USER IS NOT NORMALIZED FINISH","tree":669}
+{"height":35,"length":41,"new":1,"sentence":"ORDER BY + SESSION_USER FINISH","tree":670}
+{"height":35,"length":41,"new":0,"sentence":"ORDER BY - SESSION_USER FINISH","tree":671}
+{"height":35,"length":41,"new":1,"sentence":"ORDER BY + SESSION_USER FINISH","tree":672}
+{"height":35,"length":41,"new":0,"sentence":"ORDER BY - SESSION_USER FINISH","tree":673}
+{"height":33,"length":41,"new":2,"sentence":"LIMIT $\"\"\"\" FINISH","tree":674}
+{"height":33,"length":41,"new":2,"sentence":"LIMIT $```` FINISH","tree":675}
+{"height":19,"length":40,"new":0,"sentence":"VALUE x TYPED ANY = LOCAL_TIMESTAMP FINISH","tree":676}
+{"height":32,"length":40,"new":0,"sentence":"LET x = SESSION_USER FINISH","tree":677}
+{"height":32,"length":40,"new":258,"sentence":"MATCH <- KEEP ANY FINISH","tree":678}
+{"height":32,"length":40,"new":2,"sentence":"MATCH DIFFERENT EDGES ~ FINISH","tree":679}
+{"height":32,"length":40,"new":260,"sentence":"MATCH REPEATABLE ELEMENT BINDINGS <~ FINISH","tree":680}
+{"height":32,"length":40,"new":1,"sentence":"MATCH DIFFERENT RELATIONSHIP <~ FINISH","tree":681}
+{"height":32,"length":40,"new":1,"sentence":"MATCH DIFFERENT RELATIONSHIPS <-> FINISH","tree":682}
+{"height":32,"length":40,"new":1,"sentence":"MATCH <~ KEEP SIMPLE FINISH","tree":683}
+{"height":32,"length":40,"new":101,"sentence":"MATCH TRAIL PATH ~ FINISH","tree":684}
+{"height":32,"length":40,"new":0,"sentence":"MATCH ACYCLIC PATHS <-> FINISH","tree":685}
+{"height":32,"length":40,"new":212,"sentence":"MATCH ALL WALK ~> FINISH","tree":686}
+{"height":32,"length":40,"new":4,"sentence":"MATCH ALL TRAIL <- FINISH","tree":687}
+{"height":32,"length":40,"new":0,"sentence":"MATCH ALL SIMPLE -> FINISH","tree":688}
+{"height":32,"length":40,"new":0,"sentence":"MATCH ALL ACYCLIC ~> FINISH","tree":689}
+{"height":32,"length":40,"new":2,"sentence":"MATCH ALL PATH ~ FINISH","tree":690}
+{"height":32,"length":40,"new":0,"sentence":"MATCH ALL PATHS <- FINISH","tree":691}
+{"height":32,"length":40,"new":1,"sentence":"MATCH ANY WALK -> FINISH","tree":692}
+{"height":32,"length":40,"new":6,"sentence":"MATCH ANY TRAIL -> FINISH","tree":693}
+{"height":32,"length":40,"new":0,"sentence":"MATCH ANY SIMPLE <~ FINISH","tree":694}
+{"height":32,"length":40,"new":0,"sentence":"MATCH ANY ACYCLIC <~ FINISH","tree":695}
+{"height":32,"length":40,"new":1,"sentence":"MATCH ANY PATH ~> FINISH","tree":696}
+{"height":32,"length":40,"new":0,"sentence":"MATCH ANY PATHS <-> FINISH","tree":697}
+{"height":20,"length":40,"new":2,"sentence":"VALUE x DEC = LOCAL_TIME FINISH","tree":698}
+{"height":20,"length":40,"new":2,"sentence":"VALUE x DOUBLE PRECISION = LOCAL_TIME FINISH","tree":699}
+{"height":19,"length":40,"new":1,"sentence":"VALUE x DATE = CURRENT_TIMESTAMP FINISH","tree":700}
+{"height":19,"length":40,"new":2,"sentence":"VALUE x ANY PROPERTY VALUE = CURRENT_TIME FINISH","tree":701}
+{"height":38,"length":40,"new":1,"sentence":"FILTER $b FINISH","tree":702}
+{"height":36,"length":40,"new":0,"sentence":"FILTER X' ' FINISH","tree":703}
+{"height":24,"length":39,"new":0,"sentence":"VALUE x = SESSION_USER FINISH","tree":704}
+{"height":30,"length":39,"new":0,"sentence":"LET VALUE x = CURRENT_TIME FINISH","tree":705}
+{"height":32,"length":39,"new":1,"sentence":"MATCH REPEATABLE ELEMENTS <~ FINISH","tree":706}
+{"height":32,"length":39,"new":1,"sentence":"MATCH REPEATABLE ELEMENT <~ FINISH","tree":707}
+{"height":20,"length":39,"new":2,"sentence":"VALUE x NULL = LOCAL_TIME FINISH","tree":708}
+{"height":20,"length":39,"new":1,"sentence":"VALUE x FLOAT16 = LOCAL_TIME FINISH","tree":709}
+{"height":19,"length":39,"new":1,"sentence":"VALUE x FLOAT32 = CURRENT_TIME FINISH","tree":710}
+{"height":19,"length":39,"new":1,"sentence":"VALUE x FLOAT64 = CURRENT_DATE FINISH","tree":711}
+{"height":20,"length":39,"new":1,"sentence":"VALUE x FLOAT128 = LOCAL_TIME FINISH","tree":712}
+{"height":19,"length":39,"new":1,"sentence":"VALUE x FLOAT256 = CURRENT_TIME FINISH","tree":713}
+{"height":19,"length":39,"new":1,"sentence":"VALUE x REAL = CURRENT_TIME FINISH","tree":714}
+{"height":19,"length":39,"new":1,"sentence":"VALUE x NOTHING = LOCAL_TIMESTAMP FINISH","tree":715}
+{"height":19,"length":39,"new":1,"sentence":"VALUE x ANY RECORD = CURRENT_TIMESTAMP FINISH","tree":716}
+{"height":19,"length":39,"new":1,"sentence":"VALUE x ANY VALUE = CURRENT_TIME FINISH","tree":717}
+{"height":36,"length":39,"new":60,"sentence":"FILTER { } FINISH","tree":718}
+{"height":36,"length":39,"new":1,"sentence":"FILTER \"\" FINISH","tree":719}
+{"height":36,"length":39,"new":1,"sentence":"FILTER 9M FINISH","tree":720}
+{"height":36,"length":39,"new":1,"sentence":"FILTER ٣F FINISH","tree":721}
+{"height":36,"length":39,"new":0,"sentence":"FILTER 9D FINISH","tree":722}
+{"height":32,"length":38,"new":4,"sentence":"MATCH WALK <~ FINISH","tree":723}
+{"height":34,"length":38,"new":10,"sentence":"MATCH <-[ ]-> FINISH","tree":724}
+{"height":34,"length":38,"new":7,"sentence":"MATCH <-[ ]- FINISH","tree":725}
+{"height":34,"length":38,"new":9,"sentence":"MATCH ~[ ]~ FINISH","tree":726}
+{"height":34,"length":38,"new":7,"sentence":"MATCH -[ ]-> FINISH","tree":727}
+{"height":34,"length":38,"new":8,"sentence":"MATCH <~[ ]~ FINISH","tree":728}
+{"height":34,"length":38,"new":8,"sentence":"MATCH ~[ ]~> FINISH","tree":729}
+{"height":34,"length":38,"new":7,"sentence":"MATCH -[ ]- FINISH","tree":730}
+{"height":33,"length":38,"new":1,"sentence":"FILTER SESSION_USER IS NOT NULL FINISH","tree":731}
+{"height":34,"length":38,"new":2,"sentence":"FILTER ARRAY [ ] FINISH","tree":732}
+{"height":35,"length":38,"new":140,"sentence":"FILTER [ ] FINISH","tree":733}
+{"height":30,"length":38,"new":1,"sentence":"LIMIT $@\"\" FINISH","tree":734}
+{"height":30,"length":38,"new":1,"sentence":"LIMIT $@`` FINISH","tree":735}
+{"height":37,"length":38,"new":1,"sentence":"FILTER 0o7 FINISH","tree":736}
+{"height":37,"length":38,"new":0,"sentence":"FILTER 8 FINISH","tree":737}
+{"height":37,"length":38,"new":0,"sentence":"FILTER 0xe FINISH","tree":738}
+{"height":37,"length":38,"new":0,"sentence":"FILTER 0b0 FINISH","tree":739}
+{"height":27,"length":37,"new":1,"sentence":"CALL ( ) { FINISH }","tree":740}
+{"height":31,"length":37,"new":1,"sentence":"ORDER BY DATE ( ) FINISH","tree":741}
+{"height":31,"length":37,"new":1,"sentence":"ORDER BY ZONED_TIME ( ) FINISH","tree":742}
+{"height":32,"length":37,"new":1,"sentence":"ORDER BY LOCAL_TIME ( ) FINISH","tree":743}
+{"height":31,"length":37,"new":1,"sentence":"ORDER BY ZONED_DATETIME ( ) FINISH","tree":744}
+{"height":31,"length":37,"new":1,"sentence":"ORDER BY LOCAL_DATETIME ( ) FINISH","tree":745}
+{"height":26,"length":36,"new":1,"sentence":"SKIP 0b1 LIMIT 8 FINISH","tree":746}
+{"height":30,"length":36,"new":2,"sentence":"ORDER BY CURRENT_DATE NULLS FIRST FINISH","tree":747}
+{"height":30,"length":36,"new":1,"sentence":"ORDER BY CURRENT_TIMESTAMP NULLS LAST FINISH","tree":748}
+{"height":32,"length":36,"new":1,"sentence":"FILTER RECORD { } FINISH","tree":749}
+{"height":31,"length":36,"new":4,"sentence":"FILTER SESSION_USER IS NOT FALSE FINISH","tree":750}
+{"height":29,"length":36,"new":6,"sentence":"LIMIT 9٣٣8 FINISH","tree":751}
+{"height":26,"length":35,"new":2,"sentence":"RETURN DISTINCT CURRENT_TIMESTAMP AS x","tree":752}
+{"height":26,"length":35,"new":0,"sentence":"RETURN ALL CURRENT_TIMESTAMP AS x","tree":753}
+{"height":30,"length":35,"new":2,"sentence":"ORDER BY CURRENT_DATE ASC FINISH","tree":754}
+{"height":30,"length":35,"new":1,"sentence":"ORDER BY LOCAL_TIMESTAMP ASCENDING FINISH","tree":755}
+{"height":30,"length":35,"new":1,"sentence":"ORDER BY LOCAL_TIMESTAMP DESC FINISH","tree":756}
+{"height":30,"length":35,"new":1,"sentence":"ORDER BY CURRENT_DATE DESCENDING FINISH","tree":757}
+{"height":31,"length":35,"new":2,"sentence":"FILTER SESSION_USER IS TRUE FINISH","tree":758}
+{"height":31,"length":35,"new":1,"sentence":"FILTER SESSION_USER IS UNKNOWN FINISH","tree":759}
+{"height":34,"length":35,"new":2,"sentence":"FILTER DATE '2024-01-01' FINISH","tree":760}
+{"height":34,"length":35,"new":2,"sentence":"FILTER INTERVAL '1' DAY FINISH","tree":761}
+{"height":30,"length":35,"new":1,"sentence":"LIMIT $bbb FINISH","tree":762}
+{"height":32,"length":34,"new":151,"sentence":"FILTER WHERE SESSION_USER FINISH","tree":763}
+{"height":33,"length":34,"new":2,"sentence":"FILTER FALSE FINISH","tree":764}
+{"height":33,"length":34,"new":1,"sentence":"FILTER NULL FINISH","tree":765}
+{"height":33,"length":34,"new":1,"sentence":"FILTER TRUE FINISH","tree":766}
+{"height":33,"length":34,"new":1,"sentence":"FILTER UNKNOWN FINISH","tree":767}
+{"height":27,"length":33,"new":1,"sentence":"OPTIONAL CALL { FINISH }","tree":768}
+{"height":31,"length":33,"new":1,"sentence":"FILTER NOT SESSION_USER FINISH","tree":769}
+{"height":28,"length":32,"new":1,"sentence":"OFFSET $b FINISH","tree":770}
+{"height":27,"length":32,"new":2,"sentence":"LIMIT 8_٣ FINISH","tree":771}
+{"height":27,"length":31,"new":2,"sentence":"LIMIT 0xBba FINISH","tree":772}
+{"height":27,"length":31,"new":3,"sentence":"LIMIT 0o627 FINISH","tree":773}
+{"height":27,"length":31,"new":2,"sentence":"LIMIT 0b110 FINISH","tree":774}
+{"height":26,"length":29,"new":1,"sentence":"LIMIT 0x_C FINISH","tree":775}
+{"height":26,"length":29,"new":1,"sentence":"LIMIT 0o_5 FINISH","tree":776}
+{"height":26,"length":29,"new":1,"sentence":"LIMIT 0b_0 FINISH","tree":777}
+{"height":27,"length":29,"new":1,"sentence":"LIMIT 0x7 FINISH","tree":778}
+{"height":27,"length":29,"new":1,"sentence":"LIMIT 1 FINISH","tree":779}
+{"height":26,"length":28,"new":0,"sentence":"LIMIT 0o1 FINISH","tree":780}
+{"height":26,"length":28,"new":0,"sentence":"LIMIT 2 FINISH","tree":781}
+{"height":26,"length":28,"new":0,"sentence":"LIMIT 3 FINISH","tree":782}
+{"height":26,"length":28,"new":1,"sentence":"LIMIT 4 FINISH","tree":783}
+{"height":26,"length":28,"new":0,"sentence":"LIMIT 5 FINISH","tree":784}
+{"height":26,"length":28,"new":0,"sentence":"LIMIT 6 FINISH","tree":785}
+{"height":26,"length":28,"new":0,"sentence":"LIMIT 0o0 FINISH","tree":786}
+{"height":25,"length":27,"new":0,"sentence":"LIMIT 0xA FINISH","tree":787}
+{"height":25,"length":27,"new":0,"sentence":"LIMIT 0o4 FINISH","tree":788}
+{"height":14,"length":15,"new":0,"sentence":"FINISH","tree":789}
+{"height":14,"length":15,"new":0,"sentence":"FINISH","tree":790}
