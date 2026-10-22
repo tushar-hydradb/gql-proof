@@ -253,6 +253,9 @@ pub struct Label {
     /// [`OPERANDS`]).
     operand: Option<u8>,
     kids: Vec<Option<Ty>>,
+    /// A partial label past its definition's last child, already checked (`Types::folds`):
+    /// its class and entries are the node's, and `finish` only relinks them.
+    done: bool,
 }
 
 impl Label {
@@ -677,6 +680,22 @@ impl Types {
 
     fn reads(&self, def: &str) -> bool {
         self.expression(def) || READS.contains(&owner(def))
+    }
+
+    /// Whether an expression definition is checked at the push of its last child instead of
+    /// at finish. Definitions outside the expression grammar keep their finish: their arms
+    /// read what scope's finish says.
+    fn folds(&self, node: &Node, pos: usize) -> bool {
+        let own = owner(node.def);
+        self.expression(node.def)
+            && !READS.contains(&own)
+            && !CONSUMERS.contains(&own)
+            && own != "for ordinality or offset"
+            && node
+                .items
+                .iter()
+                .rposition(|i| matches!(i, Item::Def(_) | Item::Group(_)))
+                == Some(pos)
     }
 
     /// The class `node` synthesizes from its children's classes, and what it passes up;
@@ -1349,7 +1368,7 @@ impl Under<Scope> for Types {
     fn push(
         &self,
         node: &Node,
-        _: usize,
+        pos: usize,
         partial: &Label,
         child: Option<&Label>,
         a: Step<'_, Scoped>,
@@ -1375,7 +1394,19 @@ impl Under<Scope> for Types {
             when: partial.when,
             operand: partial.operand,
             kids: partial.kids.iter().map(|k| r.ty(0, *k)).collect(),
+            done: false,
         };
+        // A token after the last child: the node is checked already.
+        if partial.done {
+            out.class = r.ty(0, partial.class);
+            out.kids.clear();
+            out.done = true;
+            return if reconcile(&mut out.vars, a.out) && self.cap(&mut out.vars) {
+                vec![out]
+            } else {
+                vec![]
+            };
+        }
         if let Some(c) = child {
             out.facts |= c.facts;
             out.target = out.target.or(c.target);
@@ -1395,6 +1426,19 @@ impl Under<Scope> for Types {
         if !reconcile(&mut out.vars, a.out) || !self.cap(&mut out.vars) {
             return vec![];
         }
+        // At the last child, check the node now: the partial labels after it are the node's
+        // labels, not every combination of its children's classes.
+        if self.folds(node, pos) {
+            return self
+                .finish_node(node, &out, a.out)
+                .into_iter()
+                .filter_map(|mut l| {
+                    l.kids.clear();
+                    l.done = true;
+                    (reconcile(&mut l.vars, a.out) && self.cap(&mut l.vars)).then_some(l)
+                })
+                .collect();
+        }
         vec![out]
     }
 
@@ -1403,6 +1447,19 @@ impl Under<Scope> for Types {
         let Some(r) = Relinked::new(&partial.vars, &views(a.partial), a.link, width) else {
             return vec![];
         };
+        if partial.done {
+            let mut l = Label {
+                class: r.ty(0, partial.class),
+                vars: r.vars.clone(),
+                done: false,
+                ..partial.clone()
+            };
+            return if reconcile(&mut l.vars, a.out) && self.cap(&mut l.vars) {
+                vec![l]
+            } else {
+                vec![]
+            };
+        }
         let acc = Label {
             vars: r.vars.clone(),
             kids: partial.kids.iter().map(|k| r.ty(0, *k)).collect(),
