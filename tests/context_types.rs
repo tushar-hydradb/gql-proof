@@ -567,38 +567,43 @@ fn joins_keep_coverage() {
         },
         Types::new(&BASE),
     );
-    let run = |join: bool| {
+    let run = |join: bool, keys: bool| {
         let options = Options {
             progress: false,
             join,
+            keys,
             ..Options::default()
         };
         let built = build(&BASE, &rule, start, "x", &options).unwrap();
         eprintln!(
-            "join {join}: {} nonterminals, {} productions",
+            "join {join}, keys {keys}: {} labels, {} nonterminals, {} productions",
+            built.stats.total_labels(),
             built.cfg.nts.len(),
             built.cfg.prods.len()
         );
         uses(&built.cfg)
     };
-    let (plain, joined) = (run(false), run(true));
-    for &(p, ..) in plain[0].difference(&joined[0]) {
-        eprintln!("  only without joins: {}", gql_proof::describe(&BASE, p));
+    let plain = run(false, false);
+    for (join, keys) in [(true, false), (true, true)] {
+        let other = run(join, keys);
+        for &(p, ..) in plain[0].difference(&other[0]) {
+            eprintln!("  only without: {}", gql_proof::describe(&BASE, p));
+        }
+        for (what, (a, b)) in ["productions", "cdrc pairs", "two-step chains"]
+            .iter()
+            .zip(plain.iter().zip(&other))
+        {
+            eprintln!(
+                "  {what}: {} without, {} with; {} only without, {} only with",
+                a.len(),
+                b.len(),
+                a.difference(b).count(),
+                b.difference(a).count()
+            );
+        }
+        assert_eq!(plain[0], other[0]);
+        assert_eq!(plain[1], other[1]);
     }
-    for (what, (a, b)) in ["productions", "cdrc pairs", "two-step chains"]
-        .iter()
-        .zip(plain.iter().zip(&joined))
-    {
-        eprintln!(
-            "{what}: {} without joins, {} with; {} only without, {} only with",
-            a.len(),
-            b.len(),
-            a.difference(b).count(),
-            b.difference(a).count()
-        );
-    }
-    assert_eq!(plain[0], joined[0]);
-    assert_eq!(plain[1], joined[1]);
 }
 
 /// Every tree generated at one variable passes both checkers.

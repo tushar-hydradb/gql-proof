@@ -90,6 +90,8 @@ pub struct Stats {
     pub doomed: u64,
     /// Labels a join absorbed (`Options::join`).
     pub joined: u64,
+    /// Pairs not pushed because their keys rule them out (`Options::keys`).
+    pub skipped: u64,
     /// Wall time per phase, in nanoseconds.
     pub phases: BTreeMap<String, u64>,
 }
@@ -124,13 +126,14 @@ impl Stats {
         }
         let _ = writeln!(
             s,
-            "labels {}, pushes {}, partials at most {} at one position, {} labels projected, {} doomed, {} joined",
+            "labels {}, pushes {}, partials at most {} at one position, {} labels projected, {} doomed, {} joined, {} pairs skipped by keys",
             self.total_labels(),
             self.pushes(),
             self.partials_max(),
             self.projected,
             self.doomed,
-            self.joined
+            self.joined,
+            self.skipped
         );
         if !self.rounds.is_empty() {
             let _ = writeln!(s, "rounds: round  scanned  new labels  labels  ms");

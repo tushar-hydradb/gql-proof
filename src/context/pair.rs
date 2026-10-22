@@ -69,6 +69,18 @@ pub trait Under<A: Context> {
     fn within(&self, _a: &A::Label, x: &Self::Label, y: &Self::Label) -> bool {
         x == y
     }
+    /// As [`Context::partial_key`].
+    fn partial_key(&self, _node: &Node, _pos: usize, _partial: &Self::Label) -> u32 {
+        0
+    }
+    /// As [`Context::child_key`].
+    fn child_key(&self, _node: &Node, _pos: usize, _child: &Self::Label) -> u32 {
+        0
+    }
+    /// As [`Context::compatible`].
+    fn compatible(&self, _node: &Node, _pos: usize, _partial: u32, _child: u32) -> bool {
+        true
+    }
 }
 
 /// `A` and `B` together, as one [`Context`].
@@ -205,6 +217,20 @@ impl<A: Context, B: Under<A>> Context for Typed<A, B> {
 
     fn within(&self, (a, x): &Self::Label, (a2, y): &Self::Label) -> bool {
         a == a2 && self.b.within(a, x, y)
+    }
+
+    /// `A`'s key in the high half, `B`'s in the low; compatible when both are.
+    fn partial_key(&self, node: &Node, pos: usize, (a, b): &Self::Label) -> u64 {
+        (self.a.partial_key(node, pos, a) << 32) | self.b.partial_key(node, pos, b) as u64
+    }
+
+    fn child_key(&self, node: &Node, pos: usize, (a, b): &Self::Label) -> u64 {
+        (self.a.child_key(node, pos, a) << 32) | self.b.child_key(node, pos, b) as u64
+    }
+
+    fn compatible(&self, node: &Node, pos: usize, partial: u64, child: u64) -> bool {
+        self.a.compatible(node, pos, partial >> 32, child >> 32)
+            && self.b.compatible(node, pos, partial as u32, child as u32)
     }
 }
 

@@ -1558,6 +1558,99 @@ impl Under<Scope> for Types {
         x.without_needs() == y.without_needs()
             && x.vars.iter().zip(&y.vars).all(|(a, b)| within(*a, *b))
     }
+
+    fn partial_key(&self, node: &Node, pos: usize, l: &Label) -> u32 {
+        let kid = |i: usize| l.kids.get(i).copied().flatten();
+        match Site::of(node, pos) {
+            Some(Site::Compare) => family(kid(0)),
+            Some(Site::Case) => match kid(1) {
+                Some(Ty::Is(c)) => OPERANDS
+                    .iter()
+                    .position(|o| *o == c)
+                    .map_or(BAD, |i| i as u32 + 1),
+                _ => 0,
+            },
+            Some(Site::Nullif) => narrowed(kid(2)),
+            None => 0,
+        }
+    }
+
+    fn child_key(&self, node: &Node, pos: usize, l: &Label) -> u32 {
+        match Site::of(node, pos) {
+            Some(Site::Compare) => family(l.class),
+            Some(Site::Case) => l.operand.map_or(0, u32::from),
+            Some(Site::Nullif) => narrowed(l.class),
+            None => 0,
+        }
+    }
+
+    fn compatible(&self, node: &Node, pos: usize, partial: u32, child: u32) -> bool {
+        match Site::of(node, pos) {
+            // 22.13, 22.14: as `comparable`, by family.
+            Some(Site::Compare) => match (partial, child) {
+                (OPAQUE, _) | (_, OPAQUE) => false,
+                (0, _) | (_, 0) => true,
+                (NEVER, _) | (_, NEVER) => false,
+                (a, b) => a == b,
+            },
+            // 20.7 SR 2: the operand is one every when operand accepts.
+            Some(Site::Case) => match (partial, child) {
+                (BAD, _) => false,
+                (0, _) | (_, 0) => true,
+                (k, mask) => mask & 1 << (k - 1) != 0,
+            },
+            // NULLIF's arguments are exact numbers or nulls (reading).
+            Some(Site::Nullif) => partial != BAD && child != BAD,
+            None => true,
+        }
+    }
+}
+
+/// Where the rule gives join keys: the second operand of a comparison, the when clauses of a
+/// simple CASE, the second argument of NULLIF.
+enum Site {
+    Compare,
+    Case,
+    Nullif,
+}
+
+impl Site {
+    fn of(node: &Node, pos: usize) -> Option<Site> {
+        match (node.def, pos) {
+            ("comparison predicate", 1) => Some(Site::Compare),
+            ("simple case", 2) => Some(Site::Case),
+            ("case abbreviation", 4) if node.items.first() == Some(&Item::Token("NULLIF")) => {
+                Some(Site::Nullif)
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Keys: 0 is a wildcard (no class yet, a deferred one, null, dynamic).
+const BAD: u32 = 0xff;
+const OPAQUE: u32 = 1;
+const NEVER: u32 = 2;
+
+/// A class's comparability family (`comparable`): numbers together, every other scalar, node
+/// and edge apart; lists, records and paths compare with nothing but a wildcard, opaque with
+/// nothing at all.
+fn family(t: Option<Ty>) -> u32 {
+    match t {
+        Some(Ty::Is(Null | Dynamic)) | Some(Ty::Slot(..)) | None => 0,
+        Some(Ty::Is(Opaque)) => OPAQUE,
+        Some(Ty::Is(List | Record | Path)) => NEVER,
+        Some(Ty::Is(Exact | Approx)) => 3,
+        Some(Ty::Is(c)) => 10 + c as u32,
+    }
+}
+
+/// NULLIF's argument: exact or null, a wildcard, or neither.
+fn narrowed(t: Option<Ty>) -> u32 {
+    match t {
+        Some(Ty::Is(Exact | Null)) | Some(Ty::Slot(..)) | None => 0,
+        Some(_) => BAD,
+    }
 }
 
 /// Whether every context `b` takes also takes `a`'s trees: `a`'s set inside `b`'s.

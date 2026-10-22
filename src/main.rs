@@ -89,9 +89,12 @@ struct ContextArgs {
     /// Emit with a backward pass per parent label, as before.
     #[arg(long)]
     no_single_pass: bool,
-    /// Join labels the rule can join in the fixed point (no emission from them yet).
+    /// Join labels the rule can join in the fixed point; emission makes them ground.
     #[arg(long)]
     join: bool,
+    /// Skip pairs the rule's join keys rule out.
+    #[arg(long)]
+    keys: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, ValueEnum)]
@@ -346,6 +349,7 @@ fn context(args: ContextArgs) -> Result<()> {
         live: !args.no_live,
         single_pass: !args.no_single_pass,
         join: args.join,
+        keys: args.keys,
     };
     let scope = gql_proof::context::scope::Scope {
         caps: gql_proof::context::scope::Caps {

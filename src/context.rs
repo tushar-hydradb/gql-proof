@@ -109,6 +109,20 @@ pub trait Context {
     fn within(&self, a: &Self::Label, b: &Self::Label) -> bool {
         a == b
     }
+    /// A key of partial label `partial` before the child at `pos`, for [`Context::compatible`].
+    fn partial_key(&self, _node: &Node, _pos: usize, _partial: &Self::Label) -> u64 {
+        0
+    }
+    /// A key of `child` as the child at `pos`, for [`Context::compatible`].
+    fn child_key(&self, _node: &Node, _pos: usize, _child: &Self::Label) -> u64 {
+        0
+    }
+    /// Whether a partial label and a child with these keys may lead to a label of `node`: a
+    /// necessary condition, so the engine skips the pair when it is false (a join key, as in a
+    /// database: the scan of a production is a join).
+    fn compatible(&self, _node: &Node, _pos: usize, _partial: u64, _child: u64) -> bool {
+        true
+    }
 }
 
 /// What [`Context::project`] makes of a label.
@@ -131,9 +145,11 @@ pub struct Options {
     pub reads_all: Option<NtId>,
     pub live: bool,
     pub single_pass: bool,
-    /// Labels the rule can join become one in the fixed point (answer subsumption); emission
-    /// is not done for them yet.
+    /// Labels the rule can join become one in the fixed point (answer subsumption), and
+    /// emission makes them ground again.
     pub join: bool,
+    /// Pairs whose keys the rule says are incompatible are not pushed.
+    pub keys: bool,
 }
 
 impl Default for Options {
@@ -146,6 +162,7 @@ impl Default for Options {
             live: true,
             single_pass: true,
             join: false,
+            keys: false,
         }
     }
 }
@@ -411,7 +428,8 @@ impl<'a, C: Context> Engine<'a, C> {
         }
     }
 
-    /// The rule's `push`, counted for production `p` and its definition.
+    /// The rule's `push`, counted for production `p` and its definition. With `keys`, a pair
+    /// the rule's keys rule out is skipped, not pushed.
     fn push(
         &self,
         p: ProdId,
@@ -420,6 +438,18 @@ impl<'a, C: Context> Engine<'a, C> {
         partial: &C::Label,
         o: &Opt<C::Label>,
     ) -> Vec<(C::Label, Link)> {
+        if self.options.keys
+            && let Opt::Label(child) = o
+            && !self.ctx.compatible(
+                node,
+                pos,
+                self.ctx.partial_key(node, pos, partial),
+                self.ctx.child_key(node, pos, child),
+            )
+        {
+            self.stats.borrow_mut().skipped += 1;
+            return Vec::new();
+        }
         let began = Instant::now();
         let out = match o {
             Opt::Token => self.ctx.push(node, pos, partial, None),
