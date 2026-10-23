@@ -462,6 +462,25 @@ impl<'t> Checker<'t> {
                 );
             }
         }
+        // 16.9 SR 2, 3: a yielded path variable is a path of unconditional singleton degree.
+        if let Some(yc) = yc {
+            let mut pvrs = Vec::new();
+            find(yc, "path variable reference", &mut pvrs);
+            for pvr in pvrs {
+                match globals.get(&pvr.text()) {
+                    Some(v) if v.kind == Kind::Path && v.degree == Degree::Single => {}
+                    Some(v) if v.kind != Kind::Path => {
+                        self.report(pvr, "16.9 SR 3", format!("{} is not a path", pvr.text()))
+                    }
+                    Some(_) => self.report(
+                        pvr,
+                        "16.9 SR 2",
+                        format!("{} is not an unconditional singleton", pvr.text()),
+                    ),
+                    None => {}
+                }
+            }
+        }
         let yielded: Vec<String> = match yc {
             Some(yc) => {
                 let mut refs = Vec::new();
@@ -842,6 +861,48 @@ impl<'t> Checker<'t> {
                 scope.merged()
             }
         };
+        // 14.12 SR 19: with an aggregate in the items or a nonempty GROUP BY, a sort key that
+        // is a reference names an item alias or a grouping element, and the references of any
+        // other sort key name grouping elements.
+        let mut aggregates = Vec::new();
+        if let Some(list) = own(sel, "select item list") {
+            find(list, "aggregate function", &mut aggregates);
+        }
+        let gbc = own(sel, "group by clause");
+        if !aggregates.is_empty() || gbc.is_some_and(|g| !contains(g, "empty grouping set")) {
+            let mut aliases = BTreeSet::new();
+            let mut sias = Vec::new();
+            find(sel, "select item alias", &mut sias);
+            for a in sias {
+                if let Some(id) = own(a, "identifier") {
+                    aliases.insert(ident(id));
+                }
+            }
+            let mut grouping = BTreeSet::new();
+            if let Some(g) = gbc {
+                let mut els = Vec::new();
+                find(g, "grouping element", &mut els);
+                grouping.extend(els.iter().map(|e| e.text()));
+            }
+            let mut keys = Vec::new();
+            find(sel, "sort key", &mut keys);
+            for key in keys {
+                let mut refs = Vec::new();
+                find(key, "binding variable reference", &mut refs);
+                let bare = bare(key).is_some();
+                for r in refs {
+                    let n = r.text();
+                    let ok = grouping.contains(&n) || (bare && aliases.contains(&n));
+                    if !ok {
+                        self.report(
+                            key,
+                            "14.12 SR 19",
+                            format!("{n} in a sort key is not a grouping element{}", if bare { " or an item alias" } else { "" }),
+                        );
+                    }
+                }
+            }
+        }
         if star {
             return Some(incoming);
         }
@@ -1604,7 +1665,35 @@ impl<'t> Checker<'t> {
                             "20.6 SR 10",
                             "the body neither ends in LIMIT 1 nor returns one aggregate".into(),
                         ),
-                        _ => {}
+                        Emitting::Result(_) => {}
+                        // 20.6 SR 5 a: the last statement is a linear query statement; SR 6:
+                        // its emitting result statement is not omitted (a SELECT's, by 14.12
+                        // SR 27, is the RETURN it becomes, whose row count the checker does
+                        // not read: reported as SR 10, a reading).
+                        Emitting::Other => {
+                            let block = own(pb, "statement block");
+                            let last = block.and_then(|sb| match owns(sb, "next statement").last() {
+                                Some(next) => own(next, "statement"),
+                                None => own(sb, "statement"),
+                            });
+                            let query = last
+                                .and_then(|st| kids(st).into_iter().next())
+                                .and_then(name)
+                                == Some("composite query statement");
+                            // A last statement that is no query is 9.1 SR 7's (a query
+                            // specification holds only composite query statements, so 20.6
+                            // SR 5 a follows from it), reported by the syntax rules.
+                            let (rule, why) = if !query {
+                                ("9.1 SR 7", "")
+                            } else if contains(pb, "select statement") {
+                                ("20.6 SR 10", "a SELECT body, whose row count is not read (reading)")
+                            } else {
+                                ("20.6 SR 6", "the emitting result statement is omitted")
+                            };
+                            if !why.is_empty() {
+                                self.report(node, rule, why.into());
+                            }
+                        }
                     }
                 }
                 kids(node).into_iter().for_each(|k| self.expr(k, env, at));

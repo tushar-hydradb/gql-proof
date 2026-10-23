@@ -162,11 +162,13 @@ pub fn all_rules(id086: MatchModeDefault) -> Vec<Box<dyn Rule>> {
         Box::new(ElementTypeShape),
         Box::new(OneAccessMode),
         Box::new(IntegerCount),
+        Box::new(StatementKinds),
+        Box::new(ParentSolidus),
     ]
 }
 
 /// Facts at or above this are free for rules built at run time, such as feature claims.
-pub const FIRST_FREE_FACT: Fact = 48;
+pub const FIRST_FREE_FACT: Fact = 128;
 
 /// 16.4 SR 14: every unbounded quantifier needs a guard.
 pub struct UnboundedNeedsGuard {
@@ -1090,6 +1092,300 @@ impl Rule for IntegerCount {
     }
 }
 
+/// The statement kinds: 9.1 SR 5-7, 9.2 SR 4-6, 12.8 SR 2, 13.6 SR 2, 14.5 SR 2, 14.2 SR 3-4,
+/// 14.12 SR 26 b ii.
+///
+/// Synthesized facts flow from each statement up its procedure's spine: the kind of each
+/// <statement> (catalog, data-modifying, query), whether the block has a NEXT, whether its
+/// directly contained statements are focused or ambient, whether its linear query statements
+/// are SELECTs or not, and the query conjunctions of each composite query. They are judged at
+/// the composite query statement (14.2), the statement block (9.2) and the procedure
+/// specification's kind (9.1), where they stop: a <procedure body> occurs only under the three
+/// kinds, so nothing from a nested body reaches an enclosing one. A <query specification>
+/// turns its focused and ambient facts into the ones 14.12 SR 26 reads at a <select query
+/// specification>, dropped at any other parent. Inherited: the kind an inline CALL's
+/// statement asks of its procedure (12.8, 13.6, 14.5), refused at the <procedure
+/// specification>; and, under a <set operator>, that its quantifier is the operator's.
+///
+/// 9.2 SR 7 (with a result statement beside one without) is the checker's alone: "contains"
+/// reaches into nested bodies, which these facts do not.
+pub struct StatementKinds;
+
+const K_CAT: Fact = 46;
+const K_DATA: Fact = 47;
+const K_QUERY: Fact = 48;
+const HAS_NEXT: Fact = 49;
+const FOC: Fact = 50;
+const AMB: Fact = 51;
+const SEL_Q: Fact = 52;
+const NSEL_Q: Fact = 53;
+/// The query conjunctions, normalised by 14.2 SR 1.
+const CONJ: [Fact; 7] = [54, 55, 56, 57, 58, 59, 60];
+const SPEC_FOC: Fact = 61;
+const SPEC_AMB: Fact = 62;
+const SEL: Fact = 63;
+const CALL_CAT: Fact = 64;
+const CALL_DATA: Fact = 65;
+const CALL_QUERY: Fact = 66;
+const Q_ALL: Fact = 67;
+const IN_SETOP: Fact = 68;
+const BLOCK_FACTS: [Fact; 8] = [K_CAT, K_DATA, K_QUERY, HAS_NEXT, FOC, AMB, SEL_Q, NSEL_Q];
+const SPEC_KINDS: [&str; 3] = [
+    "catalog-modifying procedure specification",
+    "data-modifying procedure specification",
+    "query specification",
+];
+/// From an inline CALL's statement down to its <procedure specification>.
+const CALL_CHAIN: [&str; 4] = [
+    "call procedure statement",
+    "procedure call",
+    "inline procedure call",
+    "nested procedure specification",
+];
+
+impl Rule for StatementKinds {
+    fn name(&self) -> &str {
+        "statement kinds"
+    }
+
+    fn cite(&self) -> &str {
+        "9.1 SR 5-7, 9.2 SR 4-6, 12.8 SR 2, 13.6 SR 2, 14.5 SR 2, 14.2 SR 3-4, 14.12 SR 26: each procedure's statements are of its kind, a block's statements agree, a composite query has one conjunction and one focus, an inline CALL's procedure has its statement's kind, a FROM's nested query has the focus its graph expression asks"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        let mut l = labels(&[
+            (K_CAT, "k-cat"),
+            (K_DATA, "k-data"),
+            (K_QUERY, "k-query"),
+            (HAS_NEXT, "has-next"),
+            (FOC, "foc"),
+            (AMB, "amb"),
+            (SEL_Q, "sel-q"),
+            (NSEL_Q, "nsel-q"),
+            (SPEC_FOC, "spec-foc"),
+            (SPEC_AMB, "spec-amb"),
+            (SEL, "sel"),
+            (CALL_CAT, "call-cat"),
+            (CALL_DATA, "call-data"),
+            (CALL_QUERY, "call-query"),
+            (Q_ALL, "q-all"),
+            (IN_SETOP, "in-setop"),
+        ]);
+        for (i, f) in CONJ.iter().enumerate() {
+            l.push((*f, format!("conj{i}")));
+        }
+        l
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn down(&self, node: &Node, inh: &State, pos: usize, _left: &[State], out: &mut State) {
+        let owner = node.def.split('/').next().unwrap_or(node.def);
+        let child = owner_of(&node.items[pos]);
+        // The kind an inline CALL asks of its procedure.
+        let asks = match owner {
+            "call catalog-modifying procedure statement" => Some(CALL_CAT),
+            "call data-modifying procedure statement" => Some(CALL_DATA),
+            "call query statement" => Some(CALL_QUERY),
+            _ => None,
+        };
+        // Only along the chain to the <procedure specification>, nowhere else.
+        let onward = child.is_some_and(|c| {
+            CALL_CHAIN.contains(&c) || c == "procedure specification"
+        }) || matches!(node.items[pos], Item::Group(_));
+        if let Some(f) = asks {
+            if onward {
+                out.set(f, true);
+            }
+        } else if (CALL_CHAIN.contains(&owner) || node.group) && onward {
+            for f in [CALL_CAT, CALL_DATA, CALL_QUERY] {
+                if inh.has(f) {
+                    out.set(f, true);
+                }
+            }
+        }
+        // A set operator's quantifier.
+        if (owner == "set operator" && !node.group) || (node.group && inh.has(IN_SETOP)) {
+            if matches!(child, Some("set quantifier")) || node.group || owner == "set operator" {
+                out.set(IN_SETOP, true);
+            }
+        }
+    }
+
+    fn rejects(&self, node: &Node, inh: &State) -> bool {
+        if node.group || node.def != "procedure specification" {
+            return false;
+        }
+        let want = if inh.has(CALL_CAT) {
+            SPEC_KINDS[0]
+        } else if inh.has(CALL_DATA) {
+            SPEC_KINDS[1]
+        } else if inh.has(CALL_QUERY) {
+            SPEC_KINDS[2]
+        } else {
+            return false;
+        };
+        node.items != [Item::Def(want)]
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if self.rejects(node, inh) {
+            return None;
+        }
+        if node.group {
+            return Some(s);
+        }
+        let only = |d: &str| node.items == [Item::Def(d)];
+        Some(match node.def {
+            "set quantifier" if inh.has(IN_SETOP) => {
+                if node.items == [Item::Token("ALL")] { s.with(Q_ALL) } else { s }
+            }
+            "set operator" => {
+                let all = s.has(Q_ALL);
+                let op = match node.items.first() {
+                    Some(Item::Token("UNION")) => 0,
+                    Some(Item::Token("EXCEPT")) => 2,
+                    _ => 4,
+                };
+                s.without(Q_ALL).with(CONJ[op + usize::from(all)])
+            }
+            "query conjunction" if node.items == [Item::Token("OTHERWISE")] => s.with(CONJ[6]),
+            "select statement" => s.with(SEL),
+            "linear query statement" => {
+                let sel = s.has(SEL);
+                s.without(SEL).with(if sel { SEL_Q } else { NSEL_Q })
+            }
+            "focused linear query statement" | "focused linear data-modifying statement" => {
+                s.with(FOC)
+            }
+            "ambient linear query statement" | "ambient linear data-modifying statement" => {
+                s.with(AMB)
+            }
+            // 14.2 SR 3, 4, judged at each expression of the spine so that it holds one
+            // conjunction and one focus; SR 6 of 9.2 (SELECT or not) too, the operands being
+            // directly contained in the block.
+            "composite query expression" => {
+                if CONJ.iter().filter(|f| s.has(**f)).count() > 1
+                    || (s.has(FOC) && s.has(AMB))
+                    || (s.has(SEL_Q) && s.has(NSEL_Q))
+                {
+                    return None;
+                }
+                s
+            }
+            "composite query statement" => s.without_all(&CONJ),
+            "statement" => {
+                let k = if only("linear catalog-modifying statement") {
+                    K_CAT
+                } else if only("linear data-modifying statement") {
+                    K_DATA
+                } else {
+                    K_QUERY
+                };
+                s.with(k)
+            }
+            "next statement" => s.with(HAS_NEXT),
+            // 9.2 SR 4, 5, 6.
+            "statement block" => {
+                if (s.has(K_CAT) && s.has(HAS_NEXT))
+                    || (s.has(FOC) && s.has(AMB))
+                    || (s.has(SEL_Q) && s.has(NSEL_Q))
+                {
+                    return None;
+                }
+                s
+            }
+            // 9.1 SR 5, 6, 7.
+            d if SPEC_KINDS.contains(&d) => {
+                let (cat, data, query) = (s.has(K_CAT), s.has(K_DATA), s.has(K_QUERY));
+                let ok = match d {
+                    "catalog-modifying procedure specification" => !data && !query,
+                    "data-modifying procedure specification" => !cat && data,
+                    _ => !cat && !data,
+                };
+                if !ok {
+                    return None;
+                }
+                let (foc, amb) = (s.has(FOC), s.has(AMB));
+                let mut s = s.without_all(&BLOCK_FACTS).without_all(&CONJ).without(SEL);
+                if d == "query specification" {
+                    s.set(SPEC_FOC, foc);
+                    s.set(SPEC_AMB, amb);
+                }
+                s
+            }
+            "nested query specification" => s,
+            // 14.12 SR 26 b ii.
+            "select query specification" => {
+                let graph = node.items.contains(&Item::Def("graph expression"));
+                if (graph && !s.has(SPEC_AMB)) || (!graph && !s.has(SPEC_FOC)) {
+                    return None;
+                }
+                s.without(SPEC_FOC).without(SPEC_AMB)
+            }
+            _ => s.without(SPEC_FOC).without(SPEC_AMB),
+        })
+    }
+}
+
+/// 17.6 SR 1: a <catalog object parent reference> holds a solidus after its schema reference
+/// unless that is the bare `/` (`//` is none). Reading: a parent reference with no schema
+/// reference falls to the rule's "otherwise" and would need a solidus it cannot hold, so it is
+/// refused (the literal text; the alternative stays a never target).
+pub struct ParentSolidus;
+
+/// Synthesized: the schema reference is the bare `/`.
+const BARE_SCHEMA: Fact = 70;
+/// Synthesized: the parent reference's own optional solidus is present.
+const OWN_SOLIDUS: Fact = 71;
+
+impl Rule for ParentSolidus {
+    fn name(&self) -> &str {
+        "parent reference solidus"
+    }
+
+    fn cite(&self) -> &str {
+        "17.6 SR 1: no solidus after a bare / schema reference, a solidus after any other"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(BARE_SCHEMA, "bare-schema"), (OWN_SOLIDUS, "own-solidus")])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn step(&self, node: &Node, _inh: &State, _children: &[State], s: State) -> Option<State> {
+        let owner = node.def.split('/').next().unwrap_or(node.def);
+        if node.group {
+            // The parent reference's `[ <solidus> ]`.
+            return Some(if owner == "catalog object parent reference" && node.items == [Item::Def("solidus")] {
+                s.with(OWN_SOLIDUS)
+            } else {
+                s
+            });
+        }
+        Some(match node.def {
+            "absolute catalog schema reference" if node.items == [Item::Def("solidus")] => {
+                s.with(BARE_SCHEMA)
+            }
+            "absolute catalog schema reference" | "schema reference" => s,
+            "catalog object parent reference" => {
+                let schema = node.items.first() == Some(&Item::Def("schema reference"));
+                let ok = schema && (s.has(BARE_SCHEMA) != s.has(OWN_SOLIDUS));
+                if !ok {
+                    return None;
+                }
+                s.without(BARE_SCHEMA).without(OWN_SOLIDUS)
+            }
+            _ => s.without(BARE_SCHEMA).without(OWN_SOLIDUS),
+        })
+    }
+}
+
 /// 16.4 SR 12: under DIFFERENT EDGES, a selective path pattern is alone in its list.
 ///
 /// Reading: 16.6 SR 4 makes a path pattern selective by the search prefix it simply contains,
@@ -1104,7 +1400,8 @@ const ONE: Fact = 26;
 const MANY: Fact = 27;
 const DIFF: Fact = 28;
 const MODE: Fact = 29;
-const SR12: [Fact; 6] = [SEARCH, SELECTIVE_PATTERN, ONE, MANY, DIFF, MODE];
+const KEEP_SELECTIVE: Fact = 69;
+const SR12: [Fact; 7] = [SEARCH, SELECTIVE_PATTERN, ONE, MANY, DIFF, MODE, KEEP_SELECTIVE];
 
 impl Rule for SelectiveAlone {
     fn name(&self) -> &str {
@@ -1123,6 +1420,7 @@ impl Rule for SelectiveAlone {
             (MANY, "many"),
             (DIFF, "diff"),
             (MODE, "mode"),
+            (KEEP_SELECTIVE, "keep-selective"),
         ])
     }
 
@@ -1136,7 +1434,14 @@ impl Rule for SelectiveAlone {
         }
         Some(match node.def {
             "path search prefix" if node.items != [Item::Def("all path search")] => s.with(SEARCH),
-            "keep clause" => s.without(SEARCH),
+            // 16.4 SR 6 puts a KEEP clause's prefix on every path pattern: a selective one
+            // makes them all selective.
+            "keep clause" => {
+                let selective = s.has(SEARCH);
+                let mut s = s.without(SEARCH);
+                s.set(KEEP_SELECTIVE, selective);
+                s
+            }
             "path pattern" => {
                 let selective = s.has(SEARCH);
                 let mut s = s.without(SEARCH).with(ONE);
@@ -1153,7 +1458,10 @@ impl Rule for SelectiveAlone {
             "match mode" => s.with(MODE),
             "graph pattern" => {
                 let default = !s.has(MODE) && self.id086 == MatchModeDefault::DifferentEdges;
-                if (s.has(DIFF) || default) && s.has(SELECTIVE_PATTERN) && s.has(MANY) {
+                if (s.has(DIFF) || default)
+                    && (s.has(SELECTIVE_PATTERN) || s.has(KEEP_SELECTIVE))
+                    && s.has(MANY)
+                {
                     return None;
                 }
                 s.without_all(&SR12)

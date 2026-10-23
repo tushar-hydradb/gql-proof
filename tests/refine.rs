@@ -15,7 +15,21 @@ use std::sync::LazyLock;
 static ISO: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static BASE: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO));
 
-const RULES: [&str; 23] = [
+const RULES: [&str; 37] = [
+    "17.6 SR 1",
+    "16.4 SR 12",
+    "9.1 SR 5",
+    "9.1 SR 6",
+    "9.1 SR 7",
+    "9.2 SR 4",
+    "9.2 SR 5",
+    "9.2 SR 6",
+    "12.8 SR 2",
+    "13.6 SR 2",
+    "14.5 SR 2",
+    "14.2 SR 3",
+    "14.2 SR 4",
+    "14.12 SR 26",
     "20.16 SR 1",
     "16.6 SR 2",
     "8.2 SR 2",
@@ -577,7 +591,16 @@ fn refinement_loses_no_iso_production() {
         for prod in &refined.cfg.prods {
             copies[prod.unrefined as usize] = true;
         }
-        let missing: Vec<usize> = (0..copies.len()).filter(|&p| !copies[p]).collect();
+        // What a syntax rule leaves no valid tree for, by its literal text: 17.6 SR 1 b asks a
+        // parent reference with no schema reference for a solidus it cannot hold.
+        let ruled_out = |p: usize| {
+            let d = gql_proof::describe(&BASE, p as u32);
+            d.starts_with("<catalog object parent reference> ::= <catalog object parent reference/rep")
+        };
+        let missing: Vec<String> = (0..copies.len())
+            .filter(|&p| !copies[p] && !ruled_out(p))
+            .map(|p| gql_proof::describe(&BASE, p as u32))
+            .collect();
         assert!(missing.is_empty(), "{missing:?}");
     }
 }
@@ -616,9 +639,16 @@ proptest! {
         if analysis.min_height(refined.start) > max_depth {
             return Ok(());
         }
+        // The value-size limits (21.2 SR 18, 20, 21.3 SR 5 b under H2) are the gate's alone:
+        // no automaton counts digits, and a random deep tree spells long numbers.
+        const GATE_ONLY: [&str; 3] = ["21.2 SR 18", "21.2 SR 20", "21.3 SR 5"];
         for tree in generate(&refined.cfg, refined.start, seed, max_depth) {
             let rendered = verifier.render(&tree);
-            let violations = verifier.verify(&tree, &rendered);
+            let violations: Vec<_> = verifier
+                .verify(&tree, &rendered)
+                .into_iter()
+                .filter(|v| !GATE_ONLY.contains(&v.rule))
+                .collect();
             prop_assert!(violations.is_empty(), "{:?}", violations);
         }
     }
@@ -1835,5 +1865,48 @@ fn a_zero_path_count_is_the_checkers_and_repaired() {
         let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(3);
         assert!(order_bounds(&BASE, &mut tree, &|nt, t| analysis.spell(nt, t), &mut rng));
         assert!(reported(&tree.export(&BASE)).is_empty(), "{}", tree.export(&BASE).text());
+    }
+}
+
+/// Copies per definition in the refined grammar, the widest first:
+/// `cargo test --release --test refine census -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn census() {
+    let refined = refine(&BASE, &all_rules(PORTABLE), BASE.require("GQL-program").unwrap()).unwrap();
+    let mut prods: std::collections::BTreeMap<&str, (usize, usize)> = Default::default();
+    for nt in &refined.cfg.nts {
+        let e = prods.entry(nt.base.as_str()).or_default();
+        e.0 += 1;
+        e.1 += nt.prods.len();
+    }
+    let mut v: Vec<_> = prods.into_iter().collect();
+    v.sort_by_key(|(_, (_, p))| std::cmp::Reverse(*p));
+    eprintln!("{} nonterminals, {} productions", refined.cfg.nts.len(), refined.cfg.prods.len());
+    for (b, (n, p)) in v.iter().take(25) {
+        eprintln!("{p:>6} productions {n:>4} copies <{b}>");
+    }
+}
+
+#[test]
+#[ignore]
+fn debug_field_names() {
+    let refined = refine(&BASE, &all_rules(DIFFERENT), BASE.require("GQL-program").unwrap()).unwrap();
+    let verifier = Verifier::new(Grammar::new(&ISO)).with_syntax_rules(DIFFERENT);
+    for tree in generate(&refined.cfg, refined.start, 6551283619, 63) {
+        let v = verifier.verify(&tree, &verifier.render(&tree));
+        if v.iter().any(|v| v.rule == "18.10 SR 2") {
+            let mut fts = Vec::new();
+            fn find<'t>(n: &'t Plain, want: &str, out: &mut Vec<&'t Plain>) {
+                if let Plain::Def { name, children, .. } = n {
+                    if name == want { out.push(n); }
+                    children.iter().for_each(|c| find(c, want, out));
+                }
+            }
+            find(&tree, "field types specification", &mut fts);
+            for f in fts { eprintln!("FTS {}", verifier.render(f)); }
+            for x in &v { eprintln!("V {x}"); }
+            break;
+        }
     }
 }

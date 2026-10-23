@@ -156,6 +156,80 @@ pub fn order_bounds(
     spell: &impl Fn(NtId, &str) -> Option<Node>,
     rng: &mut ChaCha8Rng,
 ) -> bool {
+    let values = settle_values(cfg, root, spell, rng);
+    distinct_names(cfg, root, spell) || values
+}
+
+/// 18.5 SR 1, 18.10 SR 2, 20.19 SR 2: the names in one property type list, field type list
+/// or field list are distinct. The leaf provider spells every name `a`; a repeated one is
+/// re-spelled `ab`, `abb`, ... (the first spelling no earlier name in the list has), under
+/// its own <property name> or <field name>, as naming does. A spelling the copy cannot
+/// derive leaves the tree as it was: the checker reports it.
+fn distinct_names(cfg: &Cfg, root: &mut Node, spell: &impl Fn(NtId, &str) -> Option<Node>) -> bool {
+    let Sym::Nt(nt) = root.sym else { return false };
+    let mut changed = false;
+    let (item, name) = match cfg.base(nt) {
+        "property type list" => ("property type", "property name"),
+        "field type list" => ("field type", "field name"),
+        "field list" => ("field", "field name"),
+        _ => ("", ""),
+    };
+    if !item.is_empty() {
+        let mut items: Vec<&mut Node> = Vec::new();
+        collect(cfg, root, item, &mut items);
+        let mut seen = std::collections::BTreeSet::new();
+        for it in items {
+            let Some(n) = through_groups(cfg, it, name) else { continue };
+            let text = n.render(cfg);
+            if seen.insert(text.clone()) {
+                continue;
+            }
+            let Sym::Nt(name_nt) = n.sym else { continue };
+            // The first of `a`, `ab`, `abb`, ... that no name of the list has and the copy
+            // derives.
+            let mut fresh = String::from("a");
+            for _ in 0..64 {
+                if !seen.contains(&fresh)
+                    && let Some(spelt) = spell(name_nt, &fresh)
+                {
+                    *n = spelt;
+                    seen.insert(fresh);
+                    changed = true;
+                    break;
+                }
+                fresh.push('b');
+            }
+        }
+    }
+    for child in &mut root.children {
+        changed |= distinct_names(cfg, child, spell);
+    }
+    changed
+}
+
+/// The `<base>` nodes below `node` through synthetic groups and through `node`'s own list
+/// definition (a list is left recursive or a repetition), not into the items themselves.
+fn collect<'a>(cfg: &Cfg, node: &'a mut Node, base: &str, out: &mut Vec<&'a mut Node>) {
+    let list = match node.sym {
+        Sym::Nt(nt) => cfg.base(nt).to_string(),
+        Sym::Lit(_) => return,
+    };
+    for child in &mut node.children {
+        let Sym::Nt(nt) = child.sym else { continue };
+        if cfg.base(nt) == base {
+            out.push(child);
+        } else if cfg.nts[nt as usize].synthetic || cfg.base(nt) == list {
+            collect(cfg, child, base, out);
+        }
+    }
+}
+
+fn settle_values(
+    cfg: &Cfg,
+    root: &mut Node,
+    spell: &impl Fn(NtId, &str) -> Option<Node>,
+    rng: &mut ChaCha8Rng,
+) -> bool {
     let Sym::Nt(nt) = root.sym else { return false };
     let mut changed = false;
     let value = |n: &mut Node| crate::verify::unsigned_integer_value(&n.render(cfg));
@@ -191,7 +265,7 @@ pub fn order_bounds(
         }
     }
     for child in &mut root.children {
-        changed |= order_bounds(cfg, child, spell, rng);
+        changed |= settle_values(cfg, child, spell, rng);
     }
     changed
 }

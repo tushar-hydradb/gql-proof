@@ -9,6 +9,16 @@ use std::sync::LazyLock;
 
 static ISO_BNF: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static ISO: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO_BNF));
+/// The ISO grammar refined by the syntax rules, to parse with: the automata settle what the
+/// rules disambiguate (9.1 SR 4 picks a procedure's kind from its body), so the parses offered
+/// are the ones the standard admits, not thousands of a kind the body rules out. Trees export
+/// with the ISO definitions' names.
+static PARSE: LazyLock<Cfg> = LazyLock::new(|| {
+    let start = ISO.require("GQL-program").unwrap();
+    gql_proof::refine::refine(&ISO, &gql_proof::refine::all_rules(MatchModeDefault::Portable), start)
+        .unwrap()
+        .cfg
+});
 
 /// The scoping violations of `text`, the same for every tree of it the verifier accepts (with
 /// the syntax rules on: a tree that breaks 13.1 SR 5 is not one the generator makes).
@@ -16,13 +26,13 @@ fn violations(text: &str) -> Vec<Violation> {
     let tokens = Grammar::new(&ISO_BNF);
     let verifier =
         Verifier::new(Grammar::new(&ISO_BNF)).with_syntax_rules(MatchModeDefault::Portable);
-    let parser = Parser::new(&ISO, &tokens, "GQL-program").unwrap();
+    let parser = Parser::new(&PARSE, &tokens, "GQL-program").unwrap();
     let verdicts = RefCell::new(Vec::new());
     // Accept no tree, so the parser offers every one up to its limit.
     let parsed = parser
         .parse(text, |n| {
-            let plain = n.export(&ISO);
-            if verifier.verify(&plain, &n.render(&ISO)).is_empty() {
+            let plain = n.export(&PARSE);
+            if verifier.verify(&plain, &n.render(&PARSE)).is_empty() {
                 let mut rules: Vec<_> = scope::check(&plain).iter().map(|v| v.rule).collect();
                 rules.sort();
                 verdicts.borrow_mut().push((rules, plain));
@@ -30,7 +40,13 @@ fn violations(text: &str) -> Vec<Violation> {
             false
         })
         .unwrap_or_else(|e| panic!("{text:?}: {e}"));
-    let verdicts = verdicts.into_inner();
+    let mut verdicts = verdicts.into_inner();
+    // 16.9 SR 3 settles an ambiguity: a yield item that names an element variable is an
+    // <element variable reference>, and the parse calling it a <path variable reference> is
+    // the reading the rule refuses, not a second verdict.
+    if verdicts.iter().any(|(r, _)| !r.contains(&"16.9 SR 3")) {
+        verdicts.retain(|(r, _)| !r.contains(&"16.9 SR 3"));
+    }
     assert!(
         !verdicts.is_empty(),
         "{text:?}: no tree passes the verifier ({} trees)",
@@ -287,11 +303,10 @@ fn return_projects() {
     bad("RETURN MAX(LET y = VALUE { RETURN count(*) AS z } IN y END) AS x", "20.9 SR 3");
     ok("RETURN COUNT(*) AS x, EXISTS { MATCH (a) RETURN a } AS y");
     // 14.12 SR 7 b
-    bad("SELECT * FROM { MATCH (a) RETURN a } GROUP BY ()", "14.12 SR 7");
+    bad("SELECT * FROM { USE CURRENT_PROPERTY_GRAPH MATCH (a) RETURN a } GROUP BY ()", "14.12 SR 7");
     // 14.12 SR 7 c: FROM_ITEMS are the columns `*` returns and what the items see.
-    ok("SELECT * FROM { MATCH (a) RETURN a } NEXT RETURN a");
-    ok("SELECT a AS b FROM { MATCH (a) RETURN a } NEXT RETURN b");
-    ok("SELECT a AS b FROM CURRENT_GRAPH MATCH (a) NEXT RETURN b");
+    ok("SELECT * FROM { USE CURRENT_PROPERTY_GRAPH MATCH (a) RETURN a }");
+    ok("SELECT a AS b FROM CURRENT_GRAPH MATCH (a)");
     bad("MATCH (a) RETURN a ORDER BY COUNT(a)", "14.10 SR 4");
     // the projection ends the statement
     bad("MATCH (a) RETURN a.k AS k NEXT RETURN a", "20.12 SR 8");
@@ -378,7 +393,8 @@ fn definitions_and_data_modification() {
 #[test]
 fn select_without_from_is_a_return() {
     ok("SELECT 1 AS x");
-    ok("MATCH (a) RETURN a NEXT SELECT a");
+    // 9.2 SR 6: a SELECT beside a RETURN breaks the block, so only SELECTs here.
+    ok("SELECT 1 AS a NEXT SELECT a");
     bad("SELECT 1", "14.12 SR 8");
     bad("SELECT b", "20.12 SR 8");
 }
@@ -468,10 +484,10 @@ fn a_subquery_body_yields_a_table() {
     bad("RETURN EXISTS { MATCH (y) FINISH } AS x", "19.4 SR 5");
     bad("RETURN VALUE { FINISH } AS x", "20.6 SR 8");
     // 13.1 SR 3: a data-modifying body without a result statement finishes implicitly.
-    bad("RETURN EXISTS { INSERT (y) } AS x", "19.4 SR 5");
-    bad("RETURN EXISTS { CALL { FINISH } } AS x", "19.4 SR 5");
+    // `EXISTS { INSERT (y) }` breaks 9.1 SR 7 first (`tests/statement_kinds.rs`).
+    // `EXISTS { CALL { FINISH } }` has no parse the syntax rules admit (9.1 SR 7, 14.5 SR 2).
     // 12.1 SR 4: a catalog-modifying statement has the empty type.
-    bad("RETURN EXISTS { CREATE SCHEMA /s } AS x", "19.4 SR 5");
+    // `EXISTS { CREATE SCHEMA /s }` breaks 9.1 SR 7 first.
     // 20.6 SR 10: at most one row.
     bad("RETURN VALUE { RETURN 1 AS y } AS x", "20.6 SR 10");
     bad("RETURN VALUE { RETURN 1 AS y LIMIT 2 } AS x", "20.6 SR 10");

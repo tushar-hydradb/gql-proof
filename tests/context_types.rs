@@ -17,6 +17,16 @@ use std::sync::LazyLock;
 
 static ISO: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static BASE: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO));
+/// The ISO grammar refined by the syntax rules, to parse with: the automata settle what the
+/// rules disambiguate (9.1 SR 4 picks a procedure's kind from its body), so the parses offered
+/// are the ones the standard admits, not thousands of a kind the body rules out. Trees export
+/// with the ISO definitions' names.
+static PARSE: LazyLock<Cfg> = LazyLock::new(|| {
+    let start = BASE.require("GQL-program").unwrap();
+    gql_proof::refine::refine(&BASE, &gql_proof::refine::all_rules(MatchModeDefault::Portable), start)
+        .unwrap()
+        .cfg
+});
 
 fn rule() -> Typed<Scope, Types> {
     Typed::new(Scope::default(), Types::new(&BASE))
@@ -27,15 +37,15 @@ fn rule() -> Typed<Scope, Types> {
 fn verdict(text: &str) -> Result<(), String> {
     let tokens = Grammar::new(&ISO);
     let verifier = Verifier::new(Grammar::new(&ISO)).with_syntax_rules(MatchModeDefault::Portable);
-    let mut parser = Parser::new(&BASE, &tokens, "GQL-program").unwrap();
+    let mut parser = Parser::new(&PARSE, &tokens, "GQL-program").unwrap();
     parser.limit = 8192;
     let trees = std::cell::RefCell::new(Vec::new());
     let _ = parser.parse(text, |n| {
         if verifier
-            .verify(&n.export(&BASE), &n.render(&BASE))
+            .verify(&n.export(&PARSE), &n.render(&PARSE))
             .is_empty()
         {
-            trees.borrow_mut().push(n.export(&BASE));
+            trees.borrow_mut().push(n.export(&PARSE));
         }
         false
     });
@@ -88,7 +98,6 @@ fn typed_sentences_pass() {
         "RETURN CHAR_LENGTH('ab') AS x",
         "MATCH (x) RETURN count(*) AS y",
         "RETURN count(*) AS y, EXISTS { MATCH (x) RETURN x } AS z",
-        "SELECT * FROM { FINISH }",
         "MATCH (x) RETURN sum(x.k) AS y",
         "RETURN DURATION_BETWEEN(CURRENT_DATE, CURRENT_DATE) AS x",
         "RETURN NOT true AS x",
@@ -157,11 +166,8 @@ fn untyped_sentences_are_refused() {
         "RETURN EXISTS { RETURN 1 AS y NEXT FINISH } AS x",
         "RETURN EXISTS { MATCH (y) FINISH } AS x",
         "RETURN VALUE { FINISH } AS x",
-        // 13.1 SR 3: a data-modifying body without a result statement finishes implicitly.
-        "RETURN EXISTS { INSERT (y) } AS x",
-        "RETURN EXISTS { CALL { FINISH } } AS x",
-        // 12.1 SR 4: a catalog-modifying statement has the empty type.
-        "RETURN EXISTS { CREATE SCHEMA /s } AS x",
+        // A data-modifying or catalog body in EXISTS is refused before typing, by 9.1 SR 7
+        // (`tests/statement_kinds.rs`).
         // 20.6 SR 3: one column.
         "RETURN VALUE { RETURN NO BINDINGS } AS x",
         "RETURN VALUE { RETURN count(*) AS y, count(*) AS z } AS x",
@@ -177,7 +183,7 @@ fn untyped_sentences_are_refused() {
         "RETURN MAX(VALUE { RETURN count(*) AS y }) AS x",
         "RETURN MAX(LET y = VALUE { RETURN count(*) AS z } IN y END) AS x",
         // 14.12 SR 7 b: SELECT * bears no GROUP BY.
-        "SELECT * FROM { FINISH } GROUP BY ()",
+        "SELECT * FROM { USE CURRENT_PROPERTY_GRAPH RETURN 1 AS y } GROUP BY ()",
     ]
     .into_iter()
     .filter(|bad| verdict(bad).is_ok())

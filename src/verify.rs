@@ -132,6 +132,7 @@ impl<'b> Verifier<'b> {
     /// Every violation in `tree`, and whether `rendered` is its token rendering.
     pub fn verify(&self, tree: &Plain, rendered: &str) -> Vec<Violation> {
         let mut out = Vec::new();
+        confusables(tree, &mut out);
         self.walk(tree, &mut Vec::new(), &mut out);
         if let Some(id086) = self.syntax_rules {
             syntax_rules(tree, id086, &mut Vec::new(), &mut out);
@@ -442,7 +443,11 @@ pub(crate) fn leaf_rule(def: &str, text: &str) -> Result<(), (&'static str, Stri
         ),
         "identifier extend" => ok(one.is_some_and(unicode_ident::is_xid_continue), "21.3 SR 2"),
         "character representation" | "string literal character" => ok(
-            one.is_some_and(|c| !matches!(c, '\'' | '"' | '`' | '\\') && !c.is_control()),
+            one.is_some_and(|c| {
+                !matches!(c, '\'' | '"' | '`' | '\\')
+                    && !c.is_control()
+                    && get_general_category(c) != GeneralCategory::Unassigned
+            }),
             "21.2 SR 31-33, 41",
         ),
         "whitespace" => ok(
@@ -815,7 +820,17 @@ fn syntax_rules<'t>(
                     None => id086 == MatchModeDefault::DifferentEdges,
                 };
                 let patterns = path_patterns(node);
-                if different && patterns.len() > 1 && patterns.iter().any(|pp| selective(pp)) {
+                let keep_selective = flat(children).into_iter().any(|c| {
+                    def_name(c) == Some("keep clause")
+                        && own(c, "path pattern prefix").is_some_and(|p| {
+                            own(p, "path search prefix")
+                                .is_some_and(|sp| own(sp, "all path search").is_none())
+                        })
+                });
+                if different
+                    && patterns.len() > 1
+                    && (keep_selective || patterns.iter().any(|pp| selective(pp)))
+                {
                     out.push(violation(
                         &path,
                         "16.4 SR 12",
@@ -917,6 +932,303 @@ fn syntax_rules<'t>(
                         "16.6 SR 2",
                         "a number of paths or groups of 0".into(),
                     ));
+                }
+            }
+            // 9.1 SR 5-7: what the statements of each kind of procedure specification are.
+            // Its own statements are the ones it simply contains: those of its body's block,
+            // not of a body nested in one of them. 9.1 SR 4 classifies a <procedure
+            // specification> by what its body contains; with SR 5-7 on the kind the tree
+            // gives it, a mismatch is reported here.
+            "catalog-modifying procedure specification"
+            | "data-modifying procedure specification"
+            | "query specification" => {
+                let kinds: Vec<&str> = own_statements(node)
+                    .iter()
+                    .filter_map(|st| inner(st).and_then(def_name))
+                    .collect();
+                let catalog = kinds.iter().filter(|k| **k == "linear catalog-modifying statement").count();
+                let data = kinds.iter().filter(|k| **k == "linear data-modifying statement").count();
+                let (rule, bad) = match name.as_str() {
+                    "catalog-modifying procedure specification" => ("9.1 SR 5", catalog != kinds.len()),
+                    "data-modifying procedure specification" => ("9.1 SR 6", catalog > 0 || data == 0),
+                    _ => ("9.1 SR 7", catalog > 0 || data > 0),
+                };
+                if bad {
+                    out.push(violation(
+                        &path,
+                        rule,
+                        format!("a <{name}> whose statements are {kinds:?}"),
+                    ));
+                }
+            }
+            // 12.8 SR 2, 13.6 SR 2, 14.5 SR 2: an inline call's procedure has the kind of the
+            // statement that calls it.
+            "call catalog-modifying procedure statement"
+            | "call data-modifying procedure statement"
+            | "call query statement" => {
+                let (rule, want) = match name.as_str() {
+                    "call catalog-modifying procedure statement" => {
+                        ("12.8 SR 2", "catalog-modifying procedure specification")
+                    }
+                    "call data-modifying procedure statement" => {
+                        ("13.6 SR 2", "data-modifying procedure specification")
+                    }
+                    _ => ("14.5 SR 2", "query specification"),
+                };
+                let mut specs = Vec::new();
+                find(node, "procedure specification", &mut specs);
+                if let Some(ps) = specs.first()
+                    && inner(ps).and_then(def_name) != Some(want)
+                {
+                    out.push(violation(
+                        &path,
+                        rule,
+                        format!("the inline procedure is not a <{want}>"),
+                    ));
+                }
+            }
+            // 9.2 SR 4-7 over the statements a block directly contains.
+            "statement block" => {
+                let statements = own_block_statements(node);
+                let catalog = statements.iter().any(|st| {
+                    inner(st).and_then(def_name) == Some("linear catalog-modifying statement")
+                });
+                if catalog && statements.len() > 1 {
+                    out.push(violation(
+                        &path,
+                        "9.2 SR 4",
+                        "a catalog-modifying statement beside another statement".into(),
+                    ));
+                }
+                let mut direct = Vec::new();
+                for st in &statements {
+                    find_directly(
+                        st,
+                        &[
+                            "focused linear query statement",
+                            "ambient linear query statement",
+                            "focused linear data-modifying statement",
+                            "ambient linear data-modifying statement",
+                            "linear query statement",
+                        ],
+                        &mut direct,
+                    );
+                }
+                let has = |n: &str| direct.iter().any(|d| def_name(d) == Some(n));
+                let focused = has("focused linear query statement")
+                    || has("focused linear data-modifying statement");
+                let ambient = has("ambient linear query statement")
+                    || has("ambient linear data-modifying statement");
+                if focused && ambient {
+                    out.push(violation(
+                        &path,
+                        "9.2 SR 5",
+                        "focused and ambient statements in one block".into(),
+                    ));
+                }
+                let queries: Vec<&&Plain> = direct
+                    .iter()
+                    .filter(|d| def_name(d) == Some("linear query statement"))
+                    .collect();
+                let select = |q: &Plain| {
+                    inner(q).and_then(inner).and_then(def_name) == Some("select statement")
+                };
+                if queries.iter().any(|q| select(q)) && !queries.iter().all(|q| select(q)) {
+                    out.push(violation(
+                        &path,
+                        "9.2 SR 6",
+                        "a SELECT beside another linear query statement".into(),
+                    ));
+                }
+                let results = |q: &Plain| contains(q, "primitive result statement");
+                if queries.iter().any(|q| results(q)) && !queries.iter().all(|q| results(q)) {
+                    out.push(violation(
+                        &path,
+                        "9.2 SR 7",
+                        "a linear query statement with a result statement beside one without".into(),
+                    ));
+                }
+            }
+            // 14.2 SR 3, 4: one conjunction, and focused or ambient operands, per composite
+            // query expression; the ones it directly contains are along its left spine.
+            "composite query expression" if own(node, "query conjunction").is_some() => {
+                let mut conjunctions = Vec::new();
+                let mut operands = Vec::new();
+                let mut at = node;
+                loop {
+                    if let Some(qc) = own(at, "query conjunction") {
+                        conjunctions.push(conjunction(qc));
+                    }
+                    if let Some(cqp) = own(at, "composite query primary") {
+                        operands.push(cqp);
+                    }
+                    match own(at, "composite query expression") {
+                        Some(next) => at = next,
+                        None => break,
+                    }
+                }
+                if conjunctions.windows(2).any(|w| w[0] != w[1]) {
+                    out.push(violation(
+                        &path,
+                        "14.2 SR 3",
+                        format!("mixed query conjunctions {conjunctions:?}"),
+                    ));
+                }
+                let mut direct = Vec::new();
+                for op in operands {
+                    find_directly(
+                        op,
+                        &["focused linear query statement", "ambient linear query statement"],
+                        &mut direct,
+                    );
+                }
+                let has = |n: &str| direct.iter().any(|d| def_name(d) == Some(n));
+                if has("focused linear query statement") && has("ambient linear query statement") {
+                    out.push(violation(
+                        &path,
+                        "14.2 SR 4",
+                        "focused and ambient operands in one composite query".into(),
+                    ));
+                }
+            }
+            // 14.12 SR 26 b ii: a FROM's nested query is ambient after a graph expression,
+            // focused without one.
+            "select query specification" => {
+                let graph = own(node, "graph expression").is_some();
+                if let Some(nqs) = own(node, "nested query specification") {
+                    let mut found = Vec::new();
+                    find_simply(nqs, "focused linear query statement", "nested query specification", &mut found);
+                    let focused = !found.is_empty();
+                    found.clear();
+                    find_simply(nqs, "ambient linear query statement", "nested query specification", &mut found);
+                    let ambient = !found.is_empty();
+                    if (graph && !ambient) || (!graph && !focused) {
+                        out.push(violation(
+                            &path,
+                            "14.12 SR 26",
+                            if graph {
+                                "a FROM with a graph expression over a nested query with no ambient statement".into()
+                            } else {
+                                "a FROM with no graph expression over a nested query with no focused statement".into()
+                            },
+                        ));
+                    }
+                }
+            }
+            // 17.6 SR 1: after a bare `/` schema reference no solidus, after any other one a
+            // solidus (`//` is no parent reference).
+            "catalog object parent reference" => {
+                let kids = flat(children);
+                let schema = kids.iter().find(|k| def_name(k) == Some("schema reference"));
+                let solidus = kids.iter().any(|k| def_name(k) == Some("solidus"));
+                // Reading in `refine::ParentSolidus`: with no schema reference, "otherwise"
+                // asks for a solidus that cannot be there.
+                if schema.is_none() {
+                    out.push(violation(
+                        &path,
+                        "17.6 SR 1",
+                        "a parent reference with no schema reference (reading)".into(),
+                    ));
+                }
+                if let Some(sr) = schema {
+                    let bare = sr.text() == "/";
+                    if bare == solidus {
+                        out.push(violation(
+                            &path,
+                            "17.6 SR 1",
+                            if bare {
+                                "a solidus after the bare / schema reference".into()
+                            } else {
+                                "no solidus after the schema reference".into()
+                            },
+                        ));
+                    }
+                }
+            }
+            // 21.3 SR 5 b-d: an identifier's representative form is at most 16383 characters,
+            // with no Cc, Cf, Cn, Cs, Zl, Zp, and no Zs but the space.
+            "regular identifier" | "extended identifier" | "delimited identifier" => {
+                let text = node.text();
+                let form: String = if name == "delimited identifier" && text.len() >= 2 {
+                    let q = text.chars().next().unwrap();
+                    let inner = &text[q.len_utf8()..text.len() - q.len_utf8()];
+                    inner.replace(&format!("{q}{q}"), &q.to_string())
+                } else {
+                    text.clone()
+                };
+                if form.chars().count() > 16383 {
+                    out.push(violation(&path, "21.3 SR 5", "an identifier over 16383 characters".into()));
+                }
+                use GeneralCategory as G;
+                if let Some(c) = form.chars().find(|&c| {
+                    let g = get_general_category(c);
+                    matches!(
+                        g,
+                        G::Control | G::Format | G::Unassigned | G::Surrogate | G::LineSeparator | G::ParagraphSeparator
+                    ) || (g == G::SpaceSeparator && c != ' ')
+                }) {
+                    out.push(violation(
+                        &path,
+                        "21.3 SR 5",
+                        format!("{c:?} in an identifier"),
+                    ));
+                }
+            }
+            // 21.2 SR 18, 20 under hypothesis H2: the implementation's exact types reach 18
+            // decimal digits and its approximate literal type the range of a 32 bit float. A
+            // literal past that is reported (reading).
+            "exact numeric literal" => {
+                let t = ascii_digits(&node.text()).to_ascii_uppercase().replace('_', "");
+                let radix = t.len() > 1 && t.starts_with('0') && matches!(t.as_bytes()[1], b'X' | b'O' | b'B');
+                let t = if radix { t.as_str() } else { t.trim_end_matches('M') };
+                let (mantissa, exp) = match t.split_once('E').filter(|_| !radix) {
+                    Some((m, e)) => (m.to_string(), e.parse::<i64>().unwrap_or(i64::MAX)),
+                    None => (t.to_string(), 0),
+                };
+                let digits = mantissa.chars().filter(|c| c.is_ascii_digit()).count() as i64;
+                let fraction = mantissa.split_once('.').map_or(0, |(_, f)| f.len() as i64);
+                let integer_part = digits - fraction;
+                let too_big = if radix {
+                    unsigned_integer_value(t) >= 1_000_000_000_000_000_000
+                } else {
+                    digits > 18 || exp.abs() > 18 || integer_part + exp > 18 || fraction - exp > 18
+                };
+                if too_big {
+                    out.push(violation(
+                        &path,
+                        "21.2 SR 18",
+                        format!("no exact numeric type of 18 digits holds {} (reading, H2)", node.text()),
+                    ));
+                }
+            }
+            "approximate numeric literal" => {
+                let t = ascii_digits(&node.text()).to_ascii_uppercase().replace('_', "");
+                let t = t.trim_end_matches(['F', 'D']);
+                let v: Option<f64> = t.parse().ok();
+                if !v.is_some_and(|v| v.is_finite() && (v == 0.0 || (1.2e-38..=3.4e38).contains(&v.abs()))) {
+                    out.push(violation(
+                        &path,
+                        "21.2 SR 20",
+                        format!("{} is outside a 32 bit float's range (reading, H2)", node.text()),
+                    ));
+                }
+            }
+            // 18.10 SR 2: field names in one field type list are distinct.
+            "field type list" => {
+                let mut names = std::collections::BTreeSet::new();
+                // Simply contained: a field's record type is a list of its own.
+                let mut fts = Vec::new();
+                find_simply(node, "field type", "field type list", &mut fts);
+                for ft in fts {
+                    if let Some(fname) = own(ft, "field name")
+                        && !names.insert(fname.text())
+                    {
+                        out.push(violation(
+                            &path,
+                            "18.10 SR 2",
+                            format!("field {} declared twice", fname.text()),
+                        ));
+                    }
                 }
             }
             // 8.2 SR 2: exactly one access mode.
@@ -1025,6 +1337,68 @@ fn not_integer_shaped(node: &Plain) -> Option<String> {
         return Some(name.clone());
     }
     kids.into_iter().find_map(not_integer_shaped)
+}
+
+/// The <statement>s a procedure specification simply contains: those of its body's
+/// statement block.
+fn own_statements(spec: &Plain) -> Vec<&Plain> {
+    let mut bodies = Vec::new();
+    find(spec, "procedure body", &mut bodies);
+    bodies
+        .first()
+        .and_then(|pb| own(pb, "statement block"))
+        .map(own_block_statements)
+        .unwrap_or_default()
+}
+
+/// The <statement>s a statement block directly contains: its first and each NEXT's.
+fn own_block_statements(sb: &Plain) -> Vec<&Plain> {
+    let mut out: Vec<&Plain> = own(sb, "statement").into_iter().collect();
+    let Plain::Def { children, .. } = sb else { return out };
+    for next in flat(children) {
+        if def_name(next) == Some("next statement")
+            && let Some(st) = own(next, "statement")
+        {
+            out.push(st);
+        }
+    }
+    out
+}
+
+/// Every node below `node` (itself included) named in `want`, not looking inside a
+/// <procedure body>: what `node` directly contains.
+fn find_directly<'t>(node: &'t Plain, want: &[&str], out: &mut Vec<&'t Plain>) {
+    if let Some(n) = def_name(node) {
+        if n == "procedure body" {
+            return;
+        }
+        if want.contains(&n) {
+            out.push(node);
+        }
+    }
+    if let Plain::Def { children, .. } = node {
+        for c in children {
+            find_directly(c, want, out);
+        }
+    }
+}
+
+/// A query conjunction as 14.2 SR 1 normalises it: a set operator with its quantifier,
+/// DISTINCT when none is given.
+fn conjunction(qc: &Plain) -> String {
+    fn tokens(node: &Plain, out: &mut Vec<String>) {
+        match node {
+            Plain::Def { children, .. } => children.iter().for_each(|c| tokens(c, out)),
+            leaf => out.push(leaf.text().to_ascii_uppercase()),
+        }
+    }
+    let mut words = Vec::new();
+    tokens(qc, &mut words);
+    let text = words.join(" ");
+    match text.as_str() {
+        "UNION" | "EXCEPT" | "INTERSECT" => format!("{text} DISTINCT"),
+        _ => text,
+    }
 }
 
 /// Whether `node` simply contains a `<want>`: contains one without an intervening `<boundary>`
@@ -1420,6 +1794,16 @@ pub fn unsigned_integer_value(text: &str) -> u64 {
     })
 }
 
+/// `text` with every decimal digit of another script (21.4 SR 2) read as its ASCII digit.
+fn ascii_digits(text: &str) -> String {
+    text.chars()
+        .map(|c| match digit_value(c) {
+            Some(v) if !c.is_ascii_digit() => char::from_digit(v, 10).unwrap_or(c),
+            _ => c,
+        })
+        .collect()
+}
+
 /// The value of a decimal digit of any script (21.4 SR 2: general category Nd): Unicode's Nd
 /// digits come in runs of ten in order, zero first (UAX #44), so a digit's value is its
 /// distance from the start of the run of Nd characters it is in, modulo ten. `None` for a
@@ -1504,4 +1888,36 @@ fn modifies(statement: &Plain) -> bool {
             Some(name) if FOLLOW.contains(&name) => modifies(child),
             _ => false,
         })
+}
+
+/// 6 SR 4 under hypothesis H2: the implementation's relation of visually confusable names
+/// (IW014) relates two different names only if they share a skeleton under the ASCII
+/// confusables of UTS #39 (`rn`/`m`, `vv`/`w`, `cl`/`d`, `1`/`I`/`l`, `0`/`O`/`o`), compared
+/// without case. Two different identifiers of one tree with one skeleton are reported.
+fn confusables(tree: &Plain, out: &mut Vec<Violation>) {
+    fn skeleton(name: &str) -> String {
+        let mut s = name.to_lowercase();
+        for (from, to) in [("rn", "m"), ("vv", "w"), ("cl", "d"), ("1", "l"), ("i", "l"), ("0", "o")] {
+            s = s.replace(from, to);
+        }
+        s
+    }
+    let mut ids = Vec::new();
+    find(tree, "regular identifier", &mut ids);
+    let mut seen: std::collections::BTreeMap<String, String> = Default::default();
+    for id in ids {
+        let text = id.text();
+        let sk = skeleton(&text);
+        match seen.get(&sk) {
+            Some(other) if other.to_lowercase() != text.to_lowercase() => out.push(Violation {
+                path: String::new(),
+                rule: "6 SR 4",
+                detail: format!("{other} and {text} are confusable (reading, H2)"),
+            }),
+            Some(_) => {}
+            None => {
+                seen.insert(sk, text);
+            }
+        }
+    }
 }
