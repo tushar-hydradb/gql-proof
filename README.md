@@ -17,7 +17,7 @@ it was built for turbolay and runs against neo4j too. anything that takes gql te
 on turbolay #243 (484d1a72), turbolay accepts 1,401 of the 2,243 typed queries. take out the queries that are our own mistakes, turbolay's documented deviations and the ones needing parameters, and turbolay handles 1,420 of 1,707 (83%). most of the rest is two turbolay parse gaps, and on our side one rule family about path patterns that we do not enforce yet
 
 not yet:
-- answers. a run checks that the engine accepts or rejects a query and with which status, not that the rows are right
+- answers, mostly. for queries that are a graph pattern and nothing else (1,667 of the 3,808 typed ones) a graph is built from the pattern and the row that must come back is known (`gql-proof oracle`); for the rest a run still checks only that the engine accepts or rejects the query and with which status
 - 3 variables, which the coverage argument needs for productions
 - a catalog, so nothing refers to a named graph, a graph type or a procedure
 
@@ -124,6 +124,13 @@ just neo4j                              # a throwaway neo4j in docker, every sho
 just turbolay ~/code/turbolay           # short queries through a probe test in a turbolay checkout
 just turbolay-typed ~/code/turbolay     # the typed set, same way
 python3 -I tools/engines/breakdown.py target/engines/turbolay-typed-results.jsonl
+```
+
+the witness graphs and expected rows, and a run that loads each graph and compares:
+
+```
+gql-proof oracle --match-mode-default different-edges sentences/typed-2vars-turbolay-claim-path-minimums.jsonl > target/engines/oracle-typed.jsonl
+just turbolay-oracle ~/code/turbolay     # each graph loaded, the query run, rows compared by _id
 ```
 
 `breakdown.py` sorts every refusal by cause: our invalid query, an engine parse gap, a documented deviation, a data error raised as it should, a bug already reported. its rules match turbolay's messages at #243, a new engine needs its own

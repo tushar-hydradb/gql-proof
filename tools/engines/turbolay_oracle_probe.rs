@@ -94,6 +94,7 @@ fn matches(expected: &Value, got: &Value) -> bool {
     let value = &expected["value"];
     match expected["kind"].as_str() {
         Some("Null") => got.is_null(),
+        Some("Int") => got == value,
         Some("Node") => got.get("node") == Some(value),
         Some("Edge") => got.get("edge") == Some(value),
         Some("Path") => got.get("path") == Some(value),
@@ -189,11 +190,49 @@ async fn run_oracle_records() {
                 }
             }
         };
+        let mut observed: Vec<Vec<Value>> = Vec::new();
         let (verdict, detail) = match (outcome, witness) {
+            ("ok", true) if !record["observe"].is_null() => {
+                // The observation query: the same patterns with their variables returned.
+                let query = record["observe"]["query"].as_str().unwrap_or("").to_string();
+                let engine = CypherEngine::new(storage(setup));
+                let prepared = engine.prepare_with_lists(&query, &ParameterMap::new(), &ListParameterMap::new());
+                match prepared {
+                    Err(e) => ("observe refused", format!("{}: {e}", e.gql_status())),
+                    Ok(p) => {
+                        let run = tokio::time::timeout(Duration::from_secs(5), async {
+                            engine.execute_prepared_with_status(&p).await.map(|o| {
+                                let columns: Vec<String> =
+                                    o.result.columns.iter().map(|c| c.name.clone()).collect();
+                                let rows: Vec<Vec<Value>> = o
+                                    .result
+                                    .rows
+                                    .iter()
+                                    .map(|r| r.values.iter().map(to_json).collect())
+                                    .collect();
+                                (columns, rows)
+                            })
+                        })
+                        .await;
+                        match run {
+                            Err(_) => ("observe timeout", String::new()),
+                            Ok(Err(e)) => ("observe failed", format!("{}: {e}", e.gql_status())),
+                            Ok(Ok((c, r))) => {
+                                let (v, d) = judge(&record["observe"], &c, &r);
+                                observed = r;
+                                (v, d)
+                            }
+                        }
+                    }
+                }
+            }
             ("ok", true) => judge(&record["expect"], &columns, &rows_json),
             ("ok", false) => ("unjudged", "status tier".to_string()),
             (other, _) => (other, message.clone()),
         };
+        if !observed.is_empty() {
+            rows_json = observed;
+        }
         let shown: Vec<&Vec<Value>> = rows_json.iter().take(3).collect();
         let row = json!({
             "sentence": sentence,

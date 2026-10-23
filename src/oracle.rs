@@ -72,6 +72,8 @@ pub enum Bound {
     /// A group variable: one entry per iteration.
     List(Vec<Bound>),
     Null,
+    /// A literal an observation query returns.
+    Int(i128),
 }
 
 /// The match mode a `<graph pattern>` without one gets (ID086).
@@ -113,8 +115,23 @@ pub struct Oracle {
     pub graph: Graph,
     pub setup: Setup,
     pub expect: Expect,
+    /// For a query whose only observable is completion (`FINISH`): the same patterns with
+    /// their variables returned, and what that must return. Hypothesis H-observe: the
+    /// engine evaluates the MATCH the same way whichever result statement follows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observe: Option<Observe>,
     /// Why the row is not of the witness tier, or why the pattern cannot match.
     pub why: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct Observe {
+    pub query: String,
+    /// `Some(0)` when no graph matches; else `row` must be among the rows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rows: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub row: Option<BTreeMap<String, Bound>>,
 }
 
 /// The setup statements per engine; a missing entry is unloadable there, with the reason.
@@ -280,16 +297,16 @@ fn exactly<'a>(p: &'a Plain, name: &str) -> Option<&'a Plain> {
     found.into_iter().find(|f| f.text() == text)
 }
 
-/// The spelling of an identifier: a delimited one without its quotes, else as is.
+/// The spelling of an identifier: a delimited one without its quotes and with a doubled
+/// delimiter inside read as one (21.3: ```` is the name made of one backtick), else as is.
 fn identifier(p: &Plain) -> String {
     let t = p.text();
-    if (t.starts_with('`') && t.ends_with('`') || t.starts_with('"') && t.ends_with('"'))
-        && t.len() >= 2
-    {
-        t[1..t.len() - 1].to_string()
-    } else {
-        t
+    for q in ['`', '"'] {
+        if t.len() >= 2 && t.starts_with(q) && t.ends_with(q) {
+            return t[1..t.len() - 1].replace(&format!("{q}{q}"), &q.to_string());
+        }
     }
+    t
 }
 
 /// The variable an `<element variable declaration>` declares, and whether it is TEMP.
@@ -367,6 +384,43 @@ enum Bind {
     /// A bracket symbol binding, by its depth, opening or closing a parenthesized pattern.
     Open,
     Close,
+}
+
+/// One item of a path term at one depth, before 16.7 SR 14's implicit nodes.
+enum Item<'a> {
+    /// A node pattern, or an implicit empty one.
+    Node(Option<&'a Plain>),
+    /// An edge pattern of this kind, with its full form's filler and, from a simplified
+    /// pattern, the label expression it stands for.
+    Edge {
+        kind: EdgeKind,
+        filler: Option<&'a Plain>,
+        label: Option<LabelExpr>,
+    },
+    /// A quantified, questioned or parenthesized path primary.
+    Group(&'a Plain),
+    /// A group a simplified path pattern expression rewrites to (16.12 SR 6).
+    Simple(SItem<'a>),
+    /// A placeholder for the node an edge needs after it.
+    Implicit,
+}
+
+impl Item<'_> {
+    fn is_edge(&self) -> bool {
+        matches!(self, Item::Edge { .. })
+    }
+    fn is_node(&self) -> bool {
+        matches!(self, Item::Node(_))
+    }
+}
+
+enum SItem<'a> {
+    /// `( PREFIX contents SUFFIX )` with the delimiters' default edge kind.
+    Paren(&'a Plain, EdgeKind),
+    /// `( PREFIX tertiary SUFFIX ) GPQ` at its lower bound.
+    Quant(&'a Plain, EdgeKind, u64),
+    /// `( PREFIX tertiary SUFFIX ) ?`: zero iterations.
+    Opt,
 }
 
 /// The requirements collected on one element before its labels are modelled.
@@ -745,96 +799,245 @@ impl Builder {
     }
 
     /// The items of a path term at this depth, in order (16.7 SR 14 is applied over them).
-    fn items<'a>(&mut self, p: &'a Plain, out: &mut Vec<&'a Plain>) {
+    fn items<'a>(&mut self, p: &'a Plain, out: &mut Vec<Item<'a>>) {
         match def_name(p) {
-            Some("path term") | Some("path concatenation") => {
+            Some("path term") | Some("path concatenation") | Some("path factor")
+            | Some("path primary") => {
                 for c in logical(p) {
                     self.items(c, out);
                 }
             }
-            Some("path factor") => {
-                for c in logical(p) {
-                    self.items(c, out);
+            Some("element pattern") => {
+                if child(p, "edge pattern").is_some() {
+                    let ep = child(p, "edge pattern").expect("an edge pattern");
+                    let (kind, filler) = edge_kind(ep);
+                    out.push(Item::Edge {
+                        kind,
+                        filler,
+                        label: None,
+                    });
+                } else {
+                    out.push(Item::Node(Some(p)));
                 }
             }
-            Some("path primary") => {
-                for c in logical(p) {
-                    self.items(c, out);
-                }
-            }
-            Some("element pattern") => out.push(p),
             Some("quantified path primary")
             | Some("questioned path primary")
-            | Some("parenthesized path pattern expression")
-            | Some("simplified path pattern expression") => out.push(p),
+            | Some("parenthesized path pattern expression") => out.push(Item::Group(p)),
+            Some("simplified path pattern expression") => {
+                let kind = simplified_kind(p);
+                // The contents sit under the defaulting variant that names the delimiters.
+                let mut found = Vec::new();
+                find_all(p, "simplified contents", &mut found);
+                if let Some(contents) = found.first().copied() {
+                    // 16.12 SR 5: the expression is parenthesized once, then rewritten.
+                    out.push(Item::Simple(SItem::Paren(contents, kind)));
+                }
+            }
             _ => {}
+        }
+    }
+
+    /// The items a `<simplified contents>` stands for after 16.12 SR 6, every edge with the
+    /// delimiters' default kind unless overridden.
+    fn simplified_items<'a>(&mut self, p: &'a Plain, kind: EdgeKind, out: &mut Vec<Item<'a>>) {
+        match def_name(p) {
+            Some("simplified contents") | Some("simplified term") | Some("simplified factor low")
+            | Some("simplified factor high") | Some("simplified tertiary")
+            | Some("simplified secondary") => {
+                let kids = logical(p);
+                // A union or alternation: the first operand is the witness (6 b i, ii); a
+                // simplified pattern declares no variables, so nothing binds null.
+                if let Some(first) = kids.first() {
+                    match def_name(first) {
+                        Some("simplified path union") | Some("simplified multiset alternation") => {
+                            if let Some(t) = logical(first).into_iter().find(|c| def_name(c) == Some("simplified term")) {
+                                self.simplified_items(t, kind, out);
+                            }
+                        }
+                        Some("simplified concatenation") => {
+                            // 6 b iii: `PREFIX ST SUFFIX PREFIX SFL SUFFIX`.
+                            for c in logical(first) {
+                                if def_name(c).is_some() {
+                                    self.simplified_items(c, kind, out);
+                                }
+                            }
+                        }
+                        Some("simplified conjunction") | Some("simplified negation") => {
+                            // 6 b iv, viii: one edge pattern whose label expression it is.
+                            match simplified_label(first) {
+                                Some(e) => out.push(Item::Edge { kind, filler: None, label: Some(e) }),
+                                None => self.out_of_core("a simplified conjunction that is not a label expression"),
+                            }
+                        }
+                        Some("simplified quantified") => {
+                            let tertiary = child(first, "simplified tertiary");
+                            let lower = child(first, "graph pattern quantifier").and_then(quantifier_lower);
+                            match (tertiary, lower) {
+                                (Some(t), Some(l)) => out.push(Item::Simple(SItem::Quant(t, kind, l))),
+                                _ => self.out_of_core("a simplified quantifier that could not be read"),
+                            }
+                        }
+                        Some("simplified questioned") => out.push(Item::Simple(SItem::Opt)),
+                        Some("simplified direction override") => {
+                            // 6 b vii: the override's kind, its secondary as the label expression.
+                            let mut overridden = kind;
+                            let mut secondary = None;
+                            for o in logical(first) {
+                                overridden = match def_name(o) {
+                                    Some("simplified override left") => EdgeKind::Left,
+                                    Some("simplified override undirected") => EdgeKind::Undirected,
+                                    Some("simplified override right") => EdgeKind::Right,
+                                    Some("simplified override left or undirected") => EdgeKind::LeftOrUndirected,
+                                    Some("simplified override undirected or right") => EdgeKind::UndirectedOrRight,
+                                    Some("simplified override left or right") => EdgeKind::LeftOrRight,
+                                    Some("simplified override any direction") => EdgeKind::Any,
+                                    _ => continue,
+                                };
+                                secondary = child(o, "simplified secondary");
+                            }
+                            match secondary.and_then(simplified_label) {
+                                Some(e) => out.push(Item::Edge { kind: overridden, filler: None, label: Some(e) }),
+                                None => self.out_of_core("a direction override whose contents are not a label expression"),
+                            }
+                        }
+                        Some("simplified primary") => {
+                            // 6 b ix: a label name is an edge pattern; parentheses nest.
+                            if let Some(n) = child(first, "label name") {
+                                out.push(Item::Edge { kind, filler: None, label: Some(LabelExpr::Name(identifier(n))) });
+                            } else if let Some(inner) = child(first, "simplified contents") {
+                                out.push(Item::Simple(SItem::Paren(inner, kind)));
+                            }
+                        }
+                        Some(_) => self.simplified_items(first, kind, out),
+                        None => {}
+                    }
+                }
+            }
+            Some(_) => {
+                for c in logical(p) {
+                    if def_name(c).is_some() {
+                        self.simplified_items(c, kind, out);
+                    }
+                }
+            }
+            None => {}
         }
     }
 
     fn path_term(&mut self, p: &Plain) -> Vec<Bind> {
         let mut items = Vec::new();
         self.items(p, &mut items);
+        self.term_items(items)
+    }
+
+    /// The binding of a sequence of items at one depth: 16.7 SR 14 b, c, d put an empty node
+    /// pattern before and after every edge pattern that has none; adjacent node bindings are
+    /// one node (22.2 GR 16 b).
+    fn term_items(&mut self, items: Vec<Item<'_>>) -> Vec<Bind> {
         let mut binding: Vec<Bind> = Vec::new();
-        // 16.7 SR 14 b, c, d: an edge pattern is preceded and followed by a node pattern at
-        // the same depth, implicit and empty if need be.
-        let is_edge = |i: &Plain| {
-            def_name(i) == Some("element pattern") && child(i, "edge pattern").is_some()
-        };
-        let is_node = |i: &Plain| {
-            def_name(i) == Some("element pattern") && child(i, "node pattern").is_some()
-        };
-        let mut sequence: Vec<Option<&Plain>> = Vec::new();
-        for (k, item) in items.iter().enumerate() {
-            if is_edge(item) && !sequence.last().is_some_and(|s| s.is_some_and(is_node)) {
-                sequence.push(None);
+        let mut sequence: Vec<Item<'_>> = Vec::new();
+        for item in items {
+            let edge = item.is_edge();
+            if edge && !sequence.last().is_some_and(Item::is_node) {
+                sequence.push(Item::Node(None));
             }
-            sequence.push(Some(item));
-            if is_edge(item) && !items.get(k + 1).is_some_and(|n| is_node(n)) {
-                sequence.push(None);
+            sequence.push(item);
+            if edge {
+                // Removed again below when the next item is a node pattern.
+                sequence.push(Item::Implicit);
+            }
+        }
+        // An implicit node right before an explicit node pattern is that node pattern.
+        let mut cleaned: Vec<Item<'_>> = Vec::new();
+        let mut iter = sequence.into_iter().peekable();
+        while let Some(item) = iter.next() {
+            if matches!(item, Item::Implicit) {
+                if iter.peek().is_some_and(Item::is_node) {
+                    continue;
+                }
+                cleaned.push(Item::Node(None));
+            } else {
+                cleaned.push(item);
             }
         }
         let mut pending_edge: Option<(usize, EdgeKind)> = None;
-        for item in sequence {
+        for item in cleaned {
             match item {
-                None => {
-                    let id = self.node_here(&mut binding, None);
+                Item::Implicit => unreachable!("replaced above"),
+                Item::Node(pattern) => {
+                    let id = self.node_here(&mut binding, pattern);
                     self.close_edge(&mut pending_edge, &binding, id);
                 }
-                Some(item) if is_node(item) => {
-                    let id = self.node_here(&mut binding, Some(item));
-                    self.close_edge(&mut pending_edge, &binding, id);
-                }
-                Some(item) if is_edge(item) => {
-                    let ep = child(item, "edge pattern").expect("an edge pattern");
-                    let (kind, inner) = edge_kind(ep);
+                Item::Edge { kind, filler, label } => {
                     let Bind::Node(left) = last_element(&binding).expect("a node before an edge")
                     else {
                         unreachable!("alternation after SR 14")
                     };
                     let left = self.canon(left);
-                    // The right node is bound next; the edge is created with the left node
-                    // and finished then.
                     let id = self.new_edge(left, left, kind != EdgeKind::Undirected);
-                    if let Some(inner) = inner {
-                        self.filler(inner, false, id);
+                    if let Some(filler) = filler {
+                        self.filler(filler, false, id);
+                    }
+                    if let Some(e) = label {
+                        self.require_label(false, id, e);
                     }
                     binding.push(Bind::Edge(id));
                     pending_edge = Some((id, kind));
                 }
-                Some(item) => {
-                    let group = self.group(item);
-                    // A node before and the group's first node are not separable: one node
-                    // (22.2 GR 16 b); likewise the group's last node and what follows.
-                    if let (Some(Bind::Node(prev)), Some(Bind::Node(first))) =
-                        (last_element(&binding), first_element(&group))
-                    {
-                        self.merge(prev, first);
-                    }
-                    binding.extend(group);
+                Item::Group(p) => {
+                    let group = self.group(p);
+                    self.append_group(&mut binding, group);
+                }
+                Item::Simple(s) => {
+                    let group = self.simple_group(s);
+                    self.append_group(&mut binding, group);
                 }
             }
         }
         binding
+    }
+
+    /// A group's binding after `binding`: a node before and the group's first node are not
+    /// separable, so one node (22.2 GR 16 b).
+    fn append_group(&mut self, binding: &mut Vec<Bind>, group: Vec<Bind>) {
+        if let (Some(Bind::Node(prev)), Some(Bind::Node(first))) =
+            (last_element(binding), first_element(&group))
+        {
+            self.merge(prev, first);
+        }
+        binding.extend(group);
+    }
+
+    /// The binding of a simplified group: a parenthesized expression (bracket bindings around
+    /// its contents), a quantified one at its lower bound, a questioned one empty.
+    fn simple_group(&mut self, s: SItem<'_>) -> Vec<Bind> {
+        match s {
+            SItem::Paren(contents, kind) => {
+                let mut items = Vec::new();
+                self.simplified_items(contents, kind, &mut items);
+                let mut binding = vec![Bind::Open];
+                binding.extend(self.term_items(items));
+                binding.push(Bind::Close);
+                binding
+            }
+            SItem::Quant(tertiary, kind, lower) => {
+                if lower > 64 {
+                    self.out_of_core(format!("a quantifier lower bound of {lower}"));
+                    return Vec::new();
+                }
+                let mut binding: Vec<Bind> = Vec::new();
+                for _ in 0..lower {
+                    let mut items = Vec::new();
+                    self.simplified_items(tertiary, kind, &mut items);
+                    let mut iteration = vec![Bind::Open];
+                    iteration.extend(self.term_items(items));
+                    iteration.push(Bind::Close);
+                    self.append_group(&mut binding, iteration);
+                }
+                binding
+            }
+            SItem::Opt => Vec::new(),
+        }
     }
 
     /// A node pattern bound at the end of `binding`: the node before it, if any and not
@@ -940,25 +1143,18 @@ impl Builder {
                 }
                 binding
             }
-            Some("simplified path pattern expression") => {
-                self.out_of_core("a simplified path pattern expression (16.12)");
-                Vec::new()
-            }
             _ => Vec::new(),
         }
     }
 
     fn primary(&mut self, p: &Plain) -> Vec<Bind> {
-        // 16.7 SR 14 a: a quantified edge pattern is a parenthesized one.
+        // 16.7 SR 14 a: a quantified edge pattern is a parenthesized one; a simplified
+        // expression is parenthesized by 16.12 SR 5.
         for c in logical(p) {
             match def_name(c) {
                 Some("parenthesized path pattern expression") => return self.parenthesized(c),
-                Some("element pattern") => {
+                Some("element pattern") | Some("simplified path pattern expression") => {
                     return self.path_term(c);
-                }
-                Some("simplified path pattern expression") => {
-                    self.out_of_core("a simplified path pattern expression (16.12)");
-                    return Vec::new();
                 }
                 _ => {}
             }
@@ -1318,6 +1514,7 @@ impl Builder {
                     ),
                     Bound::List(l) => Bound::List(l.iter().map(|x| go(x, node_ids, base)).collect()),
                     Bound::Null => Bound::Null,
+                    Bound::Int(i) => Bound::Int(*i),
                 }
             }
             go(b, &node_ids, base)
@@ -1376,6 +1573,57 @@ fn quantifier_lower(q: &Plain) -> Option<u64> {
     match q.text().as_str() {
         "*" => Some(0),
         "+" => Some(1),
+        _ => None,
+    }
+}
+
+/// 16.12 Table 3: the default edge kind of a simplified path pattern's delimiters.
+fn simplified_kind(p: &Plain) -> EdgeKind {
+    for c in logical(p) {
+        return match def_name(c) {
+            Some("simplified defaulting left") => EdgeKind::Left,
+            Some("simplified defaulting undirected") => EdgeKind::Undirected,
+            Some("simplified defaulting right") => EdgeKind::Right,
+            Some("simplified defaulting left or undirected") => EdgeKind::LeftOrUndirected,
+            Some("simplified defaulting undirected or right") => EdgeKind::UndirectedOrRight,
+            Some("simplified defaulting left or right") => EdgeKind::LeftOrRight,
+            Some("simplified defaulting any direction") => EdgeKind::Any,
+            _ => continue,
+        };
+    }
+    EdgeKind::Any
+}
+
+/// A simplified conjunction, negation, primary or union read as the label expression it
+/// becomes (16.12 NOTE 255, 257): `None` where it holds something a label expression cannot
+/// (a concatenation, a quantifier, an override).
+fn simplified_label(p: &Plain) -> Option<LabelExpr> {
+    let kids = logical(p);
+    match def_name(p)? {
+        "simplified contents" | "simplified term" | "simplified factor low"
+        | "simplified factor high" | "simplified tertiary" | "simplified secondary" => {
+            simplified_label(kids.first()?)
+        }
+        "simplified path union" | "simplified multiset alternation" => {
+            let mut terms = kids.into_iter().filter(|c| def_name(c) == Some("simplified term"));
+            let mut e = simplified_label(terms.next()?)?;
+            for t in terms {
+                e = LabelExpr::Or(Box::new(e), Box::new(simplified_label(t)?));
+            }
+            Some(e)
+        }
+        "simplified conjunction" => Some(LabelExpr::And(
+            Box::new(simplified_label(kids.first()?)?),
+            Box::new(simplified_label(kids.get(2)?)?),
+        )),
+        "simplified negation" => Some(LabelExpr::Not(Box::new(simplified_label(kids.get(1)?)?))),
+        "simplified primary" => {
+            if let Some(n) = child(p, "label name") {
+                Some(LabelExpr::Name(identifier(n)))
+            } else {
+                simplified_label(child(p, "simplified contents")?)
+            }
+        }
         _ => None,
     }
 }
@@ -1508,11 +1756,38 @@ pub fn oracle(
         result,
     };
     let setup = emit(&graph);
+    let observe = match (&shape, tier, sentence.strip_suffix(" FINISH")) {
+        (Shape::Finish, Tier::Witness, Some(head)) if had_match => {
+            let names: Vec<String> = expect.binding.keys().cloned().collect();
+            let (query, row) = if names.is_empty() {
+                (
+                    format!("{head} RETURN 1 AS n"),
+                    BTreeMap::from([("n".to_string(), Bound::Int(1))]),
+                )
+            } else {
+                let items: Vec<String> = names.iter().map(|n| gql_name(n)).collect();
+                (
+                    format!("{head} RETURN {}", items.join(" , ")),
+                    names
+                        .iter()
+                        .map(|n| (n.clone(), expect.binding[n].clone()))
+                        .collect(),
+                )
+            };
+            Some(Observe {
+                query,
+                rows: rows.filter(|r| *r == 0),
+                row: if rows.is_none() { Some(row) } else { None },
+            })
+        }
+        _ => None,
+    };
     Oracle {
         sentence: sentence.to_string(),
         graph,
         setup,
         expect,
+        observe,
         why,
     }
 }
@@ -1538,7 +1813,7 @@ fn check_vars(vars: Option<&serde_json::Value>, binding: &BTreeMap<String, Bound
             Bound::Node(_) => "node",
             Bound::Edge(_) => "edge",
             Bound::Path(_) => "path",
-            Bound::List(_) | Bound::Null => continue,
+            Bound::List(_) | Bound::Null | Bound::Int(_) => continue,
         };
         let known: Vec<&str> = kinds
             .iter()
@@ -1836,6 +2111,15 @@ mod tests {
         .unwrap();
         assert_eq!(m, ["b".to_string()].into_iter().collect());
         assert_eq!(label_model(&[], "L0").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn delimited_identifiers() {
+        let leaf = |s: &str| Plain::Term(s.to_string());
+        assert_eq!(identifier(&leaf("````")), "`");
+        assert_eq!(identifier(&leaf("\"\"\"\"")), "\"");
+        assert_eq!(identifier(&leaf("`a``b`")), "a`b");
+        assert_eq!(identifier(&leaf("ab")), "ab");
     }
 
     #[test]

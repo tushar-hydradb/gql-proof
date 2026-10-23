@@ -31,6 +31,8 @@ def matches(expected, got):
     kind, value = expected["kind"], expected.get("value")
     if kind == "Null":
         return got is None
+    if kind == "Int":
+        return got == value
     if kind in ("Node", "Edge"):
         return isinstance(got, dict) and got.get("_id") == value
     if kind == "Path":
@@ -46,11 +48,11 @@ def matches(expected, got):
 
 
 def judge(record, result):
-    expect = record["expect"]
+    expect = record.get("observe") or record["expect"]
     rows = result["rows"]
     if expect.get("rows") == 0:
         return ("agree", f"{len(rows)} rows") if not rows else ("disagree", f"expected no rows, got {len(rows)}")
-    if not expect["result"]:
+    if not expect.get("result", True):
         return "agree", "completed, no result expected"
     row = expect.get("row")
     if row is None:
@@ -91,6 +93,9 @@ def main():
                 result, error = run(args.url, sentence)
                 if error:
                     verdict, detail = "refused", error
+                elif record.get("observe"):
+                    result, error = run(args.url, record["observe"]["query"])
+                    verdict, detail = ("observe refused", error) if error else judge(record, result)
                 else:
                     verdict, detail = judge(record, result)
             counts[verdict] = counts.get(verdict, 0) + 1

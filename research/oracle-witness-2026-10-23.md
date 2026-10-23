@@ -53,10 +53,14 @@ multiset alternation to union, SR 12 element where to parenthesized where, SR
 
 - node and edge patterns with any label expression and a property
   specification whose values are literals
-- concatenation, union, quantifiers (fixed, bounded, `*`, `+`), `?`,
-  parenthesized subpatterns with a path mode (WALK, TRAIL, SIMPLE, ACYCLIC)
-  and a subpath variable, path variables, several path patterns in one list,
-  either match mode
+- concatenation, union, quantifiers (fixed, bounded, `*`, `+`) with a lower
+  bound up to 64 (a knob; the set has bounds up to 2,560 from the radix
+  spellings, which are a hop count finding for an engine, not a witness
+  problem), `?`, parenthesized subpatterns with a path mode (WALK, TRAIL,
+  SIMPLE, ACYCLIC) and a subpath variable, path variables, several path
+  patterns in one list, either match mode
+- simplified path pattern expressions (16.12), read as the edge patterns,
+  groups and label expressions SR 5 and 6 rewrite them to
 - where clauses (element, parenthesized, graph pattern) that are
   conjunctions of: `x . k = literal`, `x : LE` / `x IS LABELED LE`, `x . k IS
   [NOT] NULL`, `x IS [NOT] DIRECTED`, `x IS [NOT] SOURCE OF y`, `x IS [NOT]
@@ -80,7 +84,23 @@ oracle output tags every row with which tier backs it
 the cached typed set (`sentences/typed-2vars-turbolay-claim-path-minimums.jsonl`,
 3,808 distinct): 2,143 sentences contain a `MATCH`, 2,135 start with one and
 most are `MATCH <pattern> FINISH`; 117 are `MATCH ... RETURN ...`. so the
-pattern core is where the sentences are
+pattern core is where the sentences are. `gql-proof oracle` on that set
+(`--match-mode-default different-edges`, 4 s):
+
+| tier | sentences |
+| --- | --- |
+| witness (theorem 1) | 1,667 |
+| status only | 2,140 |
+| unsatisfiable on every graph | 1 |
+
+out of the core by reason, a sentence counted once per reason: no `MATCH` at
+the top level 1,673; more than one statement (`NEXT`) 690; a statement that is
+not `MATCH` (`VALUE`, `FILTER`, `ORDER BY` alone) 610; a selective prefix 203;
+a where clause that is a bare value 107; a return item that is an expression
+83; a property value that is not a test literal 28; a quantifier bound over
+64, 21; `OPTIONAL` 6; the rest under 5 each. the `NEXT` family is the next
+lever: `MATCH ... RETURN x NEXT FILTER <core predicate>` is the pattern core
+plus one relational step
 
 ## the construction
 
@@ -158,6 +178,12 @@ verdict: witness or unsatisfiable, with the reason
   not bound by the chosen operand to null, each path variable to the path of
   the compressed binding. after `MATCH`, `FINISH` gives no result, `RETURN` of
   variables gives the row of their values, `NEXT` passes the table on
+- **the observation**: a `MATCH P FINISH` has one observable, completion, so
+  the record also carries `observe`: the same sentence with `FINISH` replaced
+  by `RETURN` of every variable the patterns bind (`RETURN 1 AS n` when they
+  bind none), and the row it must contain, or 0 rows when no graph matches.
+  this is a second query, so it rests on H-observe below; it is what turns
+  1,668 completion checks into row checks
 
 ### proof of theorem 1
 
@@ -272,16 +298,36 @@ each is a row of the claim, bernot style:
   a finding, not a broken hypothesis
 - **H-core**: the tier of `q_r` is declared per row: `witness` (theorem 1),
   `bag` (theorem 2, later), `status` (out of core)
+- **H-observe**: the engine evaluates a `MATCH` the same way whether `FINISH`
+  or `RETURN` follows it. bernot's observability hypothesis in our terms: the
+  only observable sorts are result tables and status codes, and `FINISH` has
+  no table. an engine that plans the two differently can break it, which is
+  itself a finding, so the observation query is reported beside the sentence,
+  never in its place
 
 ## the export of C
 
-the typed run's `--jsonl` records gain a `vars` field: one entry per variable
-of the root label, with its name, scope's view (`need`, `out`, `decl`,
-`column` kinds) and types' entry (`Has(class)` or the allowed set), straight
-from the labels the extractor grounded, before naming. the oracle reads kinds
-from here. the cached sets predate the field; `oracle` falls back to the tree
-for the kinds of pattern variables (a node pattern declares a node, an edge
-pattern an edge) and reports the fallback
+the typed run's `--jsonl` records gain a `vars` field, one object per variable:
+
+```
+{"name": "x", "decl": ["edge"], "out": ["edge"], "aliased": [false], "new": [false]}
+{"name": "x", "class": ["exact", ["exact"]], "column": ["value"], "need": ["any"], "out": ["value"], ...}
+```
+
+the values are gathered from every label of the extracted tree that holds a
+slot of the variable (`Context::describe` per rule, `Under::describe` for
+types, merged per slot by the pair; `assign_names` now returns which slot got
+which name and where every labelled node's slots start). the root label is
+not the place: a whole sentence closes every variable, so its label has no
+slots. scope gives `need`, `out`, `decl`, `column` (a kind each) and the
+`new`/`aliased` flags; types gives `class`: a class name where the variable
+has a definition, a list of allowed classes where its uses leave the choice
+open. the record is what generation knew; nothing is recomputed from the text
+
+`oracle` reads `vars` when the file carries it and checks the kind it gives
+every pattern variable against what the witness bound (`check_vars`): on the
+1-slot set, 0 disagreements over 1,262 variables. the cached 2-variable sets
+predate the field; a regeneration with it is in progress and goes beside them
 
 ## what is built on this branch
 
@@ -294,10 +340,24 @@ pattern an edge) and reports the fallback
   of the core or unloadable
 - the `vars` export in the context command
 
+## runs
+
+- **neo4j** (`tools/engines/oracle_neo4j.py`, the throwaway container): of
+  1,132 witness records with a cypher setup, 10 agree and 1,122 are refused
+  with a syntax error. neo4j reads cypher, and gql's abbreviated edge `<-` is
+  not cypher's `<--`; the 10 are `MATCH ( ) FINISH` shapes. so neo4j is no
+  target for the typed set without a gql to cypher rendering, which is out of
+  scope; the runner stays for the day one exists
+- **turbolay** (`just turbolay-oracle`, the #243 worktree): the first run,
+  before observation queries, had every witness record that ran agree (1,054,
+  all `FINISH` completions), 1,015 refused in turbolay's known gaps, 0
+  disagreements. the run with observation queries is below
+
 ## open
 
-- H-unit's citation in the text (the working table before the first
-  statement of a procedure body)
+- H-unit is cited (4.8.2: a root execution context's working table is a new
+  unit binding table; 9.x SR 10: a program's incoming working table is the
+  unit binding table type)
 - theorem 2's evaluator, which also lifts the selective prefix and the near
   miss limits
 - value variables: `C` carries their class; the expression evaluator is where
