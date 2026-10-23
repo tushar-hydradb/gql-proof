@@ -362,10 +362,10 @@ parameter whose site admits none of the three leaves the core with the reason:
 a list, a record, an element or a temporal value the harness has no way to
 pass yet, or a site that admits nothing
 
-what the 1-slot set says (96 parameter sites): 11 sites admit every class
-(`LIMIT $b`, `OFFSET $b`, `SHORTEST $b`: the rules do not type a
-non-negative integer specification, and `1` is right there), 85 admit nothing.
-the 85 are all `VALUE x <type> NOT NULL = $b`: the types rule accepts only a
+what the sets say (1-slot: 96 parameter sites, 2-variable: 42): 11 sites
+admit every class (`LIMIT $b`, `OFFSET $b`, `SHORTEST $b`: the rules do not
+type a non-negative integer specification, and `1` is right there), the rest
+(85 and 31) admit nothing. those are all `VALUE x <type> NOT NULL = $b`: the types rule accepts only a
 dynamic value as the initializer of a `NOT NULL` typed `VALUE`, and no literal
 (`VALUE x FLOAT NOT NULL = 1.5` is refused at `<boolean predicand>`). so these
 sentences exist only because a parameter stands anywhere, and no class is
@@ -402,11 +402,16 @@ the admitted classes of one sentence with the rules' trace (`GQL_TRACE=trace`)
 
   | verdict | records |
   | --- | --- |
-  | agree, the witness row among the rows or no rows as expected | 1,337 |
+  | agree, the witness row among the rows or no rows as expected | 1,332 |
   | disagree | 3 |
-  | refused (turbolay's parse and planning gaps, `breakdown.py`'s buckets) | 1,013 |
+  | refused (turbolay's parse and planning gaps, `breakdown.py`'s buckets) | 997 |
   | failed at run time (all of the status tier: `PATH [ ... ]`, casts, dates) | 25 |
-  | unjudged (status tier, run for the outcome only) | 1,405 |
+  | unjudged (status tier, run for the outcome only) | 1,418 |
+
+  (on `sentences/typed-2vars-turbolay-claim-vars.jsonl`, 3,800 distinct, with
+  the parameters sent: the 11 sites given a value run instead of being refused
+  for a missing parameter; the 17 refusals for a missing `$b` left are the
+  `VALUE x <type> NOT NULL = $b` sites that admit no class)
 
   two earlier disagreements were ours (a delimited identifier with a doubled
   delimiter, ```` is the name made of one backtick, was not unescaped; fixed,
