@@ -141,7 +141,7 @@ fn degrees_of_exposure() {
     ok("MATCH (a) ((a)-[e]->(b)) RETURN e");
     // 16.4 SR 3: so does a comma
     bad("MATCH (a), ((a)-[e]->(b)){2} RETURN e", "16.4 SR 3");
-    bad("MATCH ((a)-[e]->(b))?, (a) RETURN e", "16.4 SR 3");
+    bad("MATCH (c) ((a)-[e]->(b))?, (a) RETURN e", "16.4 SR 3");
     // 16.7 SR 22 d: a union exposes a variable as unconditional only from every operand
     ok("MATCH (a) ((a)-[e]->(b) | (a)-[f]->(b)) RETURN a, b");
     bad(

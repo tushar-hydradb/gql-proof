@@ -469,12 +469,14 @@ impl<L: LeafProvider> Generator<'_, '_, L> {
                 continue;
             }
             let before = self.unused.count_ones(..);
-            let root = self.materialize(start, depth, &plan);
+            let mut root = self.materialize(start, depth, &plan);
             let length = size(cfg, &root);
             assert_eq!(
                 length, cost,
                 "a realized tree has the length its search found"
             );
+            let settled = self.settle(&mut root);
+            let length = size(cfg, &root);
             let found = coverage::observe(cfg, &root, criteria);
             assert!(found.contains(&t), "a realized tree contains its target");
             seen.extend(found);
@@ -484,6 +486,7 @@ impl<L: LeafProvider> Generator<'_, '_, L> {
                 new: before - self.unused.count_ones(..),
                 length,
                 covers: Some(coverage::describe_target(base, &t)),
+                settled,
             });
         }
 

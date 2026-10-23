@@ -100,7 +100,12 @@ cached set, without losing a production or cdrc pair
    `research/static-semantics-exists-table-2026-10-22.md`. the statement kind
    (9.1 SR 5 to 7 and the rest) is still open
 2. **path pattern minimums** (about 230). rules: 16.7 SR 8, 9, 16, 20, 16.12 SR
-   1 to 4, 16.4 SR 12, and 16.11 SR 3 for bounds. two facts per path pattern
+   1 to 4, 16.4 SR 12, and 16.11 SR 3 for bounds. **done on `tushar/exists-table`
+   (2026-10-23) but SR 9 and 16.11 SR 3's upper-below-lower**: three automata
+   in `src/refine.rs` (`PathMinimums`, `SimplifiedShape`, `SelectiveAlone`),
+   the twin in `src/verify.rs`; see
+   `research/static-semantics-path-minimums-2026-10-23.md`, including how the
+   grammar blew up once and what cut it. two facts per path pattern
    node: whether it can have length 0 and whether it can match 0 nodes,
    synthesized bottom up (an edge has length 1, `?` and `*` make 0 possible,
    concatenation adds). checked at the path pattern, the subpath, and inside
@@ -112,6 +117,16 @@ cached set, without losing a production or cdrc pair
    come from what `leaf.rs` spells, so the fix is the provider refusing those
    spellings in those contexts. 20.24 SR 3 (TRIM with a bare FROM) is grammar
    shape, not a leaf: an automaton
+   **partly done on `tushar/exists-table` (2026-10-23)**: 16.11 SR 3 a ii by
+   `order_bounds` in `src/tree.rs` (the upper bound re-spelled at spelling
+   time, as names are, in both generators: the engine never reads a value), 20.24 SR 3
+   and 21.3 SR 4 as automata in `refine.rs`, and `NULL . a` refused by
+   `types.rs` (20.1 SR 4-6, 21.2 SR 67); see
+   `research/static-semantics-last-ten-2026-10-23.md`. the never counts stayed
+   153 productions and 333 pairs. 18.9 SR 7, 10, 29 and 22.1 SR 3 are still
+   open. the next smallest witness for a record property was `{ } . a` (20.11
+   SR 2 a), so a record source is refused until fields are followed (a
+   dynamic source still covers the record derivation): step 4's first case
 4. **typing gaps**: groupability for DISTINCT (14.11 SR 4, 14.12 SR 5), closed
    node and edge types, union types and nullability (18.9, 20.8 SR 10, 22.10,
    22.19). widening `types.rs`; check the checker agrees first
@@ -127,6 +142,15 @@ deleted or maybe deleted, plus whether the working table is surely not empty
 (true from a statement's start and through INSERT and LET, maybe after MATCH,
 FILTER, OPTIONAL). must raise, never raises, may raise; the "should succeed"
 suite keeps only never raises
+
+## the never targets
+
+the 153 productions and 333 pairs never covered at 2 variables are audited
+in `research/never-targets-2026-10-23.md`: no extraction miss; 17 need 3 to 8
+variables, 135 are the types and scope readings (a variable is only read as
+exact, string or boolean; CASE and friends are exact or NULL; no correlation
+into patterns), 23 are iso rules, and `RETURN *` is a scope rule gap to fix.
+3 variables are predicted to bring them to 141 and 305
 
 ## things that will trip you up
 

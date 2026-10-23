@@ -21,6 +21,9 @@ OURS = [
     ("TRIM ... FROM needs", "20.24 SR 3: TRIM with a bare FROM"),
     ("under DIFFERENT EDGES a selective", "16.4 SR 12: selective pattern not alone"),
     ("a VALUE subquery returns at most one row", "20.6 SR 10: VALUE body not one row"),
+    ("quantified primaries do not nest", "16.7 SR 9: quantifier directly under a quantifier"),
+    ("a quantifier's upper bound is greater than 0", "16.11 SR 3: upper bound 0"),
+    ("minimum exceeds maximum", "16.11 SR 3: upper bound below lower"),
 ]
 
 
@@ -33,10 +36,12 @@ def bucket(r):
             return "ours: invalid sentence", why
     if re.search(r"\bEXISTS\s*\{\s*FINISH\s*\}", s):
         return "ours: invalid sentence", "19.4 SR 5: EXISTS body is FINISH (empty type)"
-    if "$@" in s and st == "42001":
-        return "ours: invalid sentence", "21.3 SR 4: empty identifier in a parameter"
+    if '@""' in s or "@``" in s:
+        return "ours: invalid sentence", "21.3 SR 4: empty delimited identifier"
     if "NULL . " in s:
         return "ours: invalid sentence", "20.11: property of NULL"
+    if "bounds are at most" in m:
+        return "engine: documented deviation", "IL018: a quantifier bound above 255"
     if st == "42002":
         return "environment", "no parameters passed by the runner"
     if st.startswith("22"):
@@ -51,6 +56,8 @@ def bucket(r):
         return "engine: documented deviation", m.split(": ", 1)[-1][:60]
     if re.search(r"EXISTS\s*[{(][^})]*KEEP", s):
         return "engine: parse gap", "KEEP after a graph pattern inside EXISTS"
+    if st == "42001" and re.search(r'@["`]', s):
+        return "engine: parse gap", "<no escape> @ before a delimited identifier"
     if re.search(r"\bVALUE \w+ ", s):
         return "engine: parse gap", "typed VALUE with a reference, record or closed type"
     return "unsorted", m[:70]

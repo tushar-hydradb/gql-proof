@@ -600,6 +600,139 @@ fn syntax_rules<'t>(
                         "unbounded quantifier without a restrictive path mode, a selective path pattern or DIFFERENT EDGES".into(),
                     ));
                 }
+                if length_zero(node) {
+                    out.push(violation(
+                        &path,
+                        "16.7 SR 8",
+                        "a quantified primary of minimum path length 0".into(),
+                    ));
+                }
+                if nests_quantifier(node) {
+                    out.push(violation(
+                        &path,
+                        "16.7 SR 9",
+                        "a quantified primary directly under a quantified primary".into(),
+                    ));
+                }
+            }
+            "fixed quantifier" if bound_value(node) == 0 => {
+                out.push(violation(
+                    &path,
+                    "16.11 SR 3",
+                    "a fixed quantifier of 0, an upper bound of 0".into(),
+                ));
+            }
+            "questioned path primary" | "simplified questioned" if length_zero(node) => {
+                out.push(violation(
+                    &path,
+                    "16.7 SR 8",
+                    "a questioned primary of minimum path length 0".into(),
+                ));
+            }
+            "path pattern" => {
+                if let Some(e) = own(node, "path pattern expression")
+                    && minimums(e).nodes == 0
+                {
+                    out.push(violation(
+                        &path,
+                        "16.7 SR 16",
+                        "the path pattern can match no node".into(),
+                    ));
+                }
+            }
+            "parenthesized path pattern expression" => {
+                if own(node, "subpath variable declaration").is_some()
+                    && let Some(e) = own(node, "path pattern expression")
+                    && minimums(e).nodes == 0
+                {
+                    out.push(violation(
+                        &path,
+                        "16.7 SR 20",
+                        "the named subpath can match no node".into(),
+                    ));
+                }
+            }
+            "upper bound" if bound_value(node) == 0 => {
+                out.push(violation(&path, "16.11 SR 3", "an upper bound of 0".into()));
+            }
+            // 20.24 SR 3 b i 1 (byte strings by the reading in `refine::TrimOperands`): FROM
+            // in a TRIM follows a specification or a trim string.
+            "trim operands" | "byte string trim operands" => {
+                let from = flat(children)
+                    .iter()
+                    .any(|c| matches!(c, Plain::Kw(k) if k.eq_ignore_ascii_case("FROM")));
+                let has = ["trim specification", "trim character string", "trim byte string"]
+                    .iter()
+                    .any(|w| own(node, w).is_some());
+                if from && !has {
+                    out.push(violation(
+                        &path,
+                        "20.24 SR 3",
+                        "FROM with neither a trim specification nor a trim string".into(),
+                    ));
+                }
+            }
+            // 21.3 SR 4: a delimited identifier is not empty.
+            "delimited identifier" => {
+                if !contains(node, "double quoted character representation")
+                    && !contains(node, "accent quoted character representation")
+                {
+                    out.push(violation(
+                        &path,
+                        "21.3 SR 4",
+                        "an empty delimited identifier".into(),
+                    ));
+                }
+            }
+            // 16.11 SR 3 a ii: the lower bound is at most the upper.
+            "general quantifier" => {
+                if let Some(l) = own(node, "lower bound")
+                    && let Some(u) = own(node, "upper bound")
+                    && bound_value(u) < bound_value(l)
+                {
+                    out.push(violation(
+                        &path,
+                        "16.11 SR 3 a ii",
+                        "the upper bound is below the lower".into(),
+                    ));
+                }
+            }
+            "simplified negation"
+                if complex(node) || contains(node, "simplified direction override") =>
+            {
+                out.push(violation(
+                    &path,
+                    "16.12 SR 1",
+                    "a concatenation, quantifier, ?, alternation or direction override in a negation".into(),
+                ));
+            }
+            "simplified direction override" => {
+                if children
+                    .iter()
+                    .any(|c| contains(c, "simplified direction override"))
+                {
+                    out.push(violation(
+                        &path,
+                        "16.12 SR 2",
+                        "a direction override inside a direction override".into(),
+                    ));
+                }
+                if complex(node) {
+                    out.push(violation(
+                        &path,
+                        "16.12 SR 3",
+                        "a concatenation, quantifier, ? or multiset alternation in a direction override".into(),
+                    ));
+                }
+            }
+            "simplified conjunction"
+                if complex(node) || contains(node, "simplified direction override") =>
+            {
+                out.push(violation(
+                    &path,
+                    "16.12 SR 4",
+                    "a concatenation, quantifier, ?, alternation or direction override in a conjunction".into(),
+                ));
             }
             "graph pattern" => {
                 let keep = flat(children)
@@ -614,6 +747,18 @@ fn syntax_rules<'t>(
                         &path,
                         "16.4 SR 6",
                         "a path pattern has its own search prefix next to a KEEP clause".into(),
+                    ));
+                }
+                let different = match own(node, "match mode") {
+                    Some(mode) => contains(mode, "different edges match mode"),
+                    None => id086 == MatchModeDefault::DifferentEdges,
+                };
+                let patterns = path_patterns(node);
+                if different && patterns.len() > 1 && patterns.iter().any(|pp| selective(pp)) {
+                    out.push(violation(
+                        &path,
+                        "16.4 SR 12",
+                        "a selective path pattern beside another under DIFFERENT EDGES".into(),
                     ));
                 }
             }
@@ -724,6 +869,334 @@ fn guarded(ancestors: &[&Plain], id086: MatchModeDefault) -> bool {
         }
     }
     false
+}
+
+// --- 16.7 SR 7 and 15: minimum path length and minimum node count ---------------------
+//
+// Computed after 16.7 SR 14's transform (an edge pattern under a quantifier or `?` is
+// parenthesized; a bare edge pattern in a path term gets an implicit node pattern on each
+// side it has none) and 16.12 SR 5-6's rewrite of simplified expressions (a label, negation,
+// conjunction or direction override is one edge pattern; a concatenation puts two edges in
+// one term; a union or alternation one edge per operand; a quantifier or `?` applies to the
+// parenthesized edge; `( contents )` is a parenthesized expression). Reading: a non-ASCII
+// decimal digit in a bound counts as 1.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Min {
+    nodes: u64,
+    len: u64,
+}
+
+impl Min {
+    fn times(self, k: u64) -> Min {
+        Min {
+            nodes: self.nodes.saturating_mul(k),
+            len: self.len.saturating_mul(k),
+        }
+    }
+
+    fn min(self, other: Min) -> Min {
+        Min {
+            nodes: self.nodes.min(other.nodes),
+            len: self.len.min(other.len),
+        }
+    }
+}
+
+const ZERO: Min = Min { nodes: 0, len: 0 };
+
+/// One factor of a path term, as SR 14 b-d and SR 15 c see it.
+enum Factor {
+    Node,
+    Edge,
+    Other(Min),
+}
+
+/// The minimums of a path term: SR 14 b-d insert a node pattern before a bare edge not
+/// preceded by one and after a bare edge not followed by one, SR 15 c i counts two touching
+/// node patterns once.
+fn term(factors: &[Factor]) -> Min {
+    let mut m = ZERO;
+    let mut preceded_by_node = false;
+    let mut prev_node_pattern = false;
+    for (i, f) in factors.iter().enumerate() {
+        match f {
+            Factor::Node => {
+                m.nodes += 1;
+                if prev_node_pattern {
+                    m.nodes -= 1;
+                }
+                preceded_by_node = true;
+                prev_node_pattern = true;
+            }
+            Factor::Edge => {
+                if !preceded_by_node {
+                    m.nodes += 1;
+                }
+                m.len += 1;
+                if !matches!(factors.get(i + 1), Some(Factor::Node)) {
+                    m.nodes += 1;
+                }
+                preceded_by_node = true;
+                prev_node_pattern = false;
+            }
+            Factor::Other(o) => {
+                m.nodes += o.nodes;
+                m.len += o.len;
+                preceded_by_node = false;
+                prev_node_pattern = false;
+            }
+        }
+    }
+    m
+}
+
+/// The first non-synthetic child that is a definition.
+fn inner(node: &Plain) -> Option<&Plain> {
+    let Plain::Def { children, .. } = node else {
+        return None;
+    };
+    flat(children)
+        .into_iter()
+        .find(|c| matches!(c, Plain::Def { .. }))
+}
+
+/// The factors of a path term, its left-recursive concatenations flattened.
+fn factors<'t>(node: &'t Plain, out: &mut Vec<&'t Plain>) {
+    match def_name(node) {
+        Some("path term") => {
+            if let Some(c) = inner(node) {
+                factors(c, out);
+            }
+        }
+        Some("path concatenation") => {
+            let Plain::Def { children, .. } = node else {
+                return;
+            };
+            for c in flat(children) {
+                factors(c, out);
+            }
+        }
+        Some("path factor") => out.push(node),
+        _ => {}
+    }
+}
+
+/// A path factor as the term sees it.
+fn factor(pf: &Plain) -> Factor {
+    match inner(pf) {
+        Some(p) if def_name(p) == Some("path primary") => factor_of_primary(p),
+        Some(q) => Factor::Other(minimums(q)),
+        None => Factor::Other(ZERO),
+    }
+}
+
+/// A path primary as a factor: a node pattern, a bare edge pattern, or its minimums.
+fn factor_of_primary(primary: &Plain) -> Factor {
+    match inner(primary).and_then(|e| {
+        if def_name(e) == Some("element pattern") {
+            inner(e).and_then(def_name)
+        } else {
+            def_name(e)
+        }
+    }) {
+        Some("node pattern") => Factor::Node,
+        Some("edge pattern") => Factor::Edge,
+        _ => Factor::Other(minimums(primary)),
+    }
+}
+
+/// 16.7 SR 9: a quantified primary below this quantified node at the same depth of graph
+/// pattern matching (not inside a WHERE or a filler, where a nested graph pattern starts
+/// its own).
+fn nests_quantifier(node: &Plain) -> bool {
+    fn below(node: &Plain) -> bool {
+        match node {
+            Plain::Def { name, children, .. } => match name.as_str() {
+                "quantified path primary" | "simplified quantified" => true,
+                "graph pattern"
+                | "element pattern filler"
+                | "parenthesized path pattern where clause" => false,
+                _ => children.iter().any(below),
+            },
+            _ => false,
+        }
+    }
+    let Plain::Def { children, .. } = node else {
+        return false;
+    };
+    children.iter().any(below)
+}
+
+/// 16.7 SR 8: what this quantified or questioned node repeats has minimum path length 0.
+fn length_zero(node: &Plain) -> bool {
+    match own(node, "path primary") {
+        Some(p) => repeated(p).len == 0,
+        None => own(node, "simplified tertiary").is_some_and(|t| term(&[simplified(t)]).len == 0),
+    }
+}
+
+/// What a quantifier or `?` repeats: SR 14 a parenthesizes an edge pattern first.
+fn repeated(primary: &Plain) -> Min {
+    match factor_of_primary(primary) {
+        Factor::Edge => term(&[Factor::Edge]),
+        Factor::Node => term(&[Factor::Node]),
+        Factor::Other(m) => m,
+    }
+}
+
+/// Minimum path length and node count of a path node (SR 7, 15).
+fn minimums(node: &Plain) -> Min {
+    let Plain::Def { children, .. } = node else {
+        return ZERO;
+    };
+    match def_name(node) {
+        Some("node pattern") => Min { nodes: 1, len: 0 },
+        Some("edge pattern") => Min { nodes: 0, len: 1 },
+        Some("path term" | "path concatenation") => {
+            let mut fs = Vec::new();
+            factors(node, &mut fs);
+            let fs: Vec<Factor> = fs.into_iter().map(factor).collect();
+            term(&fs)
+        }
+        // A factor on its own is a term of one.
+        Some("path factor") => term(&[factor(node)]),
+        Some("path pattern union" | "path multiset alternation") => flat(children)
+            .into_iter()
+            .filter(|c| def_name(c) == Some("path term"))
+            .map(minimums)
+            .reduce(Min::min)
+            .unwrap_or(ZERO),
+        Some("quantified path primary") => {
+            let p = own(node, "path primary").map_or(ZERO, repeated);
+            p.times(lower_bound(own(node, "graph pattern quantifier")))
+        }
+        Some("questioned path primary") => ZERO,
+        Some("parenthesized path pattern expression") => {
+            own(node, "path pattern expression").map_or(ZERO, minimums)
+        }
+        // 16.12 SR 5: `( SPPE )`, whose term is the rewritten contents.
+        Some("simplified path pattern expression") => inner(node)
+            .and_then(|d| own(d, "simplified contents"))
+            .map_or(ZERO, |c| term(&[simplified(c)])),
+        // Wrappers: path pattern expression, path primary, element pattern.
+        _ => inner(node).map_or(ZERO, minimums),
+    }
+}
+
+/// A simplified node as a factor of the term its rewrite lands in (16.12 SR 6).
+fn simplified(node: &Plain) -> Factor {
+    let Plain::Def { children, .. } = node else {
+        return Factor::Other(ZERO);
+    };
+    match def_name(node) {
+        Some("simplified primary") => match own(node, "simplified contents") {
+            // `( PREFIX INNER SUFFIX )`
+            Some(c) => Factor::Other(term(&[simplified(c)])),
+            None => Factor::Edge,
+        },
+        Some(
+            "simplified negation" | "simplified conjunction" | "simplified direction override",
+        ) => Factor::Edge,
+        Some("simplified concatenation") => {
+            let mut fs = Vec::new();
+            simplified_factors(node, &mut fs);
+            let fs: Vec<Factor> = fs.into_iter().map(simplified).collect();
+            Factor::Other(term(&fs))
+        }
+        Some("simplified path union" | "simplified multiset alternation") => Factor::Other(
+            flat(children)
+                .into_iter()
+                .filter(|c| def_name(c) == Some("simplified term"))
+                .map(|t| term(&[simplified(t)]))
+                .reduce(Min::min)
+                .unwrap_or(ZERO),
+        ),
+        Some("simplified quantified") => {
+            let m = own(node, "simplified tertiary").map_or(ZERO, |t| term(&[simplified(t)]));
+            Factor::Other(m.times(lower_bound(own(node, "graph pattern quantifier"))))
+        }
+        Some("simplified questioned") => Factor::Other(ZERO),
+        // Wrappers: contents, term, factor low, factor high, tertiary, secondary.
+        _ => inner(node).map_or(Factor::Other(ZERO), simplified),
+    }
+}
+
+/// The factor lows of a simplified term, its left-recursive concatenations flattened.
+fn simplified_factors<'t>(node: &'t Plain, out: &mut Vec<&'t Plain>) {
+    match def_name(node) {
+        Some("simplified term") => {
+            if let Some(c) = inner(node) {
+                simplified_factors(c, out);
+            }
+        }
+        Some("simplified concatenation") => {
+            let Plain::Def { children, .. } = node else {
+                return;
+            };
+            for c in flat(children) {
+                simplified_factors(c, out);
+            }
+        }
+        Some("simplified factor low") => out.push(node),
+        _ => {}
+    }
+}
+
+/// 16.11 SR 2: the lower bound a quantifier normalizes to.
+fn lower_bound(q: Option<&Plain>) -> u64 {
+    let Some(q) = q else {
+        return 1;
+    };
+    match inner(q).map(|c| (def_name(c), c)) {
+        Some((Some("asterisk"), _)) => 0,
+        Some((Some("plus sign"), _)) => 1,
+        Some((Some("fixed quantifier"), f)) => bound_value(f),
+        Some((Some("general quantifier"), g)) => own(g, "lower bound").map_or(0, bound_value),
+        _ => 1,
+    }
+}
+
+/// The value of the <unsigned integer> under a bound, a missing integer as 0.
+fn bound_value(node: &Plain) -> u64 {
+    own(node, "unsigned integer").map_or(0, |n| unsigned_integer_value(&n.text()))
+}
+
+/// The value an <unsigned integer> spells: decimal, or 0x, 0o, 0b prefixed, underscores
+/// skipped; a non-ASCII digit counts as 1 (a reading: the generator spells U+0663).
+pub fn unsigned_integer_value(text: &str) -> u64 {
+    let lower = text.to_ascii_lowercase();
+    let (digits, radix): (&str, u32) = match lower.as_bytes() {
+        [b'0', b'x', ..] => (&lower[2..], 16),
+        [b'0', b'o', ..] => (&lower[2..], 8),
+        [b'0', b'b', ..] => (&lower[2..], 2),
+        _ => (lower.as_str(), 10),
+    };
+    digits.chars().filter(|c| *c != '_').fold(0u64, |v, c| {
+        v.saturating_mul(u64::from(radix))
+            .saturating_add(c.to_digit(radix).map_or(1, u64::from))
+    })
+}
+
+/// 16.12 SR 1, 3, 4: a concatenation, quantifier, `?` or multiset alternation below.
+fn complex(node: &Plain) -> bool {
+    [
+        "simplified concatenation",
+        "simplified quantified",
+        "simplified questioned",
+        "simplified multiset alternation",
+    ]
+    .iter()
+    .any(|w| contains(node, w))
+}
+
+/// 16.6 SR 4: a path pattern with a search prefix other than ALL.
+fn selective(pp: &Plain) -> bool {
+    own(pp, "path pattern prefix").is_some_and(|prefix| {
+        let mut searches = Vec::new();
+        find(prefix, "path search prefix", &mut searches);
+        searches.iter().any(|s| own(s, "all path search").is_none())
+    })
 }
 
 /// The path patterns of a graph pattern's own path pattern list.

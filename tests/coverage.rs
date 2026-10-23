@@ -259,7 +259,12 @@ proptest! {
             let plain = t.root.export(&refined.cfg);
             let violations = verifier.verify(&plain, &t.root.render(&refined.cfg));
             prop_assert!(violations.is_empty(), "{:?}", violations);
-            prop_assert!(t.root.height() <= depth);
+            // A settled tree grew after the search, by the digits the bound repair added.
+            prop_assert!(
+                t.root.height() <= depth || t.settled,
+                "height {} above the cap {depth}",
+                t.root.height()
+            );
             seen.extend(observe(&refined.cfg, &t.root, c));
         }
         prop_assert!(seen.is_subset(&all), "observed targets the enumeration does not know");

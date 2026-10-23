@@ -1,7 +1,8 @@
 //! Derivation trees and their printers.
 
-use crate::cfg::{Cfg, Lit, ProdId, Sym};
+use crate::cfg::{Cfg, Lit, NtId, ProdId, Sym};
 use crate::verify::Plain;
+use rand_chacha::ChaCha8Rng;
 
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -129,4 +130,99 @@ impl Node {
             }
         }
     }
+}
+
+/// 16.11 SR 3 a ii at spelling time. The engine knows a quantifier bound is zero or not, never
+/// its value (the automaton in `refine`), so a general quantifier can come out with its upper
+/// bound below its lower: `{ 8 , 0o2 }`. The upper bound is then re-spelled with digits
+/// prefixed to the ones it was extracted for, in its own radix, to a value at or above the
+/// lower: `{ 8 , 0o12 }`. Its digits and radix stay, so every production the tree was found
+/// for is still in it; the prefix only adds digit productions. Like naming, this is the one
+/// place the value is looked at; both generators (`context::extract::cover`, `purdom`) run it.
+/// Returns whether a bound was re-spelled: the tree then holds more nodes than the search
+/// that built it counted, so purdom's height and length caps do not hold for it.
+pub fn order_bounds(
+    cfg: &Cfg,
+    root: &mut Node,
+    spell: &impl Fn(NtId, &str) -> Option<Node>,
+    rng: &mut ChaCha8Rng,
+) -> bool {
+    let Sym::Nt(nt) = root.sym else { return false };
+    let mut changed = false;
+    if cfg.base(nt) == "general quantifier" {
+        let lower = through_groups(cfg, root, "lower bound")
+            .map(|b| crate::verify::unsigned_integer_value(&b.render(cfg)));
+        if let Some(lower) = lower
+            && let Some(upper) = through_groups(cfg, root, "upper bound")
+            && let Some(int) = through_groups(cfg, upper, "unsigned integer")
+        {
+            let text = int.render(cfg);
+            if crate::verify::unsigned_integer_value(&text) < lower {
+                // Spelled under the radix's own definition, the child of <unsigned integer>:
+                // derived from <unsigned integer> itself, `0o12` reads as a decimal integer
+                // whose `o` is an <other digit>, a prose leaf that takes any character. A
+                // spelling the copy cannot derive leaves the tree as it was: the checker
+                // reports it.
+                let raised = raised_bound(&text, lower, rng);
+                if let Some(radix) = int.children.iter_mut().find(|c| matches!(c.sym, Sym::Nt(_)))
+                    && let Sym::Nt(radix_nt) = radix.sym
+                    && let Some(spelt) = spell(radix_nt, &raised)
+                {
+                    *radix = spelt;
+                    changed = true;
+                }
+            }
+        }
+    }
+    for child in &mut root.children {
+        changed |= order_bounds(cfg, child, spell, rng);
+    }
+    changed
+}
+
+/// The child of `node` whose definition is `base`, looking through synthetic groups only.
+fn through_groups<'a>(cfg: &Cfg, node: &'a mut Node, base: &str) -> Option<&'a mut Node> {
+    for child in &mut node.children {
+        let Sym::Nt(nt) = child.sym else { continue };
+        if cfg.base(nt) == base {
+            return Some(child);
+        }
+        if cfg.nts[nt as usize].synthetic
+            && let Some(found) = through_groups(cfg, child, base)
+        {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// `text`, an <unsigned integer> below `lower`, with digits prefixed in its radix so that it
+/// is at least `lower`: the smallest prefix, or a random one while the value stays within
+/// turbolay's IL018 cap of 255. The digits of `text` (underscores included) stay as the
+/// suffix.
+pub fn raised_bound(text: &str, lower: u64, rng: &mut ChaCha8Rng) -> String {
+    use rand::RngExt;
+    let (prefix, digits, radix): (&str, &str, u64) = match text.as_bytes() {
+        [b'0', b'x' | b'X', ..] => (&text[..2], &text[2..], 16),
+        [b'0', b'o' | b'O', ..] => (&text[..2], &text[2..], 8),
+        [b'0', b'b' | b'B', ..] => (&text[..2], &text[2..], 2),
+        _ => ("", text, 10),
+    };
+    let value = crate::verify::unsigned_integer_value(text);
+    let places = digits.chars().filter(|c| *c != '_').count() as u32;
+    let unit = radix.saturating_pow(places);
+    let least = lower.saturating_sub(value).div_ceil(unit);
+    let most = 255u64.saturating_sub(value) / unit;
+    let k = if most >= least {
+        rng.random_range(least..=most)
+    } else {
+        least
+    };
+    let spelt = match radix {
+        16 => format!("{k:X}"),
+        8 => format!("{k:o}"),
+        2 => format!("{k:b}"),
+        _ => k.to_string(),
+    };
+    format!("{prefix}{spelt}{digits}")
 }

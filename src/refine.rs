@@ -154,11 +154,16 @@ pub fn all_rules(id086: MatchModeDefault) -> Vec<Box<dyn Rule>> {
         Box::new(UnboundedNeedsGuard { id086 }),
         Box::new(KeepWithoutSearch),
         Box::new(DataModifyingModifies),
+        Box::new(PathMinimums),
+        Box::new(SimplifiedShape),
+        Box::new(SelectiveAlone { id086 }),
+        Box::new(TrimOperands),
+        Box::new(DelimitedNotEmpty),
     ]
 }
 
 /// Facts at or above this are free for rules built at run time, such as feature claims.
-pub const FIRST_FREE_FACT: Fact = 12;
+pub const FIRST_FREE_FACT: Fact = 32;
 
 /// 16.4 SR 14: every unbounded quantifier needs a guard.
 pub struct UnboundedNeedsGuard {
@@ -373,6 +378,491 @@ impl Rule for DataModifyingModifies {
             d if SPINE.contains(&d) => Some(s),
             _ => Some(s.without(MODIFIES)),
         }
+    }
+}
+
+/// 16.7 SR 8, 16 and 20: a path pattern matches at least one node, so does a parenthesized
+/// expression with a subpath variable, and what a quantifier or `?` repeats has a positive
+/// minimum path length.
+///
+/// The minimums of 16.7 SR 7 and 15 only matter as "at least one", so each path node ends in
+/// one of NODES / NO_NODES and one of LEN / NO_LEN, exhaustive so that a union's "every
+/// operand" reads as "no child has NO_NODES" under the union of children, and a
+/// concatenation's "some operand" as "a child has NODES". Computed after SR 14's transform: an
+/// edge pattern under a quantifier or `?` is parenthesized, and a bare edge pattern in a path
+/// term gets implicit node patterns on both sides, so a bare `<-` counts two nodes and `(<-)?`
+/// none. A simplified expression is read through 16.12 SR 5-6: a label, negation, conjunction
+/// or direction override is one edge pattern, a concatenation two in one term, a union or
+/// alternation one per operand, a quantifier or `?` applies to the parenthesized edge.
+///
+/// A quantifier's lower bound (16.11 SR 2: `*` 0, `+` 1, `{n}` n, a missing bound 0) is zero or
+/// not, read off the digit tokens of the `<unsigned integer>`; an `<other digit>` counts as
+/// nonzero (the generator spells U+0663). The integer subtree carries that fact only where a
+/// bound asks for it (inherited WANT), so numbers elsewhere are not copied. 16.11 SR 3 a i (an
+/// upper bound is not 0, and `{0}` is `{0,0}`) rides on the same fact; SR 3 a ii (upper below
+/// lower) does not. 16.7 SR 9 (no quantified primary directly under a quantified primary)
+/// is an inherited context like 16.12's, refused outright.
+pub struct PathMinimums;
+
+const NODES: Fact = 12;
+const NO_NODES: Fact = 13;
+const LEN: Fact = 14;
+const NO_LEN: Fact = 15;
+/// A bare edge pattern, still to get its implicit node patterns or its parentheses.
+const EDGE: Fact = 16;
+const SUBPATH: Fact = 17;
+const LB_ZERO: Fact = 18;
+const LB_PRESENT: Fact = 19;
+const NONZERO: Fact = 20;
+/// Inherited: this integer is a quantifier bound, say whether it is zero.
+const WANT: Fact = 21;
+/// Inherited: under a quantified primary at this depth of matching (16.7 SR 9).
+const IN_QUANT: Fact = 30;
+const MINIMUMS: [Fact; 9] = [
+    NODES, NO_NODES, LEN, NO_LEN, EDGE, SUBPATH, LB_ZERO, LB_PRESENT, NONZERO,
+];
+/// Where a depth of graph pattern matching ends: a nested graph pattern starts its own.
+const DEPTH_ENDS: [&str; 3] = [
+    "graph pattern",
+    "element pattern filler",
+    "parenthesized path pattern where clause",
+];
+const QUANTIFIED: [&str; 2] = ["quantified path primary", "simplified quantified"];
+
+/// The state with exactly these minimums.
+fn minima(s: State, nodes: bool, len: bool) -> State {
+    let mut s = s.without_all(&[NODES, NO_NODES, LEN, NO_LEN]);
+    s.set(if nodes { NODES } else { NO_NODES }, true);
+    s.set(if len { LEN } else { NO_LEN }, true);
+    s
+}
+
+const BOUNDS: [&str; 3] = ["lower bound", "upper bound", "fixed quantifier"];
+/// The integer subtree a bound's WANT reaches into, and no further.
+const INTEGERS: [&str; 11] = [
+    "unsigned integer",
+    "unsigned decimal integer",
+    "unsigned hexadecimal integer",
+    "unsigned octal integer",
+    "unsigned binary integer",
+    "digit",
+    "standard digit",
+    "other digit",
+    "hex digit",
+    "octal digit",
+    "binary digit",
+];
+
+/// The definition an item names, a group by its owner.
+fn owner_of<'a>(item: &Item<'a>) -> Option<&'a str> {
+    match item {
+        Item::Def(d) => Some(d),
+        Item::Group(g) => g.split('/').next(),
+        _ => None,
+    }
+}
+const UNIONS: [&str; 4] = [
+    "path pattern union",
+    "path multiset alternation",
+    "simplified path union",
+    "simplified multiset alternation",
+];
+
+impl Rule for PathMinimums {
+    fn name(&self) -> &str {
+        "path pattern minimums"
+    }
+
+    fn cite(&self) -> &str {
+        "16.7 SR 8, 9, 16, 20: a quantified or questioned primary has a positive minimum path length and no quantified primary inside, a path pattern and a named subpath a positive minimum node count; 16.11 SR 3: an upper bound is not 0"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[
+            (NODES, "nodes"),
+            (NO_NODES, "no-nodes"),
+            (LEN, "len"),
+            (NO_LEN, "no-len"),
+            (EDGE, "edge"),
+            (SUBPATH, "subpath"),
+            (LB_ZERO, "lb-zero"),
+            (LB_PRESENT, "lb"),
+            (NONZERO, "nonzero"),
+            (WANT, "want"),
+            (IN_QUANT, "in-quant"),
+        ])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn down(&self, node: &Node, inh: &State, pos: usize, _left: &[State], out: &mut State) {
+        let child = owner_of(&node.items[pos]);
+        let asks = BOUNDS.contains(&node.def) && child == Some("unsigned integer");
+        let within = inh.has(WANT) && child.is_some_and(|c| INTEGERS.contains(&c));
+        if asks || within {
+            out.set(WANT, true);
+        }
+        // 16.7 SR 9: what a quantifier repeats, to the end of this depth of matching.
+        let repeats = QUANTIFIED.contains(&node.def)
+            && matches!(child, Some("path primary" | "simplified tertiary"));
+        let below = inh.has(IN_QUANT) && !child.is_some_and(|c| DEPTH_ENDS.contains(&c));
+        if repeats || below {
+            out.set(IN_QUANT, true);
+        }
+    }
+
+    fn rejects(&self, node: &Node, inh: &State) -> bool {
+        inh.has(IN_QUANT) && QUANTIFIED.contains(&node.def)
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if self.rejects(node, inh) {
+            return None;
+        }
+        if inh.has(WANT) {
+            // Inside a bound's integer: a digit token other than 0, or a non-ASCII digit.
+            let nonzero = node.items.iter().any(|i| match i {
+                Item::Token(t) => {
+                    t.len() == 1 && *t != "0" && t.chars().all(|c| c.is_ascii_alphanumeric())
+                }
+                Item::Prose("other digit") => true,
+                _ => false,
+            });
+            return Some(if nonzero { s.with(NONZERO) } else { s });
+        }
+        if node.group {
+            // A union's or alternation's repeated operands fold as they come (the minimum is
+            // associative), so the group holds one of four states, not a subset of them.
+            let owner = node.def.split('/').next().unwrap_or("");
+            return Some(if UNIONS.contains(&owner) {
+                let (nodes, len) = (!s.has(NO_NODES), !s.has(NO_LEN));
+                minima(s, nodes, len)
+            } else {
+                s
+            });
+        }
+        let rhs = node.items;
+        Some(match node.def {
+            // --- the bound's value, consumed by the quantifier ---
+            "lower bound" => {
+                let zero = !s.has(NONZERO);
+                let s = s.without(NONZERO).with(LB_PRESENT);
+                if zero { s.with(LB_ZERO) } else { s }
+            }
+            // 16.11 SR 2 c and 3 a i: `{0}` is `{0,0}`, an upper bound of 0.
+            "fixed quantifier" => {
+                if !s.has(NONZERO) {
+                    return None;
+                }
+                s.without(NONZERO)
+            }
+            "upper bound" => {
+                if !s.has(NONZERO) {
+                    return None;
+                }
+                s.without(NONZERO)
+            }
+            "general quantifier" => {
+                let zero = !s.has(LB_PRESENT) || s.has(LB_ZERO);
+                let mut s = s.without(LB_PRESENT);
+                s.set(LB_ZERO, zero);
+                s
+            }
+            "graph pattern quantifier" if rhs == [Item::Def("asterisk")] => s.with(LB_ZERO),
+            // --- element patterns and factors ---
+            "node pattern" => minima(s.without(EDGE), true, false),
+            "edge pattern" => minima(s, false, true).with(EDGE),
+            // SR 14 c-d: a bare edge in a term gets a node pattern on each side.
+            "path factor" if rhs == [Item::Def("path primary")] && s.has(EDGE) => {
+                minima(s.without(EDGE), true, true)
+            }
+            // SR 14 a parenthesizes an edge first, so it brings its implicit nodes along.
+            "quantified path primary" | "simplified quantified" => {
+                if !s.has(LEN) {
+                    return None;
+                }
+                let positive = !s.has(LB_ZERO);
+                let nodes = (s.has(NODES) || s.has(EDGE)) && positive;
+                minima(s.without(EDGE).without(LB_ZERO), nodes, positive)
+            }
+            "questioned path primary" | "simplified questioned" => {
+                if !s.has(LEN) {
+                    return None;
+                }
+                minima(s.without(EDGE), false, false)
+            }
+            "path concatenation" | "simplified concatenation" => {
+                let (nodes, len) = (s.has(NODES), s.has(LEN));
+                minima(s, nodes, len)
+            }
+            d if UNIONS.contains(&d) => {
+                let (nodes, len) = (!s.has(NO_NODES), !s.has(NO_LEN));
+                minima(s, nodes, len)
+            }
+            "subpath variable declaration" => s.with(SUBPATH),
+            "parenthesized path pattern expression" => {
+                if s.has(SUBPATH) && !s.has(NODES) {
+                    return None;
+                }
+                s.without(SUBPATH).without(EDGE)
+            }
+            // 16.12 SR 6: one edge pattern, in a term that gives it its implicit nodes.
+            "simplified primary" if rhs == [Item::Def("label name")] => minima(s, true, true),
+            "simplified negation" | "simplified conjunction" | "simplified direction override" => {
+                minima(s, true, true)
+            }
+            "path pattern" => {
+                if !s.has(NODES) {
+                    return None;
+                }
+                s.without_all(&MINIMUMS)
+            }
+            // Nothing crosses a WHERE, a filler or a depth of matching.
+            "element pattern filler"
+            | "parenthesized path pattern where clause"
+            | "graph pattern" => s.without_all(&MINIMUMS),
+            // A number that is not a bound carries nothing.
+            _ => s.without(NONZERO),
+        })
+    }
+}
+
+/// 16.12 SR 1-4: a simplified negation, conjunction or direction override holds no
+/// concatenation, quantifier, `?` or multiset alternation, and an override no other override.
+///
+/// Reading: SR 6 turns a negation or conjunction into a label expression (NOTE 255, 257), so
+/// a direction override inside one is a non-label construct and is refused too, as it is
+/// inside an override (SR 2).
+///
+/// Inherited, not synthesized: being below one of those is a context, and the forbidden
+/// nodes are refused in it outright. That keeps the simplified nonterminals' states to their
+/// minimums, so a union of them stays a few productions.
+pub struct SimplifiedShape;
+
+/// Inherited: below a negation, conjunction or direction override.
+const INSIDE: Fact = 22;
+const COMPLEX: [&str; 5] = [
+    "simplified concatenation",
+    "simplified quantified",
+    "simplified questioned",
+    "simplified multiset alternation",
+    "simplified direction override",
+];
+
+impl SimplifiedShape {
+    fn breaks(def: &str, inh: &State) -> bool {
+        inh.has(INSIDE) && COMPLEX.contains(&def)
+    }
+}
+
+impl Rule for SimplifiedShape {
+    fn name(&self) -> &str {
+        "simplified pattern shape"
+    }
+
+    fn cite(&self) -> &str {
+        "16.12 SR 1-4: a <simplified negation>, <simplified direction override> or <simplified conjunction> contains no concatenation, quantifier, ? or multiset alternation; an override no override"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(INSIDE, "inside")])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn down(&self, node: &Node, inh: &State, pos: usize, _left: &[State], out: &mut State) {
+        // The context reaches simplified nodes only, not the label names inside them.
+        if !owner_of(&node.items[pos]).is_some_and(|c| c.starts_with("simplified ")) {
+            return;
+        }
+        let opens = matches!(
+            node.def,
+            "simplified negation" | "simplified conjunction" | "simplified direction override"
+        );
+        if inh.has(INSIDE) || opens {
+            out.set(INSIDE, true);
+        }
+    }
+
+    fn rejects(&self, node: &Node, inh: &State) -> bool {
+        Self::breaks(node.def, inh)
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if Self::breaks(node.def, inh) {
+            return None;
+        }
+        Some(s)
+    }
+}
+
+/// 20.24 SR 3 b i 1: FROM in a single-character TRIM needs a <trim specification> or a <trim
+/// character string> before it.
+///
+/// Reading: 20.25 has no twin for <byte string trim operands>, but its General Rule 2 b reads
+/// the <trim byte string> as if present, so a bare FROM is refused there too.
+pub struct TrimOperands;
+
+/// Synthesized: a trim specification or trim string below, up to the operands.
+const TRIMMING: Fact = 23;
+const TRIM_OPERANDS: [&str; 2] = ["trim operands", "byte string trim operands"];
+
+impl Rule for TrimOperands {
+    fn name(&self) -> &str {
+        "TRIM's FROM follows a specification or a trim string"
+    }
+
+    fn cite(&self) -> &str {
+        "20.24 SR 3: a single-character trim function with FROM has a <trim specification> or a <trim character string> (byte strings alike)"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(TRIMMING, "trimming")])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn step(&self, node: &Node, _inh: &State, _children: &[State], s: State) -> Option<State> {
+        let owner = node.def.split('/').next().unwrap_or(node.def);
+        match node.def {
+            "trim specification" | "trim character string" | "trim byte string" => {
+                return Some(s.with(TRIMMING));
+            }
+            // BTRIM(x, y): a trim string with no FROM.
+            "multi-character trim function" => return Some(s.without(TRIMMING)),
+            _ => {}
+        }
+        if TRIM_OPERANDS.contains(&owner) {
+            let from = node.items.iter().any(|i| *i == Item::Token("FROM"));
+            if from && !s.has(TRIMMING) {
+                return None;
+            }
+            if !node.group {
+                return Some(s.without(TRIMMING));
+            }
+        }
+        Some(s)
+    }
+}
+
+/// 21.3 SR 4: a <delimited identifier> is not the zero-length string: `""` and ` `` ` are
+/// refused (the empty alternative of the optional inside the accent quotes has no valid
+/// witness, so its targets are never covered). `""` as a <character string literal> is the
+/// same <double quoted character sequence> and stays.
+pub struct DelimitedNotEmpty;
+
+/// Synthesized: a character representation below, up to the quoted sequence.
+const QUOTED: Fact = 31;
+
+impl Rule for DelimitedNotEmpty {
+    fn name(&self) -> &str {
+        "delimited identifier not empty"
+    }
+
+    fn cite(&self) -> &str {
+        "21.3 SR 4: the representative form of a <delimited identifier> is not the zero-length character string"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(QUOTED, "quoted")])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn step(&self, node: &Node, _inh: &State, _children: &[State], s: State) -> Option<State> {
+        match node.def {
+            "double quoted character representation" | "accent quoted character representation" => {
+                Some(s.with(QUOTED))
+            }
+            // The sequences are shared with <character string literal>, where `""` is the
+            // empty string: the fact is judged at the identifier and dropped at the literal.
+            "delimited identifier" => {
+                if s.has(QUOTED) { Some(s.without(QUOTED)) } else { None }
+            }
+            "character string literal" => Some(s.without(QUOTED)),
+            _ => Some(s),
+        }
+    }
+}
+
+/// 16.4 SR 12: under DIFFERENT EDGES, a selective path pattern is alone in its list.
+///
+/// Reading: 16.6 SR 4 makes a path pattern selective by the search prefix it simply contains,
+/// so a KEEP clause's prefix does not count here.
+pub struct SelectiveAlone {
+    pub id086: MatchModeDefault,
+}
+
+const SEARCH: Fact = 24;
+const SELECTIVE_PATTERN: Fact = 25;
+const ONE: Fact = 26;
+const MANY: Fact = 27;
+const DIFF: Fact = 28;
+const MODE: Fact = 29;
+const SR12: [Fact; 6] = [SEARCH, SELECTIVE_PATTERN, ONE, MANY, DIFF, MODE];
+
+impl Rule for SelectiveAlone {
+    fn name(&self) -> &str {
+        "selective path pattern alone under DIFFERENT EDGES"
+    }
+
+    fn cite(&self) -> &str {
+        "16.4 SR 12: under <different edges match mode>, a selective <path pattern> is the only one in its <path pattern list>"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[
+            (SEARCH, "search"),
+            (SELECTIVE_PATTERN, "selective-pattern"),
+            (ONE, "one"),
+            (MANY, "many"),
+            (DIFF, "diff"),
+            (MODE, "mode"),
+        ])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn step(&self, node: &Node, _inh: &State, children: &[State], s: State) -> Option<State> {
+        if node.group {
+            return Some(s);
+        }
+        Some(match node.def {
+            "path search prefix" if node.items != [Item::Def("all path search")] => s.with(SEARCH),
+            "keep clause" => s.without(SEARCH),
+            "path pattern" => {
+                let selective = s.has(SEARCH);
+                let mut s = s.without(SEARCH).with(ONE);
+                s.set(SELECTIVE_PATTERN, selective);
+                s
+            }
+            "path pattern list" => {
+                let many = children.iter().filter(|c| c.has(ONE)).count() >= 2;
+                let mut s = s.without(ONE);
+                s.set(MANY, many);
+                s
+            }
+            "different edges match mode" => s.with(DIFF),
+            "match mode" => s.with(MODE),
+            "graph pattern" => {
+                let default = !s.has(MODE) && self.id086 == MatchModeDefault::DifferentEdges;
+                if (s.has(DIFF) || default) && s.has(SELECTIVE_PATTERN) && s.has(MANY) {
+                    return None;
+                }
+                s.without_all(&SR12)
+            }
+            _ => s,
+        })
     }
 }
 

@@ -15,7 +15,23 @@ use std::sync::LazyLock;
 static ISO: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static BASE: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO));
 
-const RULES: [&str; 3] = ["16.4 SR 14", "16.4 SR 6", "13.1 SR 5"];
+const RULES: [&str; 15] = [
+    "16.4 SR 14",
+    "20.24 SR 3",
+    "21.3 SR 4",
+    "16.4 SR 6",
+    "13.1 SR 5",
+    "16.7 SR 8",
+    "16.7 SR 9",
+    "16.7 SR 16",
+    "16.7 SR 20",
+    "16.11 SR 3",
+    "16.12 SR 1",
+    "16.12 SR 2",
+    "16.12 SR 3",
+    "16.12 SR 4",
+    "16.4 SR 12",
+];
 
 fn d(name: &str, children: Vec<Plain>) -> Plain {
     Plain::Def {
@@ -62,15 +78,104 @@ fn expect(tree: &Plain, id086: MatchModeDefault, rule: Option<&str>) {
 
 // --- skeleton pieces ---------------------------------------------------------------------
 
-/// `-[:R]->` followed by a quantifier.
+/// `<-` followed by a quantifier.
 fn quantified(quantifier: Plain) -> Plain {
+    quantified_of(edge(), quantifier)
+}
+
+fn quantified_of(primary: Plain, quantifier: Plain) -> Plain {
     d(
         "quantified path primary",
+        vec![primary, d("graph pattern quantifier", vec![quantifier])],
+    )
+}
+
+fn questioned(primary: Plain) -> Plain {
+    d(
+        "questioned path primary",
+        vec![primary, Plain::Term("?".into())],
+    )
+}
+
+/// A bare `<-` as a path primary.
+fn edge() -> Plain {
+    d(
+        "path primary",
+        vec![d(
+            "element pattern",
+            vec![d(
+                "edge pattern",
+                vec![d(
+                    "abbreviated edge pattern",
+                    vec![Plain::Term("<-".into())],
+                )],
+            )],
+        )],
+    )
+}
+
+/// An empty `()` as a path primary.
+fn node() -> Plain {
+    d(
+        "path primary",
+        vec![d(
+            "element pattern",
+            vec![d(
+                "node pattern",
+                vec![
+                    Plain::Term("(".into()),
+                    d("element pattern filler", vec![]),
+                    Plain::Term(")".into()),
+                ],
+            )],
+        )],
+    )
+}
+
+fn factor(x: Plain) -> Plain {
+    d("path factor", vec![x])
+}
+
+/// A path term of these factors, concatenated left to right as the grammar does.
+fn term(mut factors: Vec<Plain>) -> Plain {
+    let mut t = d("path term", vec![factors.remove(0)]);
+    for f in factors {
+        t = d("path term", vec![d("path concatenation", vec![t, f])]);
+    }
+    t
+}
+
+/// `<unsigned integer>` spelled by these tokens (`0x` and `8`, not `0x8`).
+fn integer(tokens: &[&str]) -> Plain {
+    d(
+        "unsigned integer",
+        tokens.iter().map(|t| Plain::Term((*t).into())).collect(),
+    )
+}
+
+fn fixed(tokens: &[&str]) -> Plain {
+    d(
+        "fixed quantifier",
         vec![
-            d("path primary", vec![]),
-            d("graph pattern quantifier", vec![quantifier]),
+            Plain::Term("{".into()),
+            integer(tokens),
+            Plain::Term("}".into()),
         ],
     )
+}
+
+/// `{lower,upper}` with either side optional.
+fn general(lower: Option<&[&str]>, upper: Option<&[&str]>) -> Plain {
+    let mut parts = vec![Plain::Term("{".into())];
+    if let Some(l) = lower {
+        parts.push(d("lower bound", vec![integer(l)]));
+    }
+    parts.push(Plain::Term(",".into()));
+    if let Some(u) = upper {
+        parts.push(d("upper bound", vec![integer(u)]));
+    }
+    parts.push(Plain::Term("}".into()));
+    d("general quantifier", parts)
 }
 
 fn plus() -> Plain {
@@ -81,13 +186,9 @@ fn star() -> Plain {
     d("asterisk", vec![Plain::Term("*".into())])
 }
 
-/// `{m,}` or `{m,n}`.
+/// `{1,}` or `{1,2}`.
 fn braces(upper: bool) -> Plain {
-    let mut parts = vec![d("lower bound", vec![]), Plain::Term(",".into())];
-    if upper {
-        parts.push(d("upper bound", vec![]));
-    }
-    d("general quantifier", parts)
+    general(Some(&["1"]), upper.then_some(&["2"][..]))
 }
 
 fn mode(m: &str) -> Plain {
@@ -108,10 +209,22 @@ fn search_prefix(kind: &str) -> Plain {
     )
 }
 
+/// `() body`: a node pattern in front keeps 16.7 SR 16 out of the way.
 fn path_pattern(prefix: Option<Plain>, body: Plain) -> Plain {
     let mut children: Vec<Plain> = prefix.into_iter().collect();
-    children.push(d("path pattern expression", vec![body]));
+    children.push(d(
+        "path pattern expression",
+        vec![term(vec![factor(node()), factor(body)])],
+    ));
     d("path pattern", children)
+}
+
+/// A path pattern of exactly this expression body.
+fn bare_pattern(body: Plain) -> Plain {
+    d(
+        "path pattern",
+        vec![d("path pattern expression", vec![body])],
+    )
 }
 
 /// `( [mode] body )`.
@@ -239,7 +352,7 @@ fn probe_7_restrictive_parens_inside_the_quantifier_do_not_guard() {
         vec![
             d(
                 "path primary",
-                vec![parens(Some("TRAIL"), d("path term", vec![]))],
+                vec![parens(Some("TRAIL"), term(vec![factor(edge())]))],
             ),
             d("graph pattern quantifier", vec![braces(false)]),
         ],
@@ -282,7 +395,7 @@ fn probe_9_and_15_different_edges_guards() {
     let simplified = d(
         "simplified quantified",
         vec![
-            d("simplified tertiary", vec![]),
+            d("simplified tertiary", vec![label()]),
             d("graph pattern quantifier", vec![braces(false)]),
         ],
     );
@@ -501,4 +614,607 @@ proptest! {
             prop_assert!(violations.is_empty(), "{:?}", violations);
         }
     }
+}
+
+// --- 16.7 SR 8, 16, 20 and 16.11 SR 3: minimum node count and path length -----------------
+
+fn one(pattern: Plain) -> Plain {
+    graph_pattern(None, vec![pattern], None)
+}
+
+fn trail_pattern(body: Plain) -> Plain {
+    d(
+        "path pattern",
+        vec![
+            mode_prefix("TRAIL"),
+            d("path pattern expression", vec![body]),
+        ],
+    )
+}
+
+#[test]
+fn a_bare_edge_gets_implicit_nodes() {
+    expect(&one(bare_pattern(factor(edge()))), PORTABLE, None);
+    expect(
+        &one(bare_pattern(term(vec![factor(edge()), factor(edge())]))),
+        PORTABLE,
+        None,
+    );
+}
+
+#[test]
+fn a_questioned_or_zero_quantified_edge_alone_has_no_node() {
+    expect(
+        &one(bare_pattern(factor(questioned(edge())))),
+        PORTABLE,
+        Some("16.7 SR 16"),
+    );
+    let parens = d("path primary", vec![parens(None, factor(edge()))]);
+    expect(
+        &one(bare_pattern(factor(questioned(parens)))),
+        PORTABLE,
+        Some("16.7 SR 16"),
+    );
+    expect(
+        &one(bare_pattern(factor(quantified(general(
+            None,
+            Some(&["8"]),
+        ))))),
+        PORTABLE,
+        Some("16.7 SR 16"),
+    );
+    expect(
+        &one(bare_pattern(factor(quantified(general(
+            Some(&["0", "_", "0"]),
+            Some(&["8"]),
+        ))))),
+        PORTABLE,
+        Some("16.7 SR 16"),
+    );
+    // TRAIL <- *: guarded for 16.4 SR 14, still no node.
+    expect(
+        &one(trail_pattern(factor(quantified(star())))),
+        PORTABLE,
+        Some("16.7 SR 16"),
+    );
+}
+
+#[test]
+fn a_positive_lower_bound_or_a_node_beside_keeps_nodes() {
+    expect(
+        &one(bare_pattern(factor(quantified(fixed(&["1"]))))),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &one(bare_pattern(factor(quantified(fixed(&["0x", "8"]))))),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &one(trail_pattern(factor(quantified(plus())))),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &one(bare_pattern(factor(quantified(general(
+            Some(&["1"]),
+            None,
+        ))))),
+        PORTABLE,
+        Some("16.4 SR 14"),
+    );
+    expect(
+        &one(bare_pattern(term(vec![
+            factor(node()),
+            factor(quantified(general(None, Some(&["8"])))),
+            factor(node()),
+        ]))),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &one(bare_pattern(term(vec![
+            factor(questioned(edge())),
+            factor(node()),
+        ]))),
+        PORTABLE,
+        None,
+    );
+}
+
+#[test]
+fn a_union_takes_the_smallest_operand() {
+    let union = |a: Plain, b: Plain| d("path pattern union", vec![a, Plain::Term("|".into()), b]);
+    let nodes = term(vec![factor(node())]);
+    let none = term(vec![factor(questioned(edge()))]);
+    expect(
+        &one(bare_pattern(union(nodes.clone(), nodes.clone()))),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &one(bare_pattern(union(nodes, none))),
+        PORTABLE,
+        Some("16.7 SR 16"),
+    );
+}
+
+#[test]
+fn a_repeated_primary_has_a_positive_length() {
+    let zero = d(
+        "path primary",
+        vec![parens(None, factor(questioned(edge())))],
+    );
+    expect(
+        &one(path_pattern(None, questioned(zero.clone()))),
+        PORTABLE,
+        Some("16.7 SR 8"),
+    );
+    expect(
+        &one(path_pattern(None, quantified_of(zero, fixed(&["2"])))),
+        PORTABLE,
+        Some("16.7 SR 8"),
+    );
+    expect(
+        &one(path_pattern(None, quantified_of(node(), fixed(&["2"])))),
+        PORTABLE,
+        Some("16.7 SR 8"),
+    );
+    let one_edge = d("path primary", vec![parens(None, factor(edge()))]);
+    expect(
+        &one(path_pattern(None, questioned(one_edge))),
+        PORTABLE,
+        None,
+    );
+}
+
+#[test]
+fn a_named_subpath_has_a_node() {
+    let named = |body: Plain| {
+        d(
+            "parenthesized path pattern expression",
+            vec![
+                Plain::Term("(".into()),
+                d("subpath variable declaration", vec![]),
+                d("path pattern expression", vec![body]),
+                Plain::Term(")".into()),
+            ],
+        )
+    };
+    expect(
+        &one(path_pattern(
+            None,
+            named(factor(quantified(general(None, Some(&["8"]))))),
+        )),
+        PORTABLE,
+        Some("16.7 SR 20"),
+    );
+    expect(
+        &one(path_pattern(None, named(factor(quantified(fixed(&["1"])))))),
+        PORTABLE,
+        None,
+    );
+}
+
+#[test]
+fn a_quantifier_does_not_nest_a_quantifier() {
+    let inner = as_primary(parens(None, factor(quantified(plus()))));
+    expect(
+        &one(trail_pattern(factor(quantified_of(inner, plus())))),
+        PORTABLE,
+        Some("16.7 SR 9"),
+    );
+}
+
+#[test]
+fn an_upper_bound_is_not_zero() {
+    // `{0}` is `{0,0}`.
+    expect(
+        &one(path_pattern(None, quantified(fixed(&["0"])))),
+        PORTABLE,
+        Some("16.11 SR 3"),
+    );
+    expect(
+        &one(path_pattern(None, quantified(fixed(&["0b", "0"])))),
+        PORTABLE,
+        Some("16.11 SR 3"),
+    );
+    expect(
+        &one(path_pattern(
+            None,
+            quantified(general(Some(&["1"]), Some(&["0"]))),
+        )),
+        PORTABLE,
+        Some("16.11 SR 3"),
+    );
+    expect(
+        &one(path_pattern(
+            None,
+            quantified(general(None, Some(&["0x", "0", "_", "0"]))),
+        )),
+        PORTABLE,
+        Some("16.11 SR 3"),
+    );
+}
+
+// --- 16.12 SR 1-4 and the minimums of simplified expressions ------------------------------
+
+fn sppe(contents: Plain) -> Plain {
+    d(
+        "simplified path pattern expression",
+        vec![d(
+            "simplified defaulting left",
+            vec![
+                Plain::Term("<-/".into()),
+                d("simplified contents", vec![contents]),
+                Plain::Term("/-".into()),
+            ],
+        )],
+    )
+}
+
+fn label() -> Plain {
+    d("simplified primary", vec![d("label name", vec![])])
+}
+
+fn grouped(contents: Plain) -> Plain {
+    d(
+        "simplified primary",
+        vec![
+            Plain::Term("(".into()),
+            d("simplified contents", vec![contents]),
+            Plain::Term(")".into()),
+        ],
+    )
+}
+
+fn negation(x: Plain) -> Plain {
+    d("simplified negation", vec![Plain::Term("!".into()), x])
+}
+
+fn conjunction(a: Plain, b: Plain) -> Plain {
+    d(
+        "simplified conjunction",
+        vec![a, Plain::Term("&".into()), b],
+    )
+}
+
+fn override_left(x: Plain) -> Plain {
+    d(
+        "simplified direction override",
+        vec![d(
+            "simplified override left",
+            vec![Plain::Term("<".into()), x],
+        )],
+    )
+}
+
+fn squantified(t: Plain, q: Plain) -> Plain {
+    d(
+        "simplified quantified",
+        vec![
+            d("simplified tertiary", vec![t]),
+            d("graph pattern quantifier", vec![q]),
+        ],
+    )
+}
+
+fn squestioned(t: Plain) -> Plain {
+    d(
+        "simplified questioned",
+        vec![d("simplified tertiary", vec![t]), Plain::Term("?".into())],
+    )
+}
+
+fn sconcat(a: Plain, b: Plain) -> Plain {
+    d(
+        "simplified concatenation",
+        vec![
+            d("simplified term", vec![a]),
+            d("simplified factor low", vec![b]),
+        ],
+    )
+}
+
+fn as_primary(x: Plain) -> Plain {
+    d("path primary", vec![x])
+}
+
+#[test]
+fn simplified_shapes() {
+    let pattern = |contents: Plain| one(bare_pattern(factor(as_primary(sppe(contents)))));
+    expect(&pattern(label()), PORTABLE, None);
+    expect(&pattern(conjunction(label(), label())), PORTABLE, None);
+    let questioned_in_conjunction = conjunction(label(), squestioned(label()));
+    expect(
+        &pattern(questioned_in_conjunction),
+        PORTABLE,
+        Some("16.12 SR 4"),
+    );
+    let quantified_in_override = override_left(grouped(squantified(label(), fixed(&["1"]))));
+    expect(
+        &pattern(quantified_in_override),
+        PORTABLE,
+        Some("16.12 SR 3"),
+    );
+    let nested_override = override_left(grouped(override_left(label())));
+    expect(&pattern(nested_override), PORTABLE, Some("16.12 SR 2"));
+    let concatenation_in_negation = negation(grouped(sconcat(label(), label())));
+    expect(
+        &pattern(concatenation_in_negation),
+        PORTABLE,
+        Some("16.12 SR 1"),
+    );
+    // Reading: what becomes a label expression holds no direction override either.
+    let override_in_conjunction = conjunction(label(), override_left(label()));
+    expect(
+        &pattern(override_in_conjunction),
+        PORTABLE,
+        Some("16.12 SR 4"),
+    );
+    let override_in_negation = negation(grouped(override_left(label())));
+    expect(&pattern(override_in_negation), PORTABLE, Some("16.12 SR 1"));
+}
+
+#[test]
+fn simplified_minimums() {
+    let pattern = |contents: Plain| one(bare_pattern(factor(as_primary(sppe(contents)))));
+    // `<-/ a ? /-` has no node, `<-/ a /- ?` neither, `<-/ a b /-` and `<-/ a ? b /-` do.
+    expect(&pattern(squestioned(label())), PORTABLE, Some("16.7 SR 16"));
+    let questioned_whole = one(bare_pattern(factor(questioned(as_primary(sppe(label()))))));
+    expect(&questioned_whole, PORTABLE, Some("16.7 SR 16"));
+    expect(&pattern(sconcat(label(), label())), PORTABLE, None);
+    expect(
+        &pattern(sconcat(squestioned(label()), label())),
+        PORTABLE,
+        None,
+    );
+    // `<-/ ( a ? ) ? /-`: the questioned primary has length 0.
+    let twice = sppe(squestioned(grouped(squestioned(label()))));
+    expect(
+        &one(path_pattern(None, as_primary(twice))),
+        PORTABLE,
+        Some("16.7 SR 8"),
+    );
+}
+
+// --- 16.4 SR 12 ---------------------------------------------------------------------------
+
+#[test]
+fn a_selective_pattern_stands_alone_under_different_edges() {
+    let selective = || path_pattern(Some(search_prefix("any path search")), factor(edge()));
+    let plain = || path_pattern(None, factor(edge()));
+    expect(
+        &graph_pattern(Some("DIFFERENT"), vec![selective(), plain()], None),
+        PORTABLE,
+        Some("16.4 SR 12"),
+    );
+    expect(
+        &graph_pattern(None, vec![plain(), selective()], None),
+        DIFFERENT,
+        Some("16.4 SR 12"),
+    );
+    expect(
+        &graph_pattern(Some("REPEATABLE"), vec![selective(), plain()], None),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &graph_pattern(None, vec![selective(), plain()], None),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &graph_pattern(Some("DIFFERENT"), vec![selective()], None),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &graph_pattern(Some("DIFFERENT"), vec![plain(), plain()], None),
+        PORTABLE,
+        None,
+    );
+}
+
+// --- 16.11 SR 3 a ii: the order of the bounds is settled at spelling time, not in the grammar
+
+/// The automaton knows zero or nonzero, so it accepts `{ 8 , 2 }`; the checker reads the
+/// values and reports it. `tree::order_bounds` keeps the two apart in a generated set, in
+/// both generators.
+#[test]
+fn an_upper_bound_below_the_lower_is_the_checkers_alone() {
+    let out_of_order = one(bare_pattern(factor(quantified(general(
+        Some(&["8"]),
+        Some(&["2"]),
+    )))));
+    let (automaton, broken) = verdicts(&out_of_order, PORTABLE);
+    assert!(automaton, "the automaton does not read values");
+    assert!(broken.is_empty(), "the rules compiled into the grammar: {broken:?}");
+    let verifier = Verifier::new(Grammar::new(&ISO)).with_syntax_rules(PORTABLE);
+    let reported: Vec<&str> = verifier
+        .verify(&out_of_order, &verifier.render(&out_of_order))
+        .iter()
+        .map(|v| v.rule)
+        .filter(|r| *r != "ISO BNF")
+        .collect();
+    assert_eq!(reported, ["16.11 SR 3 a ii"]);
+    expect(
+        &one(bare_pattern(factor(quantified(general(
+            Some(&["2"]),
+            Some(&["8"]),
+        ))))),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &one(bare_pattern(factor(quantified(general(
+            Some(&["8"]),
+            Some(&["8"]),
+        ))))),
+        PORTABLE,
+        None,
+    );
+}
+
+#[test]
+fn a_raised_bound_keeps_its_digits_and_radix() {
+    use gql_proof::tree::raised_bound;
+    use gql_proof::verify::unsigned_integer_value;
+    use rand::SeedableRng;
+    let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(7);
+    for (text, lower) in [
+        ("0o2", 8),
+        ("0b1", 8),
+        ("0xA", 11),
+        ("2", 8),
+        ("0o_2", 8),
+        ("8_08", 900),
+        ("0b1", 300),
+        ("08", 10),
+    ] {
+        for _ in 0..8 {
+            let raised = raised_bound(text, lower, &mut rng);
+            let value = unsigned_integer_value(&raised);
+            assert!(value >= lower, "{text} under {lower} became {raised} ({value})");
+            let digits = text.trim_start_matches("0x").trim_start_matches("0o").trim_start_matches("0b");
+            assert!(raised.ends_with(digits), "{text} under {lower} became {raised}");
+            assert_eq!(&raised[..text.len() - digits.len()], &text[..text.len() - digits.len()]);
+            if lower <= 255 {
+                assert!(value <= 255, "{text} under {lower} became {raised} ({value})");
+            }
+        }
+    }
+    assert_eq!(unsigned_integer_value(&raised_bound("0o2", 8, &mut rng)) % 8, 2);
+}
+
+// --- 20.24 SR 3: TRIM's FROM follows a specification or a trim string ----------------------
+
+fn trim(parts: Vec<Plain>) -> Plain {
+    d("trim operands", parts)
+}
+
+fn trim_source() -> Plain {
+    d("trim source", vec![])
+}
+
+#[test]
+fn a_bare_from_in_trim_is_refused() {
+    expect(&trim(vec![kw("FROM"), trim_source()]), PORTABLE, Some("20.24 SR 3"));
+    expect(
+        &trim(vec![
+            d("trim specification", vec![kw("BOTH")]),
+            kw("FROM"),
+            trim_source(),
+        ]),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &trim(vec![
+            d("trim character string", vec![]),
+            kw("FROM"),
+            trim_source(),
+        ]),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &trim(vec![
+            d("trim specification", vec![kw("LEADING")]),
+            d("trim character string", vec![]),
+            kw("FROM"),
+            trim_source(),
+        ]),
+        PORTABLE,
+        None,
+    );
+    expect(&trim(vec![trim_source()]), PORTABLE, None);
+    expect(
+        &d(
+            "byte string trim operands",
+            vec![kw("FROM"), d("byte string trim source", vec![])],
+        ),
+        PORTABLE,
+        Some("20.24 SR 3"),
+    );
+    expect(
+        &d(
+            "byte string trim operands",
+            vec![
+                d("trim byte string", vec![]),
+                kw("FROM"),
+                d("byte string trim source", vec![]),
+            ],
+        ),
+        PORTABLE,
+        None,
+    );
+    // BTRIM(x, y): a trim string with no FROM, which must not leak upwards.
+    expect(
+        &d(
+            "multi-character trim function",
+            vec![
+                kw("BTRIM"),
+                Plain::Term("(".into()),
+                trim_source(),
+                Plain::Term(",".into()),
+                d("trim character string", vec![]),
+                Plain::Term(")".into()),
+            ],
+        ),
+        PORTABLE,
+        None,
+    );
+}
+
+// --- 21.3 SR 4: a delimited identifier is not empty -----------------------------------------
+
+fn quoted(accent: bool, characters: usize) -> Plain {
+    let (quote, seq, unbroken, rep) = if accent {
+        (
+            "grave accent",
+            "accent quoted character sequence",
+            "unbroken accent quoted character sequence",
+            "accent quoted character representation",
+        )
+    } else {
+        (
+            "double quote",
+            "double quoted character sequence",
+            "unbroken double quoted character sequence",
+            "double quoted character representation",
+        )
+    };
+    let mark = || d(quote, vec![Plain::Term(if accent { "`" } else { "\"" }.into())]);
+    let mut inner = vec![mark()];
+    for _ in 0..characters {
+        inner.push(d(
+            rep,
+            vec![Plain::Leaf {
+                def: "character representation".into(),
+                text: "x".into(),
+            }],
+        ));
+    }
+    inner.push(mark());
+    d(seq, vec![d(unbroken, inner)])
+}
+
+fn delimited(accent: bool, characters: usize) -> Plain {
+    d("delimited identifier", vec![quoted(accent, characters)])
+}
+
+#[test]
+fn an_empty_delimited_identifier_is_refused() {
+    expect(&delimited(false, 0), PORTABLE, Some("21.3 SR 4"));
+    expect(&delimited(true, 0), PORTABLE, Some("21.3 SR 4"));
+    expect(&delimited(false, 1), PORTABLE, None);
+    expect(&delimited(true, 2), PORTABLE, None);
+    // `""` is the empty string literal, the same sequence under another definition.
+    expect(
+        &d("character string literal", vec![quoted(false, 0)]),
+        PORTABLE,
+        None,
+    );
 }

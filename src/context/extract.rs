@@ -907,6 +907,7 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             if let Err(err) = self.name(&x, &mut root, names, &spell) {
                 panic!("naming an extracted tree: {err}");
             }
+            tree::order_bounds(cfg, &mut root, &spell, &mut rng);
             // The productions as the tree uses them: in a refined grammar, each copy is its
             // own target.
             seen.extend(coverage::observe_refined(cfg, &root, criteria));

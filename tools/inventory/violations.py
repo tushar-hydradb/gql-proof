@@ -31,7 +31,12 @@ def check(name):
     return wrap
 
 @check("21.3 SR 4: empty delimited identifier")
-def _(s): return '""' in s or "``" in s
+def _(s):
+    # `""` and `@""` are also the empty string literal; only as a name (a parameter `$""`
+    # or `$@""`, a property `.""`, a label `:""`) is it an identifier at text level. Empty
+    # accent quotes are always one, and `""""` is the one-character identifier `"`. A lower
+    # bound.
+    return re.search(r'(?<!`)``(?!`)|\$@?""(?!")|[.:]""(?!")', s) is not None
 
 @check("16.11 SR 3: quantifier upper bound 0 or below lower")
 def _(s):
@@ -44,6 +49,29 @@ def _(s):
 @check("18.9 SR 7/10/29: zero length or precision")
 def _(s):
     return re.search(r"\b(CHAR|VARCHAR|STRING|BINARY|VARBINARY|BYTES|DECIMAL|DEC)\s*\(\s*(0[xob]0+|0)\s*[,)]", s) is not None
+
+EDGE = r"(?:<->|<-|->|<~|~>|~|-)"
+PREFIXES = r"(?:MATCH|,|ALL|ANY|SHORTEST|TRAIL|WALK|SIMPLE|ACYCLIC|PATHS?|GROUPS?|=|\d+)"
+
+@check("16.7 SR 16: path pattern of a lone questioned or zero-quantified edge")
+def _(s):
+    # An abbreviated edge right after MATCH, a comma or a prefix, then `?`, `*`, `{0}` or
+    # `{,`: a path pattern that can match no node. Text level, a lower bound.
+    zero = r"(?:\?|\*|\{\s*(?:0[xob])?0+\s*\}|\{\s*,)"
+    return re.search(PREFIXES + r"\s*\(?\s*" + EDGE + r"\s*\)?\s*" + zero + r"\s*(?:FINISH|RETURN|,|KEEP|$)", s) is not None
+
+@check("16.12: quantifier or ? beside & or ! or a direction override in a simplified pattern")
+def _(s):
+    # `a & b ?` and `a ? & b` are conjunctions with a questioned operand; `< ( a ? )` and
+    # `! ( a b )` hold one inside; `< a ?` and `! a ?` question the override or negation
+    # itself and are fine.
+    for m in re.finditer(r"/(.*?)/", s):
+        body = m.group(1)
+        if re.search(r"&\s*\(?\s*\w+\s*[?*+{]", body) or re.search(r"\w+\s*[?*+{]\s*\)?\s*&", body):
+            return True
+        if re.search(r"[<>~!]\s*\(\s*[^()]*(?:[?*+{]|\w\s+\w)", body):
+            return True
+    return False
 
 @check("20.6 SR 10: VALUE subquery without LIMIT 1")
 def _(s):
