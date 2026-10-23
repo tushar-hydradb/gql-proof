@@ -53,10 +53,33 @@ and `tools/inventory/violations.py` read them as they are
   the record in `research/static-semantics-inventory-2026-10-22.md`: it holds
   the 17 use after delete sentences the later list lost by witness choice. its
   successor (1,310 sentences, after 258437a) was not kept
+- `typed-2vars-turbolay-claim-soundness.jsonl`: the turbolay command (with
+  `--match-mode-default different-edges`) on `tushar/soundness` (2026-10-23)
+  after the first soundness families: type values settled at spelling time
+  (18.9 SR 7, 10, 13, 21, 28, 29, 38, 40), the node and edge type shapes
+  (18.2 SR 2, 3; 18.3 SR 2, 3, 4), no subquery in an aggregate (20.9 SR 3).
+  3,796 rows, 3,762 distinct, 524 s; 4,342 of 4,502 productions and 6,531 of
+  6,874 cdrc pairs covered, 159 and 341 never (6 and 8 more than before: the
+  general set function copies whose argument holds an EXISTS, unreachable by
+  20.9 SR 3); 0 syntax or scope checker failures, the same 4 trees flagged by
+  the types checker only (`x + NULL` as a TRIM count). `violations.py` reports
+  one false positive (`STRING ( 0b0 , 8 )`: a zero minimum length is allowed
+  by 18.9 SR 8)
+- `typed-2vars-whole-grammar-51d059a.jsonl`: the typed command with no `--claim`
+  (every feature) and `--deadline 3600`, on main at 51d059a (2026-10-23, before
+  the soundness work): 3,508 rows, 3,443 distinct, 437 s; 4,442 of 4,473
+  productions and 6,474 of 6,540 cdrc pairs covered, 0 checker failures. kept
+  as the record of what the whole grammar reached before the soundness track:
+  `violations.py` finds 18.9 SR 7/10/29 (3), 8.2 SR 2 (3), 22.1 SR 3 (8) and
+  14.12 SR 7 (32) in it, and a text check finds 18.2 SR 2 / 18.3 SR 2 (closed
+  node and edge types with names or key label sets) and 20.9 SR 3 (169
+  aggregates over a subquery)
 - `scope-turbolay-claim.jsonl`, `scope-neo4j-claim.jsonl`: scope only, `purdom
-  --short --claim claims/<engine>.claim --format jsonl`, 3 variables, from
-  2026-10-21 (main around 3e12b6c). on turbolay 295 of 790 accepted, on neo4j
-  92 of 481
+  --short --claim claims/<engine>.claim --format jsonl`, 3 variables,
+  regenerated on main at 51d059a (2026-10-23): turbolay 785 sentences in 112 s,
+  neo4j 463 in 218 s. the earlier copies (2026-10-21, main around 3e12b6c: 790
+  and 481 sentences, turbolay accepting 295, neo4j 92) predated the exists,
+  path and last ten work
 
 ## adding one
 

@@ -15,7 +15,13 @@ use std::sync::LazyLock;
 static ISO: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static BASE: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO));
 
-const RULES: [&str; 15] = [
+const RULES: [&str; 21] = [
+    "8.2 SR 2",
+    "18.2 SR 2",
+    "18.2 SR 3",
+    "18.3 SR 2",
+    "18.3 SR 3",
+    "18.3 SR 4",
     "16.4 SR 14",
     "20.24 SR 3",
     "21.3 SR 4",
@@ -1214,6 +1220,507 @@ fn an_empty_delimited_identifier_is_refused() {
     // `""` is the empty string literal, the same sequence under another definition.
     expect(
         &d("character string literal", vec![quoted(false, 0)]),
+        PORTABLE,
+        None,
+    );
+}
+
+// --- 18.2 SR 2, 3 and 18.3 SR 2, 3, 4: the shape of a node or edge type specification ---------
+
+fn ident(text: &str) -> Plain {
+    d("regular identifier", vec![Plain::Term(text.into())])
+}
+
+fn key_label_set() -> Plain {
+    d("node type key label set", vec![d("implies", vec![kw("IMPLIES")])])
+}
+
+fn properties() -> Plain {
+    d(
+        "node type implied content",
+        vec![d(
+            "node type property types",
+            vec![d(
+                "property types specification",
+                vec![Plain::Term("{".into()), Plain::Term("}".into())],
+            )],
+        )],
+    )
+}
+
+/// `NODE TYPE [name] <filler> [AS alias]` as a node type phrase.
+fn node_phrase(name: Option<&str>, filler: Plain, alias: Option<&str>) -> Plain {
+    let mut filler_items = Vec::new();
+    if let Some(n) = name {
+        filler_items.push(d("node type name", vec![ident(n)]));
+    }
+    filler_items.push(d("node type filler", vec![filler]));
+    let mut items = vec![d("node synonym", vec![kw("NODE")]), kw("TYPE")];
+    items.push(d("node type phrase filler", filler_items));
+    if let Some(a) = alias {
+        items.push(kw("AS"));
+        items.push(d("local node type alias", vec![ident(a)]));
+    }
+    d("node type specification", vec![d("node type phrase", items)])
+}
+
+fn closed_node(spec: Plain) -> Plain {
+    d("closed node reference value type", vec![spec])
+}
+
+/// A value type in a graph type body's element list, where nothing is closed.
+fn in_body(spec: Plain) -> Plain {
+    d(
+        "graph type specification body",
+        vec![d(
+            "element type list",
+            vec![d("element type specification", vec![spec])],
+        )],
+    )
+}
+
+#[test]
+fn a_closed_node_type_has_no_alias_key_labels_or_name() {
+    expect(&closed_node(node_phrase(None, properties(), None)), PORTABLE, None);
+    expect(
+        &closed_node(node_phrase(None, properties(), Some("a"))),
+        PORTABLE,
+        Some("18.2 SR 2"),
+    );
+    expect(
+        &closed_node(node_phrase(None, key_label_set(), None)),
+        PORTABLE,
+        Some("18.2 SR 2"),
+    );
+    expect(
+        &closed_node(node_phrase(Some("n"), properties(), None)),
+        PORTABLE,
+        Some("18.2 SR 2"),
+    );
+    // The same specifications in a graph type body are fine.
+    expect(&in_body(node_phrase(None, properties(), Some("a"))), PORTABLE, None);
+    expect(&in_body(node_phrase(None, key_label_set(), None)), PORTABLE, None);
+    expect(&in_body(node_phrase(Some("n"), properties(), None)), PORTABLE, None);
+}
+
+#[test]
+fn a_named_node_type_has_no_key_labels_or_alias() {
+    expect(
+        &in_body(node_phrase(Some("n"), key_label_set(), None)),
+        PORTABLE,
+        Some("18.2 SR 3"),
+    );
+    expect(
+        &in_body(node_phrase(Some("n"), properties(), Some("a"))),
+        PORTABLE,
+        Some("18.2 SR 3"),
+    );
+}
+
+#[test]
+fn a_nested_node_type_is_judged_by_its_own_parent() {
+    // A closed node type whose property's type is a graph type with an aliased node type:
+    // the inner specification is not simply contained in the closed reference value type.
+    let inner = in_body(node_phrase(None, properties(), Some("a")));
+    let property_types = d(
+        "node type implied content",
+        vec![d(
+            "node type property types",
+            vec![d(
+                "property types specification",
+                vec![d(
+                    "property type",
+                    vec![d(
+                        "value type",
+                        vec![d(
+                            "closed graph reference value type",
+                            vec![d("nested graph type specification", vec![inner])],
+                        )],
+                    )],
+                )],
+            )],
+        )],
+    );
+    expect(&closed_node(node_phrase(None, property_types, None)), PORTABLE, None);
+    // But a closed node type nested in the property's type is judged closed again.
+    let inner = closed_node(node_phrase(None, properties(), Some("a")));
+    let property_types = d(
+        "node type implied content",
+        vec![d(
+            "node type property types",
+            vec![d(
+                "property types specification",
+                vec![d("property type", vec![d("value type", vec![inner])])],
+            )],
+        )],
+    );
+    expect(
+        &closed_node(node_phrase(None, property_types, None)),
+        PORTABLE,
+        Some("18.2 SR 2"),
+    );
+}
+
+fn endpoint(alias: Option<&str>, filler: Option<Plain>, def: &str) -> Plain {
+    let mut items = vec![Plain::Term("(".into())];
+    if let Some(a) = alias {
+        let which = if def.starts_with("source") {
+            "source node type alias"
+        } else {
+            "destination node type alias"
+        };
+        items.push(d(which, vec![ident(a)]));
+    }
+    if let Some(f) = filler {
+        items.push(d("node type filler", vec![f]));
+    }
+    items.push(Plain::Term(")".into()));
+    d(def, items)
+}
+
+/// `[kind] EDGE TYPE [name] <source> -[ <filler> ]-> <destination>` as an edge type pattern.
+fn edge_pattern(
+    kind: Option<&str>,
+    name: Option<&str>,
+    source: Plain,
+    filler: Plain,
+    destination: Plain,
+    directed: bool,
+) -> Plain {
+    let mut items = Vec::new();
+    if let Some(k) = kind {
+        items.push(d("edge kind", vec![kw(k)]));
+    }
+    if let Some(n) = name {
+        items.push(d("edge synonym", vec![kw("EDGE")]));
+        items.push(kw("TYPE"));
+        items.push(d("edge type name", vec![ident(n)]));
+    }
+    let arc = d(
+        "arc type pointing right",
+        vec![
+            Plain::Term("-[".into()),
+            d("edge type filler", vec![filler]),
+            Plain::Term("]->".into()),
+        ],
+    );
+    let shape = if directed {
+        d(
+            "edge type pattern directed",
+            vec![d(
+                "edge type pattern pointing right",
+                vec![source, arc, destination],
+            )],
+        )
+    } else {
+        d("edge type pattern undirected", vec![source, arc, destination])
+    };
+    items.push(shape);
+    d("edge type specification", vec![d("edge type pattern", items)])
+}
+
+fn edge_properties() -> Plain {
+    d(
+        "edge type implied content",
+        vec![d(
+            "edge type property types",
+            vec![d(
+                "property types specification",
+                vec![Plain::Term("{".into()), Plain::Term("}".into())],
+            )],
+        )],
+    )
+}
+
+fn edge_key_label_set() -> Plain {
+    d("edge type key label set", vec![d("implies", vec![kw("IMPLIES")])])
+}
+
+fn closed_edge(spec: Plain) -> Plain {
+    d("closed edge reference value type", vec![spec])
+}
+
+fn plain_source() -> Plain {
+    endpoint(None, None, "source node type reference")
+}
+
+fn plain_destination() -> Plain {
+    endpoint(None, None, "destination node type reference")
+}
+
+#[test]
+fn a_closed_edge_type_has_no_key_labels_name_or_aliases() {
+    let plain = || edge_pattern(None, None, plain_source(), edge_properties(), plain_destination(), true);
+    expect(&closed_edge(plain()), PORTABLE, None);
+    expect(
+        &closed_edge(edge_pattern(None, None, plain_source(), edge_key_label_set(), plain_destination(), true)),
+        PORTABLE,
+        Some("18.3 SR 2"),
+    );
+    expect(
+        &closed_edge(edge_pattern(None, Some("e"), plain_source(), edge_properties(), plain_destination(), true)),
+        PORTABLE,
+        Some("18.3 SR 2"),
+    );
+    expect(
+        &closed_edge(edge_pattern(
+            None,
+            None,
+            endpoint(Some("a"), None, "source node type reference"),
+            edge_properties(),
+            plain_destination(),
+            true,
+        )),
+        PORTABLE,
+        Some("18.3 SR 2"),
+    );
+    expect(
+        &closed_edge(edge_pattern(
+            None,
+            None,
+            plain_source(),
+            edge_properties(),
+            endpoint(None, Some(key_label_set()), "destination node type reference"),
+            true,
+        )),
+        PORTABLE,
+        Some("18.3 SR 2"),
+    );
+    // In a graph type body, all of these are fine.
+    expect(
+        &in_body(edge_pattern(None, Some("e"), plain_source(), edge_properties(), plain_destination(), true)),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &in_body(edge_pattern(
+            None,
+            None,
+            endpoint(None, Some(key_label_set()), "source node type reference"),
+            edge_key_label_set(),
+            plain_destination(),
+            true,
+        )),
+        PORTABLE,
+        None,
+    );
+}
+
+#[test]
+fn a_named_edge_type_has_no_key_labels() {
+    expect(
+        &in_body(edge_pattern(None, Some("e"), plain_source(), edge_key_label_set(), plain_destination(), true)),
+        PORTABLE,
+        Some("18.3 SR 3"),
+    );
+}
+
+#[test]
+fn the_edge_kind_matches_the_shape() {
+    expect(
+        &in_body(edge_pattern(Some("DIRECTED"), Some("e"), plain_source(), edge_properties(), plain_destination(), true)),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &in_body(edge_pattern(Some("UNDIRECTED"), Some("e"), plain_source(), edge_properties(), plain_destination(), false)),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &in_body(edge_pattern(Some("DIRECTED"), Some("e"), plain_source(), edge_properties(), plain_destination(), false)),
+        PORTABLE,
+        Some("18.3 SR 4"),
+    );
+    expect(
+        &in_body(edge_pattern(Some("UNDIRECTED"), Some("e"), plain_source(), edge_properties(), plain_destination(), true)),
+        PORTABLE,
+        Some("18.3 SR 4"),
+    );
+    // Reading: no edge kind, no constraint.
+    expect(
+        &in_body(edge_pattern(None, None, plain_source(), edge_properties(), plain_destination(), false)),
+        PORTABLE,
+        None,
+    );
+}
+
+// --- 18.9 SR 7, 10, 13, 21, 29, 38, 40: type values, settled at spelling time -------------
+
+fn length(def: &str, tokens: &[&str]) -> Plain {
+    d(def, vec![integer(tokens)])
+}
+
+fn string_type(min: Option<&[&str]>, max: &[&str]) -> Plain {
+    let mut items = vec![kw("STRING"), Plain::Term("(".into())];
+    if let Some(min) = min {
+        items.push(length("min length", min));
+        items.push(Plain::Term(",".into()));
+    }
+    items.push(length("max length", max));
+    items.push(Plain::Term(")".into()));
+    d("character string type", items)
+}
+
+fn decimal(precision: &[&str], scale: Option<&[&str]>) -> Plain {
+    let mut items = vec![kw("DECIMAL"), Plain::Term("(".into())];
+    items.push(d("precision", vec![d("unsigned decimal integer", precision.iter().map(|t| Plain::Term((*t).into())).collect())]));
+    if let Some(scale) = scale {
+        items.push(Plain::Term(",".into()));
+        items.push(d("scale", vec![d("unsigned decimal integer", scale.iter().map(|t| Plain::Term((*t).into())).collect())]));
+    }
+    items.push(Plain::Term(")".into()));
+    d("decimal exact numeric type", items)
+}
+
+fn float(precision: &[&str]) -> Plain {
+    d(
+        "approximate numeric type",
+        vec![
+            kw("FLOAT"),
+            Plain::Term("(".into()),
+            d("precision", vec![d("unsigned decimal integer", precision.iter().map(|t| Plain::Term((*t).into())).collect())]),
+            Plain::Term(")".into()),
+        ],
+    )
+}
+
+/// The syntax rules the verifier reports on `tree`, the ISO BNF left aside.
+fn reported(tree: &Plain) -> Vec<&'static str> {
+    let verifier = Verifier::new(Grammar::new(&ISO)).with_syntax_rules(PORTABLE);
+    verifier
+        .verify(tree, &verifier.render(tree))
+        .iter()
+        .map(|v| v.rule)
+        .filter(|r| *r != "ISO BNF")
+        .collect()
+}
+
+/// The automaton does not read values, so the checker alone reports these; `tree::order_bounds`
+/// keeps them out of a generated set.
+#[test]
+fn type_values_are_the_checkers_alone() {
+    let cases: Vec<(Plain, Vec<&str>)> = vec![
+        (string_type(None, &["8"]), vec![]),
+        (string_type(None, &["0"]), vec!["18.9 SR 7"]),
+        (string_type(None, &["0b", "0"]), vec!["18.9 SR 7"]),
+        (string_type(Some(&["8"]), &["2"]), vec!["18.9 SR 13"]),
+        (string_type(Some(&["2"]), &["8"]), vec![]),
+        (string_type(Some(&["0"]), &["0"]), vec!["18.9 SR 7"]),
+        (
+            d("character string type", vec![kw("CHAR"), Plain::Term("(".into()), length("fixed length", &["0"]), Plain::Term(")".into())]),
+            vec!["18.9 SR 10"],
+        ),
+        (
+            d("byte string type", vec![kw("BYTES"), Plain::Term("(".into()), length("min length", &["3"]), Plain::Term(",".into()), length("max length", &["2"]), Plain::Term(")".into())]),
+            vec!["18.9 SR 21"],
+        ),
+        (
+            d("list value type", vec![kw("LIST"), Plain::Term("[".into()), length("max length", &["0"]), Plain::Term("]".into())]),
+            vec!["18.9 SR 7"],
+        ),
+        (decimal(&["8"], None), vec![]),
+        (decimal(&["0"], None), vec!["18.9 SR 29"]),
+        (decimal(&["2"], Some(&["8"])), vec!["18.9 SR 38"]),
+        (decimal(&["8"], Some(&["8"])), vec![]),
+        (float(&["0"]), vec!["18.9 SR 29"]),
+        (float(&["1"]), vec!["18.9 SR 40"]),
+        (float(&["2"]), vec![]),
+        // An Arabic-Indic digit three reads as 3 (21.4 SR 2).
+        (float(&["\u{0663}"]), vec![]),
+    ];
+    for (tree, want) in cases {
+        let (automaton, broken) = verdicts(&tree, PORTABLE);
+        assert!(automaton, "the automaton does not read values");
+        assert!(broken.is_empty(), "{broken:?}");
+        assert_eq!(reported(&tree), want, "{}", tree.text());
+    }
+}
+
+#[test]
+fn digit_values_follow_unicode_runs() {
+    use gql_proof::verify::{digit_value, unsigned_integer_value};
+    assert_eq!(digit_value('7'), Some(7));
+    assert_eq!(digit_value('\u{0660}'), Some(0));
+    assert_eq!(digit_value('\u{0663}'), Some(3));
+    assert_eq!(digit_value('\u{09EF}'), Some(9));
+    // Mathematical digits: five runs of ten in a row.
+    assert_eq!(digit_value('\u{1D7D8}'), Some(0));
+    assert_eq!(digit_value('\u{1D7E3}'), Some(1));
+    assert_eq!(digit_value('a'), None);
+    assert_eq!(unsigned_integer_value("1\u{0663}"), 13);
+    assert_eq!(unsigned_integer_value("0x1_A"), 26);
+}
+
+/// Every value rule above, repaired in a generated tree by `tree::order_bounds`, the way both
+/// generators run it.
+#[test]
+fn order_bounds_raises_type_values() {
+    use gql_proof::tree::order_bounds;
+    use rand::SeedableRng;
+    let analysis = Analysis::new(&BASE, &StubProvider);
+    let verifier = Verifier::new(Grammar::new(&ISO)).with_syntax_rules(PORTABLE);
+    for (def, text) in [
+        ("character string type", "STRING(0)"),
+        ("character string type", "STRING(8,2)"),
+        ("character string type", "CHAR(0b0)"),
+        ("character string type", "VARCHAR(0x0)"),
+        ("byte string type", "BYTES(0xA,8)"),
+        ("list value type", "LIST[0]"),
+        ("decimal exact numeric type", "DECIMAL(0)"),
+        ("decimal exact numeric type", "DECIMAL(2,8)"),
+        ("signed binary exact numeric type", "INT(0)"),
+        ("approximate numeric type", "FLOAT(1)"),
+        ("approximate numeric type", "FLOAT(0,8)"),
+        ("general quantifier", "{8,2}"),
+    ] {
+        let nt = BASE.require(def).unwrap();
+        let mut tree = analysis.spell(nt, text).unwrap_or_else(|| panic!("{text} does not spell"));
+        let before = tree.export(&BASE);
+        assert!(!reported(&before).is_empty(), "{text} is not broken");
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(1);
+        assert!(order_bounds(&BASE, &mut tree, &|nt, t| analysis.spell(nt, t), &mut rng), "{text} not raised");
+        let after = tree.export(&BASE);
+        assert!(reported(&after).is_empty(), "{text} became {}: {:?}", after.text(), reported(&after));
+        assert!(verifier.verify(&after, &verifier.render(&after)).is_empty(), "{text} became {}", after.text());
+    }
+}
+
+// --- 8.2 SR 2: exactly one transaction access mode --------------------------------------------
+
+fn access_mode() -> Plain {
+    d(
+        "transaction mode",
+        vec![d("transaction access mode", vec![kw("READ"), kw("ONLY")])],
+    )
+}
+
+fn characteristics(modes: Vec<Plain>) -> Plain {
+    d("transaction characteristics", modes)
+}
+
+#[test]
+fn transaction_characteristics_hold_one_access_mode() {
+    expect(&characteristics(vec![access_mode()]), PORTABLE, None);
+    expect(
+        &characteristics(vec![access_mode(), Plain::Term(",".into()), access_mode()]),
+        PORTABLE,
+        Some("8.2 SR 2"),
+    );
+    let implementation = d(
+        "transaction mode",
+        vec![Plain::Leaf {
+            def: "implementation-defined access mode".into(),
+            text: "x".into(),
+        }],
+    );
+    expect(
+        &characteristics(vec![implementation.clone()]),
+        PORTABLE,
+        Some("8.2 SR 2"),
+    );
+    expect(
+        &characteristics(vec![access_mode(), Plain::Term(",".into()), implementation]),
         PORTABLE,
         None,
     );

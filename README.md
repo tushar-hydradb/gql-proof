@@ -9,7 +9,7 @@ it was built for turbolay and runs against neo4j too. anything that takes gql te
 - reads iso's own grammar and the standard's conformance rules by machine. nothing is tagged by hand, and corrigendum 1's edits are applied on top
 - generates queries that use every rule of the grammar, every rule in every place it can appear, and every short chain of rules. with every feature claimed that is 2,133 grammar productions and 3,408 of 3,416 production-in-place pairs, and what is left out comes with a reason
 - the queries mean something, not just parse: every variable is bound before it is used and every expression is typed, at up to 2 variables
-- of the standard's 426 syntax rules that constrain a query, 253 are kept as written, 92 by a stricter reading, 5 are checked after the fact and 76 are open, each listed in `research/static-semantics-inventory-2026-10-22.md`
+- of the standard's 426 syntax rules that constrain a query, 278 are kept as written, 94 by a stricter reading, 4 are checked after the fact and 50 are open, each listed in `research/static-semantics-inventory-2026-10-22.md`
 - every query is checked by a second, separately written checker before it goes out, so a generator bug does not turn into a false failure for the engine
 - feature claims: give it the features an engine supports (`claims/turbolay.claim`) and it generates only those. for every feature left out, it generates a query the engine has to reject
 - measures someone else's test suite with the same yardstick (`cover`). turbolay#261's 11,500 queries were measured this way

@@ -807,14 +807,44 @@ impl<'t> Checker<'t> {
     /// 14.12 SR 27 a: without a body a SELECT is a RETURN of its items; with one it is
     /// unmodelled.
     fn select(&mut self, sel: &'t Plain, scope: &Scope) -> Option<Fields> {
-        if own(sel, "select statement body").is_some() {
-            return None;
+        let star = own(sel, "asterisk").is_some();
+        // 14.12 SR 7 b.
+        if star && own(sel, "group by clause").is_some() {
+            self.report(sel, "14.12 SR 7", "SELECT * with GROUP BY".into());
         }
-        if own(sel, "asterisk").is_some() {
-            self.report(sel, "14.12 SR 7", "SELECT * without FROM".into());
-            return Some(Fields::new());
+        // 14.12 SR 7 c: with FROM, the items see FROM_ITEMS, the variables the match
+        // statements declare or the nested query's columns; `*` returns them.
+        let incoming = match own(sel, "select statement body") {
+            Some(body) => {
+                let inner = Scope {
+                    record: scope.record.clone(),
+                    table: Fields::new(),
+                };
+                let mut from = Fields::new();
+                if let Some(list) = own(body, "select graph match list") {
+                    for sgm in owns(list, "select graph match") {
+                        if let Some(ms) = own(sgm, "match statement") {
+                            from.extend(self.match_statement(ms, inner.clone()).table);
+                        }
+                    }
+                } else if let Some(pb) = own(body, "select query specification")
+                    .and_then(|sqs| first(sqs, "procedure body"))
+                {
+                    from = self.body(pb, inner).unwrap_or_default();
+                }
+                from
+            }
+            None => {
+                if star {
+                    self.report(sel, "14.12 SR 7", "SELECT * without FROM".into());
+                    return Some(Fields::new());
+                }
+                scope.merged()
+            }
+        };
+        if star {
+            return Some(incoming);
         }
-        let incoming = scope.merged();
         let mut cols = Fields::new();
         for item in own(sel, "select item list")
             .map(|l| owns(l, "select item"))
@@ -1506,6 +1536,16 @@ impl<'t> Checker<'t> {
                 kids(node).into_iter().for_each(|k| self.expr(k, env, at));
             }
             "aggregate function" => {
+                // 20.9 SR 3: no procedure body inside, which every subquery holds: an EXISTS
+                // over a graph pattern or match block too, after 19.4 SR 2, 3's effective
+                // replacement.
+                if contains(node, "procedure body") || contains(node, "exists predicate") {
+                    self.report(
+                        node,
+                        "20.9 SR 3",
+                        "a subquery inside an aggregate function".into(),
+                    );
+                }
                 // 20.1 SR 7. Reading: an aggregate not in an <aggregating value expression>
                 // (in a WHERE clause, say) is horizontal too.
                 if !at.vertical {

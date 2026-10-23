@@ -22,7 +22,7 @@
 {"clause": "8.1", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the start transaction command."}
 {"clause": "8.1", "sr": 2, "kind": "implementation", "status": "not modelled", "where": "", "note": "Default characteristics when none given are implementation-defined; nothing to enforce."}
 {"clause": "8.2", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "Names the transaction characteristics."}
-{"clause": "8.2", "sr": 2, "kind": "constraint", "status": "not modelled", "where": "", "note": "Grammar lists modes freely; READ ONLY, READ WRITE (two access modes) can be generated."}
+{"clause": "8.2", "sr": 2, "kind": "constraint", "status": "generated", "where": "src/refine.rs (OneAccessMode), src/verify.rs", "note": "exactly one transaction access mode: counted at the characteristics by the automaton; the checker counts again"}
 {"clause": "8.2", "sr": 3, "kind": "implementation", "status": "reading", "where": "src/tokens.rs:37; src/leaf.rs:58", "note": "Implementation-defined access modes excluded entirely from generation and rejected by verifier."}
 {"clause": "9.1", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/scope.rs:553; src/verify/scope.rs:364", "note": "Nested procedure spec has its body's type; scope treats nested bodies as their own scope."}
 {"clause": "9.1", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/scope.rs:553; src/verify/types.rs:1478", "note": "Nested query spec has its body's type; scope and types follow the body."}
@@ -263,7 +263,7 @@
 {"clause": "14.12", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "names the set quantifier"}
 {"clause": "14.12", "sr": 5, "kind": "type", "status": "not modelled", "where": "", "note": "SELECT DISTINCT items must be groupable (22.15); unchecked"}
 {"clause": "14.12", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "select body or empty"}
-{"clause": "14.12", "sr": 7, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:1140", "note": "partial: SELECT * needs FROM enforced; * with GROUP BY not (GROUP BY () slips)"}
+{"clause": "14.12", "sr": 7, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs (select statement arm), src/verify/scope.rs (select)", "note": "SELECT * needs FROM (a) and bears no GROUP BY (b); no reference in a select item (reading, c); every item named (SR 8)"}
 {"clause": "14.12", "sr": 8, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:1167", "note": "non-variable select items need alias; generator names every item"}
 {"clause": "14.12", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "builds the FILTER from WHERE or the last pattern WHERE"}
 {"clause": "14.12", "sr": 10, "kind": "definition", "status": "n/a", "where": "", "note": "select item list, aliases and count"}
@@ -527,8 +527,8 @@
 {"clause": "18.1", "sr": 22, "kind": "definition", "status": "n/a", "where": "", "note": "edge type key label set dictionary"}
 {"clause": "18.1", "sr": 23, "kind": "implementation", "status": "not modelled", "where": "", "note": "graph type normal form is implementation-defined (IV003)"}
 {"clause": "18.2", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the node type spec"}
-{"clause": "18.2", "sr": 2, "kind": "constraint", "status": "not modelled", "where": "", "note": "node type inside a closed node reference type has no alias, key label set or name"}
-{"clause": "18.2", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "a named node type spec has no key label set and no alias"}
+{"clause": "18.2", "sr": 2, "kind": "constraint", "status": "generated", "where": "src/refine.rs (ElementTypeShape), src/verify.rs", "note": "node type spec in a closed node reference type has no alias, key label set or name: synthesized facts refused at the closed reference type; the checker reads 'simply contains' literally"}
+{"clause": "18.2", "sr": 3, "kind": "constraint", "status": "generated", "where": "src/refine.rs (ElementTypeShape), src/verify.rs", "note": "a named node type spec has no key label set and no alias: refused at the spec"}
 {"clause": "18.2", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "local alias of a node type spec, else system-generated"}
 {"clause": "18.2", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "key label set of a node type spec, possibly omitted"}
 {"clause": "18.2", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "implied label set of a node type spec"}
@@ -544,9 +544,9 @@
 {"clause": "18.2", "sr": 16, "kind": "definition", "status": "n/a", "where": "", "note": "node type built from label set and property types"}
 {"clause": "18.2", "sr": 17, "kind": "implementation", "status": "not modelled", "where": "", "note": "node type normal form is implementation-defined (IV003)"}
 {"clause": "18.3", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "names the edge type spec"}
-{"clause": "18.3", "sr": 2, "kind": "constraint", "status": "not modelled", "where": "", "note": "edge type inside a closed edge reference type has no key labels, name or aliases"}
-{"clause": "18.3", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "a named edge type spec has no key label set"}
-{"clause": "18.3", "sr": 4, "kind": "constraint", "status": "not modelled", "where": "", "note": "DIRECTED/UNDIRECTED keyword must match the endpoint pair or pattern direction"}
+{"clause": "18.3", "sr": 2, "kind": "constraint", "status": "generated", "where": "src/refine.rs (ElementTypeShape), src/verify.rs", "note": "edge type spec in a closed edge reference type has no key label set, name, endpoint aliases, nor a key label set in an endpoint: refused at the closed reference type"}
+{"clause": "18.3", "sr": 3, "kind": "constraint", "status": "generated", "where": "src/refine.rs (ElementTypeShape), src/verify.rs", "note": "a named edge type spec has no key label set: refused at the spec"}
+{"clause": "18.3", "sr": 4, "kind": "constraint", "status": "reading", "where": "src/refine.rs (ElementTypeShape), src/verify.rs", "note": "DIRECTED needs a directed endpoint pair or pattern, UNDIRECTED an undirected one; reading: a pattern with no edge kind is not constrained (the rule's 'otherwise' presumes UNDIRECTED)"}
 {"clause": "18.3", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "edge type phrase rewritten to an edge type pattern"}
 {"clause": "18.3", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "key label set of an edge type spec"}
 {"clause": "18.3", "sr": 7, "kind": "definition", "status": "n/a", "where": "", "note": "implied label set of an edge type spec"}
@@ -585,13 +585,13 @@
 {"clause": "18.9", "sr": 4, "kind": "type", "status": "reading", "where": "src/context/types.rs:1139,1263; checked src/verify/types.rs:2160", "note": "nullability: NOT NULL anywhere inside a type counts as not nullable"}
 {"clause": "18.9", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/types.rs:1106; checked src/verify/types.rs:2087", "note": "BOOL type maps to the boolean class"}
 {"clause": "18.9", "sr": 6, "kind": "implementation", "status": "not modelled", "where": "", "note": "boolean type normal form implementation-defined (IV008)"}
-{"clause": "18.9", "sr": 7, "kind": "constraint", "status": "not modelled", "where": "", "note": "max length must be at least 1; generator can emit 0"}
+{"clause": "18.9", "sr": 7, "kind": "constraint", "status": "generated", "where": "src/tree.rs (order_bounds), src/verify.rs", "note": "max length at least 1 (string, byte string, list): raised at spelling time by order_bounds, the checker reads the value"}
 {"clause": "18.9", "sr": 8, "kind": "constraint", "status": "grammar", "where": "", "note": "min length is an unsigned integer, so never negative"}
 {"clause": "18.9", "sr": 9, "kind": "definition", "status": "n/a", "where": "", "note": "omitted min length defaults to 0"}
-{"clause": "18.9", "sr": 10, "kind": "constraint", "status": "not modelled", "where": "", "note": "fixed length must be at least 1; generator can emit 0"}
+{"clause": "18.9", "sr": 10, "kind": "constraint", "status": "generated", "where": "src/tree.rs (order_bounds), src/verify.rs", "note": "fixed length at least 1: raised at spelling time, the checker reads the value"}
 {"clause": "18.9", "sr": 11, "kind": "definition", "status": "n/a", "where": "", "note": "omitted fixed length defaults to 1"}
 {"clause": "18.9", "sr": 12, "kind": "type", "status": "generated", "where": "src/context/types.rs:1107; checked src/verify/types.rs:2088", "note": "STRING types map to the string class"}
-{"clause": "18.9", "sr": 13, "kind": "constraint", "status": "not modelled", "where": "", "note": "string min length must not exceed max length"}
+{"clause": "18.9", "sr": 13, "kind": "constraint", "status": "generated", "where": "src/tree.rs (order_bounds), src/verify.rs", "note": "string min length at most max length: max raised at spelling time, the checker reads both"}
 {"clause": "18.9", "sr": 14, "kind": "definition", "status": "n/a", "where": "", "note": "string type minimum length from min length"}
 {"clause": "18.9", "sr": 15, "kind": "definition", "status": "n/a", "where": "", "note": "string type maximum length from max length"}
 {"clause": "18.9", "sr": 16, "kind": "definition", "status": "n/a", "where": "", "note": "fixed length fixes both string bounds"}
@@ -599,15 +599,15 @@
 {"clause": "18.9", "sr": 18, "kind": "implementation", "status": "not modelled", "where": "", "note": "string type normal form implementation-defined"}
 {"clause": "18.9", "sr": 19, "kind": "definition", "status": "n/a", "where": "", "note": "material values of a string type are strings within its bounds"}
 {"clause": "18.9", "sr": 20, "kind": "type", "status": "generated", "where": "src/context/types.rs:1108; checked src/verify/types.rs:2089", "note": "BYTES types map to the byte string class"}
-{"clause": "18.9", "sr": 21, "kind": "constraint", "status": "not modelled", "where": "", "note": "byte string min length must not exceed max length"}
+{"clause": "18.9", "sr": 21, "kind": "constraint", "status": "generated", "where": "src/tree.rs (order_bounds), src/verify.rs", "note": "byte string min length at most max length: max raised at spelling time, the checker reads both"}
 {"clause": "18.9", "sr": 22, "kind": "definition", "status": "n/a", "where": "", "note": "byte string minimum length"}
 {"clause": "18.9", "sr": 23, "kind": "definition", "status": "n/a", "where": "", "note": "byte string maximum length"}
 {"clause": "18.9", "sr": 24, "kind": "definition", "status": "n/a", "where": "", "note": "fixed length fixes both byte string bounds"}
 {"clause": "18.9", "sr": 25, "kind": "implementation", "status": "not modelled", "where": "", "note": "default byte string max length implementation-defined (IL013)"}
 {"clause": "18.9", "sr": 26, "kind": "implementation", "status": "not modelled", "where": "", "note": "byte string type normal form implementation-defined"}
 {"clause": "18.9", "sr": 27, "kind": "definition", "status": "n/a", "where": "", "note": "material values of a byte string type"}
-{"clause": "18.9", "sr": 28, "kind": "constraint", "status": "not modelled", "where": "", "note": "byte string type min length must not exceed its max length"}
-{"clause": "18.9", "sr": 29, "kind": "constraint", "status": "not modelled", "where": "", "note": "precision must be at least 1; generator can emit 0"}
+{"clause": "18.9", "sr": 28, "kind": "constraint", "status": "generated", "where": "src/tree.rs (order_bounds), src/verify.rs", "note": "the same as SR 21 for the type's lengths (SR 24 makes a fixed length both); reported as 18.9 SR 21"}
+{"clause": "18.9", "sr": 29, "kind": "constraint", "status": "generated", "where": "src/tree.rs (order_bounds), src/verify.rs", "note": "precision at least 1: raised at spelling time, the checker reads the value"}
 {"clause": "18.9", "sr": 30, "kind": "type", "status": "generated", "where": "src/context/types.rs:1131", "note": "numeric type passes its exact or approximate child"}
 {"clause": "18.9", "sr": 31, "kind": "implementation", "status": "not modelled", "where": "", "note": "exact numeric normal form implementation-defined"}
 {"clause": "18.9", "sr": 32, "kind": "implementation", "status": "not modelled", "where": "", "note": "exact precision and scale maxima implementation-defined (IL011)"}
@@ -616,9 +616,9 @@
 {"clause": "18.9", "sr": 35, "kind": "type", "status": "reading", "where": "src/context/types.rs:1109; checked src/verify/types.rs:2091", "note": "signed integer types: one coarse exact class, widths not tracked"}
 {"clause": "18.9", "sr": 36, "kind": "type", "status": "reading", "where": "src/context/types.rs:1109; checked src/verify/types.rs:2092", "note": "unsigned integer types: one coarse exact class, widths not tracked"}
 {"clause": "18.9", "sr": 37, "kind": "constraint", "status": "grammar", "where": "", "note": "scale is an unsigned integer, so never negative"}
-{"clause": "18.9", "sr": 38, "kind": "constraint", "status": "not modelled", "where": "", "note": "scale must not exceed precision in an exact numeric type"}
+{"clause": "18.9", "sr": 38, "kind": "constraint", "status": "generated", "where": "src/tree.rs (order_bounds), src/verify.rs", "note": "scale at most precision in an exact numeric type: precision raised at spelling time, the checker reads both"}
 {"clause": "18.9", "sr": 39, "kind": "type", "status": "reading", "where": "src/context/types.rs:1109; checked src/verify/types.rs:2095", "note": "DECIMAL maps to the coarse exact class; precision and scale ignored"}
-{"clause": "18.9", "sr": 40, "kind": "constraint", "status": "not modelled", "where": "", "note": "approximate numeric precision must be at least 2"}
+{"clause": "18.9", "sr": 40, "kind": "constraint", "status": "generated", "where": "src/tree.rs (order_bounds), src/verify.rs", "note": "approximate precision at least 2: raised at spelling time, the checker reads the value"}
 {"clause": "18.9", "sr": 41, "kind": "implementation", "status": "not modelled", "where": "", "note": "approximate numeric normal form implementation-defined"}
 {"clause": "18.9", "sr": 42, "kind": "implementation", "status": "not modelled", "where": "", "note": "approximate precision and scale maxima implementation-defined (IL011)"}
 {"clause": "18.9", "sr": 43, "kind": "type", "status": "reading", "where": "src/context/types.rs:1110; checked src/verify/types.rs:2098", "note": "FLOAT family maps to one approximate class"}
@@ -760,7 +760,7 @@
 {"clause": "20.8", "sr": 12, "kind": "type", "status": "reading", "where": "src/context/types.rs:369", "note": "record casts only to a dynamic target, field checks never needed"}
 {"clause": "20.9", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
 {"clause": "20.9", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
-{"clause": "20.9", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "aggregate argument must not contain a nested procedure body (VALUE/EXISTS subquery)"}
+{"clause": "20.9", "sr": 3, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs (QUERY at aggregate function), src/verify/scope.rs", "note": "no procedure body in an aggregate; reading: after 19.4 SR 2, 3's effective replacement, so no EXISTS, VALUE or nested table subquery at all, through a LET..IN..END too"}
 {"clause": "20.9", "sr": 4, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:1102", "note": "no aggregate nested directly in another"}
 {"clause": "20.9", "sr": 5, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
 {"clause": "20.9", "sr": 6, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}

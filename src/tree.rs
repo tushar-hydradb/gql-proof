@@ -132,15 +132,23 @@ impl Node {
     }
 }
 
-/// 16.11 SR 3 a ii at spelling time. The engine knows a quantifier bound is zero or not, never
-/// its value (the automaton in `refine`), so a general quantifier can come out with its upper
-/// bound below its lower: `{ 8 , 0o2 }`. The upper bound is then re-spelled with digits
-/// prefixed to the ones it was extracted for, in its own radix, to a value at or above the
-/// lower: `{ 8 , 0o12 }`. Its digits and radix stay, so every production the tree was found
-/// for is still in it; the prefix only adds digit productions. Like naming, this is the one
-/// place the value is looked at; both generators (`context::extract::cover`, `purdom`) run it.
-/// Returns whether a bound was re-spelled: the tree then holds more nodes than the search
-/// that built it counted, so purdom's height and length caps do not hold for it.
+/// The values the syntax rules order, settled at spelling time. The engine knows an integer is
+/// zero or not, never its value (the automaton in `refine`), so a tree can come out with one
+/// below what a rule asks of it:
+/// - 16.11 SR 3 a ii: a general quantifier's upper bound is at or above its lower (`{ 8 , 0o2 }`)
+/// - 18.9 SR 7, 13, 21: a string type's max length is at least 1 and at or above its min
+///   length; a list type's max length is at least 1
+/// - 18.9 SR 10: a fixed length is at least 1
+/// - 18.9 SR 29, 38: a precision is at least 1 and at or above its scale
+/// - 18.9 SR 40: an approximate numeric type's precision is at least 2
+///
+/// The integer is then re-spelled with digits prefixed to the ones it was extracted for, in its
+/// own radix, to a value at or above the least: `{ 8 , 0o12 }`, `CHAR ( 0b10 )`. Its digits and
+/// radix stay, so every production the tree was found for is still in it; the prefix only adds
+/// digit productions. Like naming, this is the one place a value is looked at; both generators
+/// (`context::extract::cover`, `purdom`) run it, and the checker (`verify`) reads the values
+/// again. Returns whether an integer was re-spelled: the tree then holds more nodes than the
+/// search that built it counted, so purdom's height and length caps do not hold for it.
 pub fn order_bounds(
     cfg: &Cfg,
     root: &mut Node,
@@ -149,35 +157,92 @@ pub fn order_bounds(
 ) -> bool {
     let Sym::Nt(nt) = root.sym else { return false };
     let mut changed = false;
-    if cfg.base(nt) == "general quantifier" {
-        let lower = through_groups(cfg, root, "lower bound")
-            .map(|b| crate::verify::unsigned_integer_value(&b.render(cfg)));
-        if let Some(lower) = lower
-            && let Some(upper) = through_groups(cfg, root, "upper bound")
-            && let Some(int) = through_groups(cfg, upper, "unsigned integer")
-        {
-            let text = int.render(cfg);
-            if crate::verify::unsigned_integer_value(&text) < lower {
-                // Spelled under the radix's own definition, the child of <unsigned integer>:
-                // derived from <unsigned integer> itself, `0o12` reads as a decimal integer
-                // whose `o` is an <other digit>, a prose leaf that takes any character. A
-                // spelling the copy cannot derive leaves the tree as it was: the checker
-                // reports it.
-                let raised = raised_bound(&text, lower, rng);
-                if let Some(radix) = int.children.iter_mut().find(|c| matches!(c.sym, Sym::Nt(_)))
-                    && let Sym::Nt(radix_nt) = radix.sym
-                    && let Some(spelt) = spell(radix_nt, &raised)
-                {
-                    *radix = spelt;
-                    changed = true;
-                }
-            }
+    let value = |n: &mut Node| crate::verify::unsigned_integer_value(&n.render(cfg));
+    // The integers to raise, by the definition holding each, and the least value each may have.
+    let wants: Vec<(&str, u64)> = match cfg.base(nt) {
+        "general quantifier" => through_groups(cfg, root, "lower bound")
+            .map(value)
+            .map(|lower| ("upper bound", lower))
+            .into_iter()
+            .collect(),
+        "character string type" | "byte string type" => {
+            let min = through_groups(cfg, root, "min length").map_or(0, value);
+            vec![("max length", min.max(1)), ("fixed length", 1)]
+        }
+        "list value type" => vec![("max length", 1)],
+        "decimal exact numeric type"
+        | "signed binary exact numeric type"
+        | "unsigned binary exact numeric type"
+        | "verbose binary exact numeric type" => {
+            let scale = through_groups(cfg, root, "scale").map_or(0, value);
+            vec![("precision", scale.max(1))]
+        }
+        "approximate numeric type" => vec![("precision", 2)],
+        _ => Vec::new(),
+    };
+    for (holder, least) in wants {
+        if let Some(holder) = through_groups(cfg, root, holder) {
+            changed |= raise(cfg, holder, least, spell, rng);
         }
     }
     for child in &mut root.children {
         changed |= order_bounds(cfg, child, spell, rng);
     }
     changed
+}
+
+/// Re-spells the integer under `holder` (a bound, a length, a precision) to at least `least`,
+/// if it is below. Spelled under the radix's own definition, the child of <unsigned integer>, or
+/// the <unsigned decimal integer> a precision is: derived from <unsigned integer> itself, `0o12`
+/// reads as a decimal integer whose `o` is an <other digit>, a prose leaf that takes any
+/// character. A spelling the copy cannot derive leaves the tree as it was: the checker reports
+/// it.
+fn raise(
+    cfg: &Cfg,
+    holder: &mut Node,
+    least: u64,
+    spell: &impl Fn(NtId, &str) -> Option<Node>,
+    rng: &mut ChaCha8Rng,
+) -> bool {
+    let Some(int) = integer_in(cfg, holder) else {
+        return false;
+    };
+    let text = int.render(cfg);
+    if crate::verify::unsigned_integer_value(&text) >= least {
+        return false;
+    }
+    let Sym::Nt(nt) = int.sym else { return false };
+    match spell(nt, &raised_bound(&text, least, rng)) {
+        Some(spelt) => {
+            *int = spelt;
+            true
+        }
+        None => false,
+    }
+}
+
+/// The integer subtree of `node` to re-spell: the radix child of its <unsigned integer>, or
+/// its <unsigned decimal integer>, looking through synthetic groups only.
+fn integer_in<'a>(cfg: &Cfg, node: &'a mut Node) -> Option<&'a mut Node> {
+    for child in &mut node.children {
+        let Sym::Nt(nt) = child.sym else { continue };
+        match cfg.base(nt) {
+            "unsigned integer" => {
+                return child
+                    .children
+                    .iter_mut()
+                    .find(|c| matches!(c.sym, Sym::Nt(_)));
+            }
+            "unsigned decimal integer" => return Some(child),
+            _ => {}
+        }
+        if cfg.nts[nt as usize].synthetic
+            && let Some(found) = integer_in(cfg, child)
+        {
+            return Some(found);
+        }
+    }
+    None
 }
 
 /// The child of `node` whose definition is `base`, looking through synthetic groups only.

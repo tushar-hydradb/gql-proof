@@ -568,6 +568,14 @@ const NESTED: &[&str] = &[
     "focused nested query specification",
 ];
 
+/// The definitions a LET statement and a <let value expression> share: a statement boundary
+/// for what a statement owns, not for what an expression holds.
+const LET_DEFINITIONS: &[&str] = &[
+    "let variable definition list",
+    "let variable definition",
+    "value variable definition",
+];
+
 /// Where a name an `<identifier>` or `<binding variable>` spells gets its role, or passes
 /// through on its way there.
 const NAMING: &[&str] = &[
@@ -1123,9 +1131,11 @@ impl Scope {
                     return vec![];
                 }
             }
-            // 20.1 SR 7: an aggregate, not nested in another.
+            // 20.1 SR 7: an aggregate, not nested in another. 20.9 SR 3: it contains no
+            // procedure body, which every subquery in an expression holds (an EXISTS over a
+            // graph pattern or match block by 19.4 SR 2, 3's effective replacement).
             "aggregate function" => {
-                if d.flags & (gf::AGGREGATES | gf::AGG_LOOSE | gf::AGG_IN_VE) != 0 {
+                if d.flags & (gf::AGGREGATES | gf::AGG_LOOSE | gf::AGG_IN_VE | gf::QUERY) != 0 {
                     return vec![];
                 }
                 d.update(|v| v.without(vf::USED));
@@ -1171,9 +1181,12 @@ impl Scope {
                 d.flags &= gf::TOKENS;
                 d.set(gf::QUERY, true);
             }
-            // 14.12 SR 7, 8: no reference (reading); without FROM, no `*`; every item named.
+            // 14.12 SR 7, 8: no reference (reading); `*` needs FROM and bears no GROUP BY;
+            // every item named.
             "select statement" => {
-                if d.any(|v| v.need.is_some()) || (d.has(gf::STAR) && !d.has(gf::SELECT_FROM)) {
+                if d.any(|v| v.need.is_some())
+                    || (d.has(gf::STAR) && (!d.has(gf::SELECT_FROM) || d.has(gf::GROUPED)))
+                {
                     return vec![];
                 }
                 // Its columns are its result, as a RETURN's are (14.2 SR 10 compares them).
@@ -1533,13 +1546,19 @@ impl Context for Scope {
                 vec![],
                 with(statements(), &["aggregate function"]),
             ),
-            // 14.10 SR 4: a sort key holds no nested query.
+            // 14.10 SR 4: a sort key holds no nested query; 20.9 SR 3: nor does an aggregate.
             spec(
                 global(gf::QUERY),
                 "query",
-                &["sort key"],
+                &["sort key", "aggregate function"],
                 vec![],
-                with(statements(), &SUBQUERIES),
+                with(
+                    statements()
+                        .into_iter()
+                        .filter(|s| !LET_DEFINITIONS.contains(s))
+                        .collect(),
+                    &SUBQUERIES,
+                ),
             ),
             // 20.1 SR 7: an aggregate is a return item's own, rejected at any other statement.
             spec(
@@ -1888,7 +1907,13 @@ impl Context for Scope {
                     continue;
                 }
                 d.update(|v| v.without(vf::USED | vf::KEY | vf::BARE));
-                d.flags &= !(gf::DISTINCT | gf::GROUPED | gf::SELECTIVE | gf::QUERY | gf::LOOSE);
+                d.flags &= !(gf::DISTINCT | gf::GROUPED | gf::SELECTIVE | gf::LOOSE);
+                // A let variable definition also sits in a <let value expression> inside an
+                // expression: a subquery in it is still inside whatever holds the expression
+                // (14.10 SR 4, 20.9 SR 3), so the fact goes on to the statement.
+                if !LET_DEFINITIONS.contains(&owner(def)) {
+                    d.flags &= !gf::QUERY;
+                }
                 if !matches!(
                     owner(def),
                     "yield clause"

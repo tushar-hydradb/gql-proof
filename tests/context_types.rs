@@ -87,6 +87,8 @@ fn typed_sentences_pass() {
         "RETURN 1 = 1.0 AS x",
         "RETURN CHAR_LENGTH('ab') AS x",
         "MATCH (x) RETURN count(*) AS y",
+        "RETURN count(*) AS y, EXISTS { MATCH (x) RETURN x } AS z",
+        "SELECT * FROM { FINISH }",
         "MATCH (x) RETURN sum(x.k) AS y",
         "RETURN DURATION_BETWEEN(CURRENT_DATE, CURRENT_DATE) AS x",
         "RETURN NOT true AS x",
@@ -168,6 +170,14 @@ fn untyped_sentences_are_refused() {
         "RETURN VALUE { RETURN 1 AS y } AS x",
         "RETURN VALUE { RETURN 1 AS y LIMIT 1 } AS x",
         "RETURN VALUE { RETURN count(*) AS y UNION RETURN count(*) AS y } AS x",
+        // 20.9 SR 3: no procedure body in an aggregate; EXISTS over a pattern holds one
+        // after 19.4 SR 2's replacement.
+        "RETURN COUNT(EXISTS { MATCH (y) RETURN y }) AS x",
+        "RETURN COUNT(EXISTS { (y) }) AS x",
+        "RETURN MAX(VALUE { RETURN count(*) AS y }) AS x",
+        "RETURN MAX(LET y = VALUE { RETURN count(*) AS z } IN y END) AS x",
+        // 14.12 SR 7 b: SELECT * bears no GROUP BY.
+        "SELECT * FROM { FINISH } GROUP BY ()",
     ]
     .into_iter()
     .filter(|bad| verdict(bad).is_ok())

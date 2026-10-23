@@ -280,6 +280,18 @@ fn return_projects() {
         "14.10 SR 4",
     );
     bad("MATCH (a) RETURN COUNT(a) AS n ORDER BY a.k", "14.10 SR 4");
+    // 20.9 SR 3: no procedure body in an aggregate, an EXISTS over a pattern included.
+    bad("RETURN COUNT(EXISTS { MATCH (a) RETURN a }) AS x", "20.9 SR 3");
+    bad("RETURN COUNT(EXISTS { (a) }) AS x", "20.9 SR 3");
+    bad("RETURN MAX(VALUE { RETURN count(*) AS y }) AS x", "20.9 SR 3");
+    bad("RETURN MAX(LET y = VALUE { RETURN count(*) AS z } IN y END) AS x", "20.9 SR 3");
+    ok("RETURN COUNT(*) AS x, EXISTS { MATCH (a) RETURN a } AS y");
+    // 14.12 SR 7 b
+    bad("SELECT * FROM { MATCH (a) RETURN a } GROUP BY ()", "14.12 SR 7");
+    // 14.12 SR 7 c: FROM_ITEMS are the columns `*` returns and what the items see.
+    ok("SELECT * FROM { MATCH (a) RETURN a } NEXT RETURN a");
+    ok("SELECT a AS b FROM { MATCH (a) RETURN a } NEXT RETURN b");
+    ok("SELECT a AS b FROM CURRENT_GRAPH MATCH (a) NEXT RETURN b");
     bad("MATCH (a) RETURN a ORDER BY COUNT(a)", "14.10 SR 4");
     // the projection ends the statement
     bad("MATCH (a) RETURN a.k AS k NEXT RETURN a", "20.12 SR 8");

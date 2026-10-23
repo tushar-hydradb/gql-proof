@@ -46,7 +46,7 @@ status, for everything that is not a definition:
 ```
 kind            rules  generated  grammar  reading  checked  not modelled
 definition        482
-constraint        168         72       11       37        0            48
+constraint        168         84       11       39        0            34
 type              258        183        0       55        4            16
 catalog            66          1        0        0        0            65
 implementation     51          1        0        1        0            35
@@ -56,10 +56,10 @@ implementation     51          1        0        1        0            35
 
 of the 426 constraint and type rules:
 
-- 266 (62%) are kept as iso says (generated or grammar)
-- 92 (22%) are kept by a narrower reading
+- 278 (65%) are kept as iso says (generated or grammar)
+- 94 (22%) are kept by a narrower reading
 - 4 are checked only
-- 64 (15%) are not modelled
+- 50 (11%) are not modelled
 
 all 66 catalog rules but one are not modelled: there is no catalog, session,
 graph type or procedure signature in the generator, so every rule that needs one
@@ -100,51 +100,60 @@ today; catalog dependent rules are open as a family
 
 ## not modelled constraint and type rules
 
-the agents' notes, in our words; grouped by area in the next section
+the agents' notes, in our words, regenerated from the jsonl on 2026-10-23 (the rules
+closed on tushar/exists-table and tushar/soundness are gone from it); grouped by
+area in the next section
 
-- 5.3 SR 4 (constraint): no confusability check on identifiers; numbered ascii
-  names make clashes unlikely, not impossible
-- 7.1 SR 6 (type): session parameter initializers are not typed
-- 8.2 SR 2 (constraint): more than one access mode can be generated
-- 9.1 SR 5, 6, 7 (constraint): procedure bodies may mix statement kinds (catalog
-  in data modifying, data modifying or catalog in a query)
-- 9.2 SR 4, 5, 6, 7 (constraint): statement blocks may mix catalog and other
-  statements, focused and ambient, SELECT and other queries, statements with and
-  without a result
-- 10.1 SR 5, 8 and 10.2 SR 5, 8 (type): graph and table initializers are untyped
-- 11.2 SR 2 (type): a nested table query need not yield a table
-- 12.8 SR 2 and 13.6 SR 2 (constraint): an inline CALL in catalog or data
-  modifying position need not have that kind of body
-- 14.2 SR 3, 4 (constraint): one composite query may mix conjunctions, or
-  focused and ambient operands
-- 14.5 SR 2 (constraint): an inline CALL in a query need not hold a query
-- 14.11 SR 4 and 14.12 SR 5 (type): DISTINCT items need not be groupable
-- 14.12 SR 26 (constraint): a SELECT FROM subquery's focus is not tied to its
-  graph expression
-- 16.4 SR 12 (constraint): DIFFERENT EDGES with a selective path pattern allows
-  other patterns
-- 16.7 SR 8, 9, 16, 20 (constraint): minimum path length and node count rules,
-  nested quantifiers
-- 16.11 SR 3 (constraint): quantifier bounds
-- 16.12 SR 1 to 4 (constraint): simplified path pattern contents and nesting
-- 17.6 SR 1 (constraint): the solidus rule in a parent reference
-- 18.1 SR 8, 9, 10, 11, 14, 16; 18.2 SR 2, 3, 7; 18.3 SR 2, 3, 4, 8, 17, 18;
-  18.5 SR 1 (constraint): graph type bodies (key label sets, aliases,
-  consistency, endpoints, distinct property names)
-- 18.9 SR 7, 10, 13, 21, 28, 29, 38, 40 (constraint): length, precision and
-  scale bounds of value types
-- 18.9 SR 62, 65, 84, 87 (type) and SR 68, 88 (constraint): closed node and edge
-  types, union types, GROUP list element types
-- 19.4 SR 5 (type): an EXISTS body need not yield a table
-- 20.6 SR 5, 6, 8, 10 (constraint): a VALUE subquery need not be single valued
-- 20.8 SR 10 (type): casts from a dynamic union need no castable component
-- 20.9 SR 3 (constraint): an aggregate's argument may hold a subquery
-- 20.24 SR 3 (constraint): TRIM with a bare FROM
-- 21.2 SR 20, 73, 75 (constraint): approximate literal range, list and record
-  literal contents
-- 21.3 SR 4 (constraint): empty delimited identifiers
-- 22.10 SR 5, 6 and 22.19 SR 2, 5 (type): union assignment, closed type
-  subtyping, dynamic combination, nullability of combined types
+- 5.3 SR 4 (constraint): No confusability check; numbered ASCII names (context.rs:2047) make clashes unlikely, not impossible by rule.
+- 7.1 SR 6 (type): Session parameter initializer assignability and consistency with earlier sets; session commands untyped (verify/types.rs:49).
+- 8.2 SR 2 (constraint): Grammar lists modes freely; READ ONLY, READ WRITE (two access modes) can be generated.
+- 9.1 SR 5 (constraint): Catalog-modifying procedure bodies may mix in other statement kinds; nothing checks.
+- 9.1 SR 6 (constraint): Data-modifying bodies may contain catalog statements; no rule tracks statement kinds.
+- 9.1 SR 7 (constraint): Query specifications (subqueries, CALL bodies) may contain data-modifying or catalog statements unchecked.
+- 9.2 SR 4 (constraint): A catalog-modifying statement may be followed by NEXT statements; no check.
+- 9.2 SR 5 (constraint): Focused and ambient statements may be mixed across NEXT in one block; no check.
+- 9.2 SR 6 (constraint): SELECT statements may be mixed with other linear query statements in one block; no check.
+- 9.2 SR 7 (constraint): Blocks may mix statements with and without a primitive result statement; no check.
+- 10.1 SR 5 (type): Graph initializer type equals its graph expression's; graphs are not typed (context/types.rs:869).
+- 10.1 SR 8 (type): Initializer must be assignable to declared graph reference type; graphs are opaque, no check.
+- 10.2 SR 5 (type): Table initializer type equals its table expression's; tables are not typed.
+- 10.2 SR 8 (type): Table initializer must be assignable to declared table type; tables untyped, unchecked.
+- 12.8 SR 2 (constraint): Inline CALL as catalog-modifying statement must have a catalog-modifying body; unchecked.
+- 13.6 SR 2 (constraint): Inline CALL as data-modifying statement must have a data-modifying body; unchecked.
+- 14.2 SR 3 (constraint): all conjunctions in one composite expression must be the same operator; mixing UNION/EXCEPT/OTHERWISE unchecked
+- 14.2 SR 4 (constraint): focused and ambient operands may not be mixed in one composite expression
+- 14.5 SR 2 (constraint): inline procedure in a query CALL must be a query, not data- or catalog-modifying
+- 14.11 SR 4 (type): RETURN DISTINCT items must be groupable (22.15); unchecked in both type modules
+- 14.12 SR 5 (type): SELECT DISTINCT items must be groupable (22.15); unchecked
+- 14.12 SR 26 (constraint): FROM subquery: with graph expression must be ambient, without must be focused
+- 17.6 SR 1 (constraint): parent reference solidus rule: none after root /, required otherwise
+- 18.1 SR 8 (constraint): two node type specs in one body may not share an effective key label set
+- 18.1 SR 9 (constraint): a node type spec implying another must be structurally consistent with it
+- 18.1 SR 10 (constraint): local node type aliases must be unique within a graph type body
+- 18.1 SR 11 (constraint): every edge type's source and destination node types must be declared in the body
+- 18.1 SR 14 (constraint): edge type specs sharing a key label set must agree on direction, labels, properties
+- 18.1 SR 16 (constraint): an implying edge type spec must be structurally and endpoint consistent
+- 18.2 SR 7 (constraint): node key labels and implied labels must be disjoint
+- 18.3 SR 8 (constraint): edge key labels and implied labels must be disjoint
+- 18.3 SR 17 (constraint): source alias or key label set must resolve to a node type spec in the body
+- 18.3 SR 18 (constraint): destination alias or key label set must resolve to a node type spec in the body
+- 18.5 SR 1 (constraint): property type names in one property types spec must be distinct
+- 18.9 SR 62 (type): closed node type's constraint ignored; treated as any node (context/types.rs:1122)
+- 18.9 SR 65 (type): closed edge type's constraint ignored; treated as any edge (context/types.rs:1123)
+- 18.9 SR 68 (constraint): GROUP list element type must be a node or edge reference type
+- 18.9 SR 84 (type): closed union's components ignored; treated as fully dynamic (context/types.rs:1128)
+- 18.9 SR 87 (type): component type set of a union not computed
+- 18.9 SR 88 (constraint): union components must be all nullable or all NOT NULL
+- 20.6 SR 5 (constraint): VALUE subquery's last statement must be a linear query statement
+- 20.6 SR 6 (constraint): VALUE subquery's emitting result statement must not be omitted
+- 20.8 SR 10 (type): dynamic-union source cast to static target needs a castable component; both leave it
+- 21.2 SR 20 (constraint): approximate literal range never checked; generated literals are tiny so unlikely to bite
+- 21.2 SR 73 (constraint): list literal elements may be any expression; verifier waives it via the alternate derivation (src/verify/types.rs:41)
+- 21.2 SR 75 (constraint): record literal fields may be any expression, not just literals
+- 22.10 SR 5 (type): any dynamic union target accepts everything; closed union components never checked
+- 22.10 SR 6 (type): node vs edge base enforced, but closed object-type subtyping is not
+- 22.19 SR 2 (type): dynamic operands are combined into dynamic instead of rejected (4.14.4 leniency)
+- 22.19 SR 5 (type): material vs nullable result not tracked; only literal NULL kept from NOT NULL
 
 ## by area, and how each would close
 

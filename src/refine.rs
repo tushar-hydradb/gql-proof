@@ -159,11 +159,13 @@ pub fn all_rules(id086: MatchModeDefault) -> Vec<Box<dyn Rule>> {
         Box::new(SelectiveAlone { id086 }),
         Box::new(TrimOperands),
         Box::new(DelimitedNotEmpty),
+        Box::new(ElementTypeShape),
+        Box::new(OneAccessMode),
     ]
 }
 
 /// Facts at or above this are free for rules built at run time, such as feature claims.
-pub const FIRST_FREE_FACT: Fact = 32;
+pub const FIRST_FREE_FACT: Fact = 48;
 
 /// 16.4 SR 14: every unbounded quantifier needs a guard.
 pub struct UnboundedNeedsGuard {
@@ -397,7 +399,9 @@ impl Rule for DataModifyingModifies {
 ///
 /// A quantifier's lower bound (16.11 SR 2: `*` 0, `+` 1, `{n}` n, a missing bound 0) is zero or
 /// not, read off the digit tokens of the `<unsigned integer>`; an `<other digit>` counts as
-/// nonzero (the generator spells U+0663). The integer subtree carries that fact only where a
+/// nonzero, which rests on the leaf provider spelling U+0663 (`leaf::StubProvider`): the
+/// checker reads the digit's real value (`verify::digit_value`), so a provider spelling an
+/// Nd zero would be caught there. The integer subtree carries that fact only where a
 /// bound asks for it (inherited WANT), so numbers elsewhere are not copied. 16.11 SR 3 a i (an
 /// upper bound is not 0, and `{0}` is `{0,0}`) rides on the same fact; SR 3 a ii (upper below
 /// lower) does not. 16.7 SR 9 (no quantified primary directly under a quantified primary)
@@ -790,6 +794,199 @@ impl Rule for DelimitedNotEmpty {
             "character string literal" => Some(s.without(QUOTED)),
             _ => Some(s),
         }
+    }
+}
+
+/// 18.2 SR 2, 3 and 18.3 SR 2, 3, 4: the shape of a node or edge type specification.
+///
+/// - inside a closed node reference value type (`NODE TYPE { }` as a type, not in a graph
+///   type body), a node type specification has no local alias, key label set or type name
+///   (18.2 SR 2); an edge type specification inside a closed edge reference value type has no
+///   key label set, type name or endpoint aliases, and no key label set in an endpoint (18.3
+///   SR 2)
+/// - a node type specification with a type name has no key label set and no alias (18.2 SR
+///   3); an edge type specification with a type name has no key label set (18.3 SR 3)
+/// - an edge type specification saying DIRECTED has a directed shape (an endpoint pair or a
+///   pattern), one saying UNDIRECTED an undirected shape (18.3 SR 4)
+///
+/// "Simply contains" is read as the standard defines it: without an intervening instance of
+/// the container's own definition. Every fact is synthesized: what a specification holds
+/// rises to it and on to its parent, which is the closed reference value type (rejecting) or
+/// the element type specification of a graph type body (consuming), the only two places a
+/// specification occurs. A specification nested in a property's type is consumed at its own
+/// parent, so nothing crosses one, and nothing is inherited: the grammar below a type is not
+/// copied. (A key label set in an edge type's endpoint reaching an enclosing node type would
+/// be the letter of 18.2 SR 3; it is consumed at the edge type's closed reference value type,
+/// which 18.3 SR 2 refuses anyway.)
+///
+/// Reading of 18.3 SR 4: it constrains an edge type specification that says DIRECTED or
+/// UNDIRECTED; a pattern with no edge kind (`( ) -[ ]-> ( )`) is not constrained (its "otherwise"
+/// case presumes UNDIRECTED is present).
+pub struct ElementTypeShape;
+
+const NAMED: Fact = 32;
+const KEYED: Fact = 33;
+const ALIASED: Fact = 34;
+const EDGE_NAMED: Fact = 35;
+const EDGE_KEYED: Fact = 36;
+const SOURCE_ALIASED: Fact = 37;
+const DESTINATION_ALIASED: Fact = 38;
+const DIRECTED_KW: Fact = 39;
+const UNDIRECTED_KW: Fact = 40;
+const DIRECTED_SHAPE: Fact = 41;
+const UNDIRECTED_SHAPE: Fact = 42;
+/// What a node type specification tells its parent.
+const NODE_SHAPE: [Fact; 3] = [NAMED, KEYED, ALIASED];
+/// What an edge type specification tells its parent: a node type key label set in it sits in
+/// an endpoint reference (18.3 SR 2 c, d).
+const EDGE_SHAPE: [Fact; 5] = [EDGE_NAMED, EDGE_KEYED, SOURCE_ALIASED, DESTINATION_ALIASED, KEYED];
+/// What an edge type specification settles itself.
+const EDGE_KIND: [Fact; 4] = [DIRECTED_KW, UNDIRECTED_KW, DIRECTED_SHAPE, UNDIRECTED_SHAPE];
+
+impl Rule for ElementTypeShape {
+    fn name(&self) -> &str {
+        "element type specification shape"
+    }
+
+    fn cite(&self) -> &str {
+        "18.2 SR 2, 3 and 18.3 SR 2, 3, 4: a node or edge type specification in a closed reference value type has no alias, key label set or type name; a named one no key label set or alias; DIRECTED or UNDIRECTED matches the shape"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[
+            (NAMED, "named"),
+            (KEYED, "keyed"),
+            (ALIASED, "aliased"),
+            (EDGE_NAMED, "edge-named"),
+            (EDGE_KEYED, "edge-keyed"),
+            (SOURCE_ALIASED, "source-aliased"),
+            (DESTINATION_ALIASED, "destination-aliased"),
+            (DIRECTED_KW, "directed-kw"),
+            (UNDIRECTED_KW, "undirected-kw"),
+            (DIRECTED_SHAPE, "directed-shape"),
+            (UNDIRECTED_SHAPE, "undirected-shape"),
+        ])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn step(&self, node: &Node, _inh: &State, _children: &[State], s: State) -> Option<State> {
+        if node.group {
+            return Some(s);
+        }
+        Some(match node.def {
+            "node type name" => s.with(NAMED),
+            "node type key label set" => s.with(KEYED),
+            "local node type alias" => s.with(ALIASED),
+            "edge type name" => s.with(EDGE_NAMED),
+            "edge type key label set" => s.with(EDGE_KEYED),
+            "source node type alias" => s.with(SOURCE_ALIASED),
+            "destination node type alias" => s.with(DESTINATION_ALIASED),
+            "edge kind" if node.items == [Item::Token("DIRECTED")] => s.with(DIRECTED_KW),
+            "edge kind" => s.with(UNDIRECTED_KW),
+            "endpoint pair directed" | "edge type pattern directed" => s.with(DIRECTED_SHAPE),
+            "endpoint pair undirected" | "edge type pattern undirected" => s.with(UNDIRECTED_SHAPE),
+            // 18.2 SR 3; the shape goes on to the parent.
+            "node type specification" => {
+                if s.has(NAMED) && (s.has(KEYED) || s.has(ALIASED)) {
+                    return None;
+                }
+                s
+            }
+            // 18.3 SR 3, 4; the shape goes on to the parent.
+            "edge type specification" => {
+                if (s.has(EDGE_NAMED) && s.has(EDGE_KEYED))
+                    || (s.has(DIRECTED_KW) && !s.has(DIRECTED_SHAPE))
+                    || (s.has(UNDIRECTED_KW) && !s.has(UNDIRECTED_SHAPE))
+                {
+                    return None;
+                }
+                s.without_all(&EDGE_KIND)
+            }
+            // 18.2 SR 2, 18.3 SR 2.
+            "closed node reference value type" => {
+                if NODE_SHAPE.iter().any(|f| s.has(*f)) {
+                    return None;
+                }
+                s
+            }
+            "closed edge reference value type" => {
+                if EDGE_SHAPE.iter().any(|f| s.has(*f)) {
+                    return None;
+                }
+                s
+            }
+            "element type specification" => s.without_all(&NODE_SHAPE).without_all(&EDGE_SHAPE),
+            _ => s,
+        })
+    }
+}
+
+/// 8.2 SR 2: transaction characteristics hold exactly one <transaction access mode>.
+///
+/// Counted, not unioned: a list of modes folds its items as they come (the repetition's group
+/// node sees each operand's state), so the characteristics end in one of none, one or many.
+/// An <implementation-defined access mode> is not a <transaction access mode> and counts for
+/// nothing; the leaf is excluded from generation anyway (8.2 SR 3, `tokens::EXCLUDED`).
+pub struct OneAccessMode;
+
+const MODE_ONE: Fact = 43;
+const MODE_MANY: Fact = 44;
+
+/// How many access modes the children hold: one per child with one, two for a child with many.
+fn modes(children: &[State]) -> usize {
+    children
+        .iter()
+        .map(|c| if c.has(MODE_MANY) { 2 } else { usize::from(c.has(MODE_ONE)) })
+        .sum()
+}
+
+fn counted(s: State, n: usize) -> State {
+    let mut s = s.without(MODE_ONE).without(MODE_MANY);
+    match n {
+        0 => {}
+        1 => s = s.with(MODE_ONE),
+        _ => s = s.with(MODE_MANY),
+    }
+    s
+}
+
+impl Rule for OneAccessMode {
+    fn name(&self) -> &str {
+        "one transaction access mode"
+    }
+
+    fn cite(&self) -> &str {
+        "8.2 SR 2: <transaction characteristics> contain exactly one <transaction access mode>"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(MODE_ONE, "mode"), (MODE_MANY, "modes")])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn step(&self, node: &Node, _inh: &State, children: &[State], s: State) -> Option<State> {
+        let owner = node.def.split('/').next().unwrap_or(node.def);
+        if owner != "transaction characteristics" {
+            return Some(if node.def == "transaction access mode" {
+                s.with(MODE_ONE)
+            } else {
+                s
+            });
+        }
+        let n = modes(children);
+        if node.group {
+            return Some(counted(s, n));
+        }
+        if n != 1 {
+            return None;
+        }
+        Some(counted(s, 0))
     }
 }
 

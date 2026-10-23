@@ -240,7 +240,16 @@ fn length_modes_trade_count_for_size() {
     assert!(unbounded.trees.len() < reference.trees.len());
     assert!(reference.trees.len() < tight.trees.len());
     assert_eq!(unbounded.covered, reference.covered);
-    let max = |o: &Outcome| o.trees.iter().map(|t| t.length).max().unwrap();
+    // A settled tree grew after the search, by the digits the value repair added
+    // (`tree::order_bounds`); the caps hold for the rest.
+    let max = |o: &Outcome| {
+        o.trees
+            .iter()
+            .filter(|t| !t.settled)
+            .map(|t| t.length)
+            .max()
+            .unwrap()
+    };
     assert!(max(&reference) <= reference.reference_length);
     assert!(max(&tight) <= 60);
     assert!(

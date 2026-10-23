@@ -655,6 +655,67 @@ fn syntax_rules<'t>(
             "upper bound" if bound_value(node) == 0 => {
                 out.push(violation(&path, "16.11 SR 3", "an upper bound of 0".into()));
             }
+            // 18.9 SR 7, 10, 13, 21: a max length is at least 1 and at or above the min
+            // length, a fixed length at least 1.
+            "character string type" | "byte string type" => {
+                let min = own(node, "min length").map(integer_value);
+                let max = own(node, "max length").map(integer_value);
+                if max == Some(0) {
+                    out.push(violation(&path, "18.9 SR 7", "a max length of 0".into()));
+                }
+                if own(node, "fixed length").map(integer_value) == Some(0) {
+                    out.push(violation(&path, "18.9 SR 10", "a fixed length of 0".into()));
+                }
+                if let (Some(min), Some(max)) = (min, max)
+                    && min > max
+                {
+                    let rule = if name == "character string type" {
+                        "18.9 SR 13"
+                    } else {
+                        "18.9 SR 21"
+                    };
+                    out.push(violation(
+                        &path,
+                        rule,
+                        "the min length is above the max length".into(),
+                    ));
+                }
+            }
+            "list value type" if own(node, "max length").map(integer_value) == Some(0) => {
+                out.push(violation(&path, "18.9 SR 7", "a max length of 0".into()));
+            }
+            // 18.9 SR 29, 38, 40: a precision is at least 1 (2 in an approximate numeric
+            // type), and a scale is at most the precision of its exact numeric type.
+            "decimal exact numeric type"
+            | "signed binary exact numeric type"
+            | "unsigned binary exact numeric type"
+            | "verbose binary exact numeric type"
+            | "approximate numeric type" => {
+                let precision = own(node, "precision").map(integer_value);
+                let scale = own(node, "scale").map(integer_value);
+                let approximate = name == "approximate numeric type";
+                match precision {
+                    Some(0) => {
+                        out.push(violation(&path, "18.9 SR 29", "a precision of 0".into()));
+                    }
+                    Some(1) if approximate => out.push(violation(
+                        &path,
+                        "18.9 SR 40",
+                        "an approximate numeric type of precision 1".into(),
+                    )),
+                    _ => {}
+                }
+                if !approximate
+                    && let (Some(p), Some(s)) = (precision, scale)
+                    && s > p
+                {
+                    out.push(violation(
+                        &path,
+                        "18.9 SR 38",
+                        "the scale is above the precision".into(),
+                    ));
+                }
+            }
             // 20.24 SR 3 b i 1 (byte strings by the reading in `refine::TrimOperands`): FROM
             // in a TRIM follows a specification or a trim string.
             "trim operands" | "byte string trim operands" => {
@@ -762,6 +823,89 @@ fn syntax_rules<'t>(
                     ));
                 }
             }
+            // 18.2 SR 2, 3: in a closed node reference value type, no alias, key label set or
+            // type name; with a type name, no key label set and no alias. "Simply contains":
+            // without an intervening node type specification.
+            "node type specification" => {
+                let simply = |want: &str| simply_contains(node, want, name);
+                let closed = ancestors
+                    .last()
+                    .is_some_and(|p| def_name(p) == Some("closed node reference value type"));
+                if closed
+                    && let Some(found) = ["local node type alias", "node type key label set", "node type name"]
+                        .into_iter()
+                        .find(|w| simply(w))
+                {
+                    out.push(violation(
+                        &path,
+                        "18.2 SR 2",
+                        format!("a <{found}> in a closed node reference value type"),
+                    ));
+                }
+                if simply("node type name") && (simply("node type key label set") || simply("local node type alias")) {
+                    out.push(violation(
+                        &path,
+                        "18.2 SR 3",
+                        "a named node type with a key label set or an alias".into(),
+                    ));
+                }
+            }
+            // 18.3 SR 2, 3, 4: in a closed edge reference value type, no key label set, type
+            // name, endpoint alias, or key label set in an endpoint; with a type name, no key
+            // label set; DIRECTED or UNDIRECTED matches the shape (reading in
+            // `refine::ElementTypeShape`: a pattern with no edge kind is free).
+            "edge type specification" => {
+                let simply = |want: &str| simply_contains(node, want, name);
+                let closed = ancestors
+                    .last()
+                    .is_some_and(|p| def_name(p) == Some("closed edge reference value type"));
+                if closed
+                    && let Some(found) = [
+                        "edge type key label set",
+                        "edge type name",
+                        "source node type alias",
+                        "destination node type alias",
+                        "node type key label set",
+                    ]
+                    .into_iter()
+                    .find(|w| simply(w))
+                {
+                    out.push(violation(
+                        &path,
+                        "18.3 SR 2",
+                        format!("a <{found}> in a closed edge reference value type"),
+                    ));
+                }
+                if simply("edge type name") && simply("edge type key label set") {
+                    out.push(violation(
+                        &path,
+                        "18.3 SR 3",
+                        "a named edge type with a key label set".into(),
+                    ));
+                }
+                let mut kinds = Vec::new();
+                find_simply(node, "edge kind", name, &mut kinds);
+                let directed = kinds.iter().any(|k| k.text().eq_ignore_ascii_case("DIRECTED"));
+                let undirected = kinds.iter().any(|k| k.text().eq_ignore_ascii_case("UNDIRECTED"));
+                if directed && !simply("endpoint pair directed") && !simply("edge type pattern directed") {
+                    out.push(violation(&path, "18.3 SR 4", "DIRECTED with an undirected shape".into()));
+                }
+                if undirected && !simply("endpoint pair undirected") && !simply("edge type pattern undirected") {
+                    out.push(violation(&path, "18.3 SR 4", "UNDIRECTED with a directed shape".into()));
+                }
+            }
+            // 8.2 SR 2: exactly one access mode.
+            "transaction characteristics" => {
+                let mut modes = Vec::new();
+                find(node, "transaction access mode", &mut modes);
+                if modes.len() != 1 {
+                    out.push(violation(
+                        &path,
+                        "8.2 SR 2",
+                        format!("{} transaction access modes, not one", modes.len()),
+                    ));
+                }
+            }
             "linear data-modifying statement" if !modifies(node) => {
                 out.push(violation(
                     &path,
@@ -809,6 +953,26 @@ fn contains(node: &Plain, want: &str) -> bool {
     let mut found = Vec::new();
     find(node, want, &mut found);
     !found.is_empty()
+}
+
+/// Whether `node` simply contains a `<want>`: contains one without an intervening `<boundary>`
+/// (the standard's definition, `boundary` being `node`'s own definition).
+fn simply_contains(node: &Plain, want: &str, boundary: &str) -> bool {
+    let mut found = Vec::new();
+    find_simply(node, want, boundary, &mut found);
+    !found.is_empty()
+}
+
+/// Every `<want>` below `node` with no intervening `<boundary>`, outermost first.
+fn find_simply<'t>(node: &'t Plain, want: &str, boundary: &str, out: &mut Vec<&'t Plain>) {
+    let Plain::Def { children, .. } = node else { return };
+    for child in children {
+        match def_name(child) {
+            Some(n) if n == want => out.push(child),
+            Some(n) if n == boundary => {}
+            _ => find_simply(child, want, boundary, out),
+        }
+    }
 }
 
 /// `*`, `+`, or `{m,}` with no upper bound.
@@ -1162,8 +1326,13 @@ fn bound_value(node: &Plain) -> u64 {
     own(node, "unsigned integer").map_or(0, |n| unsigned_integer_value(&n.text()))
 }
 
+/// The value of a length, precision or scale: the integer its text spells.
+fn integer_value(node: &Plain) -> u64 {
+    unsigned_integer_value(&node.text())
+}
+
 /// The value an <unsigned integer> spells: decimal, or 0x, 0o, 0b prefixed, underscores
-/// skipped; a non-ASCII digit counts as 1 (a reading: the generator spells U+0663).
+/// skipped, a digit of any script by `digit_value`.
 pub fn unsigned_integer_value(text: &str) -> u64 {
     let lower = text.to_ascii_lowercase();
     let (digits, radix): (&str, u32) = match lower.as_bytes() {
@@ -1173,9 +1342,31 @@ pub fn unsigned_integer_value(text: &str) -> u64 {
         _ => (lower.as_str(), 10),
     };
     digits.chars().filter(|c| *c != '_').fold(0u64, |v, c| {
+        let digit = c.to_digit(radix).or_else(|| digit_value(c)).unwrap_or(0);
         v.saturating_mul(u64::from(radix))
-            .saturating_add(c.to_digit(radix).map_or(1, u64::from))
+            .saturating_add(u64::from(digit))
     })
+}
+
+/// The value of a decimal digit of any script (21.4 SR 2: general category Nd): Unicode's Nd
+/// digits come in runs of ten in order, zero first (UAX #44), so a digit's value is its
+/// distance from the start of the run of Nd characters it is in, modulo ten. `None` for a
+/// character that is not a decimal digit.
+pub fn digit_value(c: char) -> Option<u32> {
+    if let Some(v) = c.to_digit(10) {
+        return Some(v);
+    }
+    let decimal = |u: u32| {
+        char::from_u32(u).is_some_and(|p| get_general_category(p) == GeneralCategory::DecimalNumber)
+    };
+    if !decimal(c as u32) {
+        return None;
+    }
+    let mut start = c as u32;
+    while start > 0 && decimal(start - 1) {
+        start -= 1;
+    }
+    Some((c as u32 - start) % 10)
 }
 
 /// 16.12 SR 1, 3, 4: a concatenation, quantifier, `?` or multiset alternation below.
