@@ -356,7 +356,8 @@ impl<'b> Verifier<'b> {
                     None => Ok(()),
                 }
             }
-            "regular identifier" => {
+            // 21.3 SR 18: a non-delimited identifier, a parameter name's extended one too.
+            "regular identifier" | "extended identifier" => {
                 let normal = node.text().to_uppercase();
                 if self.reserved.contains(&normal) {
                     Err((
@@ -1227,6 +1228,45 @@ fn syntax_rules<'t>(
                             &path,
                             "18.10 SR 2",
                             format!("field {} declared twice", fname.text()),
+                        ));
+                    }
+                }
+            }
+            // 20.9 SR 4: an aggregate simply contains no aggregate. SR 7 a: COUNT(*) is directly
+            // contained (no procedure body between) in an aggregating value expression.
+            "aggregate function" => {
+                let mut nested = Vec::new();
+                if let Plain::Def { children, .. } = node {
+                    for c in children {
+                        if def_name(c) == Some("aggregate function") {
+                            nested.push(c);
+                        } else {
+                            find_simply(c, "aggregate function", "aggregate function", &mut nested);
+                        }
+                    }
+                }
+                if !nested.is_empty() {
+                    out.push(violation(&path, "20.9 SR 4", "an aggregate inside an aggregate".into()));
+                }
+                let star = flat(children).iter().any(|c| matches!(c, Plain::Kw(k) if k.eq_ignore_ascii_case("COUNT")))
+                    && flat(children).iter().any(|c| def_name(c) == Some("asterisk"));
+                if star {
+                    let mut direct = false;
+                    for a in ancestors.iter().rev() {
+                        match def_name(a) {
+                            Some("aggregating value expression") => {
+                                direct = true;
+                                break;
+                            }
+                            Some("procedure body") => break,
+                            _ => {}
+                        }
+                    }
+                    if !direct {
+                        out.push(violation(
+                            &path,
+                            "20.9 SR 7",
+                            "COUNT(*) not directly in an aggregating value expression".into(),
                         ));
                     }
                 }

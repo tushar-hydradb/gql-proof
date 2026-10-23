@@ -146,7 +146,7 @@ fn degrees_of_exposure() {
         "MATCH (a)-[e]->(b) WHERE SUM(e.k) > 1 RETURN a",
         "20.1 SR 7",
     );
-    bad("MATCH (a) FILTER COUNT(*) > 1 RETURN a", "20.1 SR 7");
+    // `FILTER COUNT(*) > 1` breaks 20.9 SR 7 a first (`tests/probes_checker.rs`).
     bad(
         "MATCH ((a)-[e]->(b)){2} WHERE SUM(a.k + e.k) > 1 RETURN a",
         "20.1 SR 7",
@@ -299,8 +299,8 @@ fn return_projects() {
     // 20.9 SR 3: no procedure body in an aggregate, an EXISTS over a pattern included.
     bad("RETURN COUNT(EXISTS { MATCH (a) RETURN a }) AS x", "20.9 SR 3");
     bad("RETURN COUNT(EXISTS { (a) }) AS x", "20.9 SR 3");
-    bad("RETURN MAX(VALUE { RETURN count(*) AS y }) AS x", "20.9 SR 3");
-    bad("RETURN MAX(LET y = VALUE { RETURN count(*) AS z } IN y END) AS x", "20.9 SR 3");
+    bad("RETURN MAX(VALUE { RETURN 1 AS y }) AS x", "20.9 SR 3");
+    bad("RETURN MAX(LET y = VALUE { RETURN 1 AS z } IN y END) AS x", "20.9 SR 3");
     ok("RETURN COUNT(*) AS x, EXISTS { MATCH (a) RETURN a } AS y");
     // 14.12 SR 7 b
     bad("SELECT * FROM { USE CURRENT_PROPERTY_GRAPH MATCH (a) RETURN a } GROUP BY ()", "14.12 SR 7");

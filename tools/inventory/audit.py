@@ -3,7 +3,7 @@ against research/audit/README.md's format, and print the counts and the findings
 
     python3 -I tools/inventory/audit.py [--out research/audit/audit.jsonl] [--md]
 """
-import argparse, collections, glob, json, os, sys
+import argparse, collections, glob, json, os, re, sys
 
 KEYS = ["clause", "sr", "item", "kind", "sentence", "replacement", "enforced", "check",
         "reachable", "status", "cor1", "note"]
@@ -43,7 +43,33 @@ def load(paths):
                     errors.append(f"{path}:{n}: {r['clause']} SR {r['sr']} {r['item']}: {r['status']} with no checker (not known to hold)")
                 rows.append(r)
     rows.sort(key=lambda r: (clause_key(r["clause"]), int(r["sr"]), r["item"]))
+    global UNPROBED
+    # The checker column quotes the rule strings the checker reports; each must be a string
+    # literal in the checker's sources, or the row claims a check nobody wrote.
+    src = ""
+    for f in glob.glob("src/verify.rs") + glob.glob("src/verify/*.rs"):
+        src += open(f).read()
+    tests = "".join(open(f).read() for f in glob.glob("tests/*.rs"))
+    unprobed = set()
+    for r in rows:
+        if r["kind"] in ("constraint", "type") and r["status"] in ("generated", "reading", "checked"):
+            quoted = re.findall(r'"([0-9][0-9.]* SR [^"]+)"', r["check"])
+            if not quoted:
+                errors.append(f"{r['clause']} SR {r['sr']} {r['item']}: the check column quotes no rule string")
+            for q in quoted:
+                if f'"{q}"' not in src:
+                    errors.append(f"{r['clause']} SR {r['sr']} {r['item']}: the checker reports no {q!r}")
+                elif f'"{q}"' not in tests and q not in PROBE_EXEMPT:
+                    unprobed.add(q)
+    UNPROBED = sorted(unprobed)
     return rows, errors
+
+UNPROBED = []
+# Rule strings no text can break, so no red probe exists; each with the reason.
+PROBE_EXEMPT = {
+    "16.9 SR 2": "a path variable is declared only at a <path pattern>, always an unconditional singleton",
+    "20.6 SR 6": "every linear query statement ends in a result statement once 14.12 SR 27 makes a SELECT a RETURN",
+}
 
 def main():
     ap = argparse.ArgumentParser()
@@ -58,8 +84,10 @@ def main():
     print(f"{len(rows)} rows from {len(set(r['_part'] for r in rows))} parts -> {a.out}")
     if errors:
         print(f"{len(errors)} format problems:")
-        for e in errors[:60]:
+        for e in errors:
             print("  " + e)
+    if UNPROBED:
+        print(f"{len(UNPROBED)} rule strings the checker reports with no probe in tests/: {', '.join(UNPROBED)}")
     by = collections.Counter((r["kind"], r["status"]) for r in rows)
     kinds = ["constraint", "type", "environment", "implementation", "definition"]
     statuses = ["generated", "reading", "checked", "grammar", "open", "hypothesis", "n/a"]

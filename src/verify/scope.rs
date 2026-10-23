@@ -776,11 +776,15 @@ impl<'t> Checker<'t> {
             let Some(n) = source.and_then(bare) else {
                 continue;
             };
+            // A value variable may hold an element; the types checker confirms it for DELETE
+            // (13.5 SR 5), nothing does for SET and REMOVE, so there it is refused (reading).
+            let value_ok = rule == "13.5 SR 5";
             if let Some(var) = incoming.get(&n)
-                && (!matches!(var.kind, Kind::Node | Kind::Edge | Kind::Value)
+                && (!(matches!(var.kind, Kind::Node | Kind::Edge)
+                    || (var.kind == Kind::Value && value_ok))
                     || var.degree == Degree::Group)
             {
-                self.report(target, rule, format!("{n} is not a graph element"));
+                self.report(target, rule, format!("{n} is not a graph element variable"));
             }
         }
         if name(st) == Some("set statement") {
