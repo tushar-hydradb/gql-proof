@@ -163,3 +163,20 @@ TRIM with a bare FROM, a property of NULL) and 16.11 SR 3's upper-below-lower
   synthesized fact: the forbidden productions never enter the grammar
 - the skeleton probes in `tests/refine.rs` now carry real edges, nodes and
   bounds, since every rule has to hold on the same tree
+
+## the 3 variable run, for the record
+
+the same command with `--slots 3` and a 3 hour deadline per phase, on this
+branch, alone on the machine (2026-10-23): the fixed point in about 5 minutes,
+the extraction layers in 214 s (446,805 made labels over 7,854 productions),
+the reach closure in 1,098 s (103,087 live labels, 163 s and 38,362 at 2
+variables), then the ground walks did 41 of 6,942 targets in 29 s and sat in
+the 42nd for 65 minutes at full CPU before I stopped it. that is the stall
+the prune notes describe, in extraction now rather than emission. its last
+progress line names the suspect: 718 witness searches (51 failed), 712
+context searches (504 failed), 85 in progress, and the nonterminals failing
+most are `<statement block>` with 461 failed context searches and `<let
+variable definition list/rep2>` with 40; 737,732,700 candidates were looked at
+in those 53 minutes, 150,072,233 of them dropped for having no context. the
+lever on that track is the context search above a statement block at 3
+variables, not the fixed point
