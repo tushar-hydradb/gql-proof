@@ -522,8 +522,14 @@ fn subqueries() {
 fn unknown_operands_pass() {
     // 4.14.4: a dynamic or open operand meets every requirement
     ok("MATCH (a) RETURN a.k || 'x' AS a1, a.k + DURATION 'PT1H' AS a2, a.k AND true AS a3");
-    ok("MATCH (a) RETURN CASE WHEN a.k THEN a.k ELSE 1 END AS b1, CAST(a.k AS DATE) AS b2");
-    ok("MATCH (a) RETURN [a.k, 1] AS c1, UPPER(a.k) AS c2, CHAR_LENGTH(a.k) AS c3");
+    ok("MATCH (a) RETURN CASE WHEN a.k THEN 1 ELSE 2 END AS b1, CAST(a.k AS DATE) AS b2");
+    ok("MATCH (a) RETURN UPPER(a.k) AS c2, CHAR_LENGTH(a.k) AS c3");
+    // but not in a static combination (22.19 SR 2, read without GV65)
+    bad(
+        "MATCH (a) RETURN CASE WHEN a.k THEN a.k ELSE 1 END AS b1",
+        "22.19 SR 2",
+    );
+    bad("MATCH (a) RETURN [a.k, 1] AS c1", "22.19 SR 2");
     ok("MATCH (a) RETURN a.k = 'a' AS d1, a.k < 1 AS d2, NOT a.k AS d3, -a.k AS d4");
     ok("RETURN $p || 'x' AS e1, $p AND true AS e2, CARDINALITY($p) AS e3, $p.k AS e4");
     ok("MATCH (a) WHERE a.name = 'x' AND a.age > 3 RETURN a.name AS n ORDER BY n");
@@ -547,8 +553,13 @@ fn statements() {
     ok("USE \"g\" MATCH (a) RETURN a");
     ok("VALUE v = 1 USE v.w MATCH (a) RETURN a");
     bad("USE 'g' MATCH (a) RETURN a", "11.1 SR 3");
-    // the value types of a union are unmodelled: `ANY | STRING LIST` reads two ways
-    ok("LET VALUE x INT | STRING LIST = CURRENT_DATE RETURN x AS y");
+    // `INT | STRING LIST` reads two ways (a union with a list, a list of a union), and a date
+    // goes to neither
+    bad(
+        "LET VALUE x INT | STRING LIST = CURRENT_DATE RETURN x AS y",
+        "10.3 SR 8",
+    );
+    ok("LET VALUE x ANY<INT | STRING> = 1 RETURN x AS y");
     ok("GRAPH g = CURRENT_GRAPH TABLE t = { RETURN 1 AS x } RETURN 1 AS y");
     bad("VALUE v = 1 USE v MATCH (a) RETURN a", "11.1 SR 3");
     bad("VALUE v = 1 USE (v) MATCH (a) RETURN a", "11.1 SR 3");
@@ -586,4 +597,271 @@ fn a_property_of_null() {
     bad("RETURN NULL . a AS x", "20.1 SR 4-6");
     ok("MATCH (x) RETURN x . a AS y");
     ok("MATCH (x)-[e]->(y) RETURN e . a AS z");
+}
+
+#[test]
+fn dynamic_casts() {
+    // 20.8 SR 10: a property has the dynamic property value type, whose components H2 takes to
+    // include the predefined types and no others
+    ok("MATCH (x) RETURN CAST(x.a AS INT) AS y");
+    ok("MATCH (x) RETURN CAST(x.a AS STRING) AS y, CAST(x.a AS DURATION(DAY TO SECOND)) AS z");
+    bad("MATCH (x) RETURN CAST(x.a AS NODE) AS y", "20.8 SR 10");
+    bad("MATCH (x) RETURN CAST(x.a AS PATH) AS y", "20.8 SR 10");
+    bad("MATCH (x) RETURN CAST(x.a AS LIST<INT>) AS y", "20.8 SR 10");
+    bad(
+        "MATCH (x) RETURN COLLECT_LIST(x.a) AS l NEXT RETURN CAST(l AS LIST<EDGE>) AS y",
+        "20.8 SR 10",
+    );
+    // a closed union source: some component casts
+    ok("RETURN CAST(CAST(1 AS ANY<INT | STRING>) AS DATE) AS y");
+    bad(
+        "RETURN CAST(CAST(1 AS ANY<INT | STRING>) AS BYTES) AS y",
+        "20.8 SR 10",
+    );
+    // 20.8 SR 9: a cast to a dynamic union type from a subtype of it
+    ok("RETURN CAST(1 AS ANY) AS y, CAST(1 AS ANY VALUE) AS z");
+    ok("MATCH (x) RETURN CAST(x AS ANY) AS y, CAST(x.a AS ANY PROPERTY VALUE) AS z");
+    ok("RETURN CAST(1 AS ANY<INT | STRING>) AS y, CAST('a' AS INT | STRING) AS z");
+    bad("RETURN CAST(TRUE AS ANY<INT | STRING>) AS y", "20.8 SR 9");
+    bad(
+        "MATCH (x) RETURN CAST(x AS ANY PROPERTY VALUE) AS y",
+        "20.8 SR 9",
+    );
+    bad(
+        "MATCH (x) RETURN CAST(x.a AS ANY<INT | STRING>) AS y",
+        "20.8 SR 9",
+    );
+    // with nullability: a material union takes only what is known not null
+    bad("RETURN CAST(1 AS ANY NOT NULL) AS y", "20.8 SR 9");
+    bad("RETURN CAST(NULL AS ANY NOT NULL) AS y", "20.8 SR 5");
+    ok("RETURN CAST(NULL AS ANY) AS y");
+}
+
+#[test]
+fn closed_element_types() {
+    // 20.11 SR 3 a: a property of a closed node or edge reference value type names one of its
+    // property types, and has its value type
+    ok("MATCH (x) RETURN CAST(x AS (:L {a INT})).a + 1 AS y");
+    bad(
+        "MATCH (x) RETURN CAST(x AS (:L {a INT})).b AS y",
+        "20.11 SR 3",
+    );
+    bad(
+        "MATCH (x) RETURN CAST(x AS (:L {a STRING})).a + 1 AS y",
+        "20.21 SR 3",
+    );
+    ok("MATCH (x) LET v = CAST(x AS NODE TYPE t (:L {a INT})) RETURN v.a AS y");
+    bad(
+        "MATCH (x) LET v = CAST(x AS NODE TYPE t (:L {a INT})) RETURN v.b AS y",
+        "20.11 SR 3",
+    );
+    bad(
+        "MATCH ()-[e]->() RETURN CAST(e AS (:A)-[:L {a INT}]->(:B {b INT})).b AS y",
+        "20.11 SR 3",
+    );
+    ok("MATCH ()-[e]->() RETURN CAST(e AS (:A)-[:L {a INT}]->(:B {b INT})).a AS y");
+    // through a FOR over a list of them
+    bad(
+        "MATCH (x) FOR v IN [CAST(x AS (:L {a INT}))] RETURN v.b AS y",
+        "20.11 SR 3",
+    );
+    // different closed types combined: not followed (reading)
+    bad(
+        "MATCH (x) LET v = CASE WHEN TRUE THEN CAST(x AS (:L {a INT})) ELSE CAST(x AS (:M {a INT})) END RETURN v.a AS y",
+        "20.11 SR 3",
+    );
+    // with an open one, the supertype is open
+    ok("MATCH (x) LET v = CASE WHEN TRUE THEN CAST(x AS (:L {a INT})) ELSE x END RETURN v.b AS y");
+    // 16.8 SR 4 b ii: a labeled predicate names labels of the closed type
+    ok("MATCH (x) LET v = CAST(x AS (:L&M {a INT})) RETURN v IS LABELED L AS y, v:M AS z");
+    bad(
+        "MATCH (x) LET v = CAST(x AS (:L {a INT})) RETURN v IS LABELED N AS y",
+        "16.8 SR 4",
+    );
+    bad(
+        "MATCH (x) LET v = CAST(x AS (:L {a INT})) RETURN CASE v WHEN IS LABELED N THEN 1 END AS y",
+        "16.8 SR 4",
+    );
+    // an open variable is not known to be of a closed type (10.3 SR 8 b i 1, 4.16.7)
+    bad(
+        "MATCH (x) LET VALUE v :: (:L) = x RETURN v AS y",
+        "10.3 SR 8",
+    );
+    // a property type has a supported property value type (18.6 SR 4, 18.7 SR 4)
+    bad(
+        "MATCH (x) RETURN CAST(x AS (:L {a NOTHING})) AS y",
+        "18.7 SR 4",
+    );
+    bad(
+        "MATCH (x) RETURN CAST(x AS (:L {a NULL NOT NULL})) AS y",
+        "18.6 SR 4",
+    );
+    bad(
+        "MATCH (x) RETURN CAST(x AS (:L {a NULL})) AS y",
+        "18.7 SR 4",
+    );
+    bad(
+        "MATCH (x) RETURN CAST(x AS (:L {a NODE})) AS y",
+        "18.7 SR 4",
+    );
+}
+
+#[test]
+fn value_types() {
+    // 18.9 SR 68: a group list of nodes or edges
+    bad("SESSION SET VALUE $b GROUP LIST<PATH> = NULL", "18.9 SR 68");
+    bad(
+        "SESSION SET VALUE $b GROUP LIST<NODE | EDGE> = NULL",
+        "18.9 SR 68",
+    );
+    ok("SESSION SET VALUE $b GROUP LIST<NODE> = NULL");
+    ok("SESSION SET VALUE $b LIST<PATH> = NULL");
+    bad(
+        "VALUE v :: INT GROUP LIST = NULL RETURN 1 AS y",
+        "18.9 SR 68",
+    );
+    // 18.9 SR 88: all components possibly nullable or all known not nullable
+    bad(
+        "SESSION SET VALUE $b ANY<INT NOT NULL | STRING> = 1",
+        "18.9 SR 88",
+    );
+    bad(
+        "SESSION SET VALUE $b INT | STRING NOT NULL = 1",
+        "18.9 SR 88",
+    );
+    ok("SESSION SET VALUE $b ANY<INT NOT NULL | STRING NOT NULL> = 1");
+    ok("SESSION SET VALUE $b ANY<INT | STRING> = 1");
+    // a nested union is known not nullable when its components are (SR 85, 86)
+    ok("SESSION SET VALUE $b ANY<INT NOT NULL | ANY<STRING NOT NULL | BOOL NOT NULL>> = 1");
+    bad(
+        "SESSION SET VALUE $b ANY<INT NOT NULL | ANY<STRING | BOOL>> = 1",
+        "18.9 SR 88",
+    );
+}
+
+#[test]
+fn set_values() {
+    // 13.3 SR 3 a iv, b iii 2: a supported property value type (reading: the predefined types)
+    ok("MATCH (a) SET a.k = 1, a.l = a.m RETURN a");
+    ok("MATCH (a) SET a = {k: 'x', l: DATE '2020-01-01'} RETURN a");
+    bad("MATCH (a) SET a.k = NULL RETURN a", "13.3 SR 3");
+    bad("MATCH (a) SET a = {k: NULL} RETURN a", "13.3 SR 3");
+    bad("MATCH (a) SET a.k = [1] RETURN a", "13.3 SR 3");
+    bad("MATCH (a), (b) SET a.k = b RETURN a", "13.3 SR 3");
+}
+
+#[test]
+fn composite_queries() {
+    // 14.2 SR 10 a v: column-combinable
+    ok("RETURN 1 AS x UNION ALL RETURN 1.5 AS x");
+    ok("RETURN 1 AS x OTHERWISE RETURN 2 AS x");
+    bad("RETURN 1 AS x UNION ALL RETURN 'a' AS x", "14.2 SR 10");
+    bad(
+        "RETURN [1] AS x UNION ALL RETURN DATE '2020-01-01' AS x",
+        "14.2 SR 10",
+    );
+    // three operands: the left one is the combination of the first two
+    bad(
+        "RETURN 1 AS x UNION ALL RETURN 2 AS x UNION ALL RETURN 'a' AS x",
+        "14.2 SR 10",
+    );
+    // 14.2 SR 10 a vii 1: under UNION DISTINCT (implicit), EXCEPT, INTERSECT, no column of a
+    // dynamic union type with non-comparable components
+    bad(
+        "MATCH (a) RETURN a.k AS x UNION RETURN 1 AS x",
+        "14.2 SR 10",
+    );
+    bad(
+        "MATCH (a) RETURN a.k AS x EXCEPT ALL RETURN 1 AS x",
+        "14.2 SR 10",
+    );
+    bad(
+        "MATCH (a) RETURN a.k AS x INTERSECT DISTINCT MATCH (b) RETURN b.k AS x",
+        "14.2 SR 10",
+    );
+    // 22.19 SR 2 (reading): a dynamic column in the static combination
+    bad(
+        "MATCH (a) RETURN a.k AS x UNION ALL RETURN 1 AS x",
+        "22.19 SR 2",
+    );
+    ok("RETURN 1 AS x UNION RETURN 2 AS x");
+}
+
+#[test]
+fn grouping_and_aggregating() {
+    // 14.11 SR 10 a ii as Cor 1 has it
+    ok("MATCH (a) RETURN a.k AS k, COUNT(*) AS c GROUP BY k");
+    bad(
+        "MATCH (a) RETURN a AS a, COUNT(*) AS c GROUP BY a, c",
+        "14.11 SR 10",
+    );
+}
+
+#[test]
+fn typed_graphs_and_tables() {
+    // 10.1 SR 8 b i 1: a closed graph type's initializer is not followed (reading)
+    ok("GRAPH g :: ANY GRAPH = CURRENT_GRAPH RETURN 1 AS y");
+    bad(
+        "GRAPH g :: GRAPH { (:L) } = CURRENT_GRAPH RETURN 1 AS y",
+        "10.1 SR 8",
+    );
+    // 10.2 SR 8 b i 1: a nested query's columns are followed
+    ok("TABLE t :: TABLE { x INT } = { RETURN 1 AS x } RETURN 1 AS y");
+    bad(
+        "TABLE t :: TABLE { x INT } = { RETURN 'a' AS x } RETURN 1 AS y",
+        "10.2 SR 8",
+    );
+    bad(
+        "TABLE t :: TABLE { y INT } = { RETURN 1 AS x } RETURN 1 AS y",
+        "10.2 SR 8",
+    );
+    bad(
+        "TABLE s = { RETURN 1 AS x } TABLE t :: TABLE { x INT } = s RETURN 1 AS y",
+        "10.2 SR 8",
+    );
+    // 7.1 SR 6 c i, ii
+    ok("SESSION SET GRAPH $g :: ANY GRAPH = CURRENT_GRAPH");
+    bad(
+        "SESSION SET GRAPH $g :: GRAPH { (:L) } = CURRENT_GRAPH",
+        "7.1 SR 6",
+    );
+    ok("SESSION SET TABLE $t :: TABLE { x INT } = { RETURN 1 AS x }");
+    bad(
+        "SESSION SET TABLE $t :: TABLE { x INT } = { RETURN 'a' AS x }",
+        "7.1 SR 6",
+    );
+}
+
+#[test]
+fn null_cases() {
+    // 20.7 SR 3 through 20.7 SR 1 b-d
+    ok("RETURN NULLIF(1, 1) AS y, NULLIF(1, NULL) AS z");
+    bad("RETURN NULLIF(NULL, 1) AS y", "20.7 SR 3");
+    ok("RETURN COALESCE(NULL, NULL, 1) AS y, COALESCE(1, NULL) AS z");
+    bad("RETURN COALESCE(NULL, NULL) AS y", "20.7 SR 3");
+    bad("RETURN COALESCE(1, NULL, NULL) AS y", "20.7 SR 3");
+}
+
+#[test]
+fn select_bodies_and_session_values() {
+    // a SELECT with a body: its expressions are typed, its variables followed
+    bad(
+        "SELECT 1 + 'a' AS x FROM CURRENT_GRAPH MATCH (a)",
+        "20.21 SR 3",
+    );
+    ok("SELECT a.k AS x FROM CURRENT_GRAPH MATCH (a)");
+    bad(
+        "SELECT a + 1 AS x FROM CURRENT_GRAPH MATCH (a)",
+        "20.21 SR 3",
+    );
+    bad("SELECT x || 'a' AS y FROM { RETURN 1 AS x }", "20.23 SR 2");
+    bad(
+        "SELECT v.b AS y FROM { MATCH (x) RETURN CAST(x AS (:L {a INT})) AS v }",
+        "20.11 SR 3",
+    );
+    // 7.1 SR 6 c iii 3 A I
+    ok("SESSION SET VALUE $b INT = 1");
+    bad("SESSION SET VALUE $b INT = 'a'", "7.1 SR 6");
+    bad("SESSION SET VALUE $b BOOL NOT NULL = NULL", "7.1 SR 6");
+    bad("SESSION SET VALUE $b = 1 + TRUE", "20.21 SR 3");
 }
