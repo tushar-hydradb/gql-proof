@@ -143,6 +143,15 @@ deleted or maybe deleted, plus whether the working table is surely not empty
 FILTER, OPTIONAL). must raise, never raises, may raise; the "should succeed"
 suite keeps only never raises
 
+## the never targets
+
+the 153 productions and 333 pairs never covered at 2 variables are audited
+in `research/never-targets-2026-10-23.md`: no extraction miss; 17 need 3 to 8
+variables, 135 are the types and scope readings (a variable is only read as
+exact, string or boolean; CASE and friends are exact or NULL; no correlation
+into patterns), 23 are iso rules, and `RETURN *` is a scope rule gap to fix.
+3 variables are predicted to bring them to 141 and 305
+
 ## things that will trip you up
 
 - **luck**: a class can vanish from a regenerated set because extraction picked
