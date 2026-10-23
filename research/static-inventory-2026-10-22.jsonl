@@ -428,7 +428,7 @@
 {"clause": "16.10", "sr": 3, "kind": "type", "status": "generated", "where": "src/context/scope.rs:810", "note": "element reference names a node or edge (group list if group)"}
 {"clause": "16.11", "sr": 1, "kind": "implementation", "status": "not modelled", "where": "", "note": "upper bound limit is implementation-defined; nothing caps quantifier values"}
 {"clause": "16.11", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "normalizes quantifier forms"}
-{"clause": "16.11", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "upper bound 0 is kept out, explicit or as a fixed {0} (PathMinimums, src/refine.rs); upper below lower is not: the automaton knows zero or not, not the value"}
+{"clause": "16.11", "sr": 3, "kind": "constraint", "status": "generated", "where": "src/refine.rs, src/context/extract.rs", "note": "upper bound 0 kept out by the automaton (PathMinimums); upper below lower by order_bounds at spelling time, the one place a bound's value is read; the checker reports both (16.11 SR 3, 16.11 SR 3 a ii)"}
 {"clause": "16.11", "sr": 4, "kind": "definition", "status": "n/a", "where": "", "note": "defines variable quantifier"}
 {"clause": "16.12", "sr": 1, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "simplified negation holds no concatenation, quantifier, ?, multiset alternation, nor (reading, NOTE 257) a direction override (SimplifiedShape)"}
 {"clause": "16.12", "sr": 2, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "no nested simplified direction override (SimplifiedShape)"}
@@ -711,7 +711,7 @@
 {"clause": "20.1", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:1010, src/context/types.rs:1057", "note": "immaterial CAST and typed-initializer targets refused, so no expression gets the empty type"}
 {"clause": "20.1", "sr": 2, "kind": "type", "status": "reading", "where": "src/context/types.rs:871", "note": "graph reference value expression only from a dynamic value; GRAPH forms opaque"}
 {"clause": "20.1", "sr": 3, "kind": "type", "status": "reading", "where": "src/context/types.rs:871", "note": "binding table reference value expression only from a dynamic value; TABLE forms opaque"}
-{"clause": "20.1", "sr": 4, "kind": "type", "status": "generated", "where": "src/context/types.rs:867", "note": "node reference value expression must be node class (or null/dynamic)"}
+{"clause": "20.1", "sr": 4, "kind": "type", "status": "generated", "where": "src/context/types.rs:867", "note": "node reference value expression must be node class (or null/dynamic); as a property source a bare NULL is refused (types.rs property reference, 21.2 SR 67)"}
 {"clause": "20.1", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/types.rs:868", "note": "edge reference value expression must be edge class"}
 {"clause": "20.1", "sr": 6, "kind": "type", "status": "generated", "where": "src/context/types.rs:866", "note": "record expression must be record class"}
 {"clause": "20.1", "sr": 7, "kind": "constraint", "status": "reading", "where": "src/context/scope.rs:25, src/context/scope.rs:1102, src/context/scope.rs:1506", "note": "aggregates only as a return item's own; horizontal aggregation over group variables never generated"}
@@ -835,7 +835,7 @@
 {"clause": "20.23", "sr": 4, "kind": "type", "status": "generated", "where": "src/context/types.rs:859", "note": "byte string primary must be bytes"}
 {"clause": "20.24", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:847", "note": "SUBSTRING/LEFT/RIGHT yield string"}
 {"clause": "20.24", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/types.rs:847", "note": "UPPER/LOWER yield string"}
-{"clause": "20.24", "sr": 3, "kind": "constraint", "status": "not modelled", "where": "", "note": "TRIM with FROM needs a spec or trim string; bare FROM not prevented (comparability generated, types.rs:850)"}
+{"clause": "20.24", "sr": 3, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "TrimOperands refuses FROM with neither a specification nor a trim string (byte strings alike, a reading: 20.25 has no twin); comparability by types.rs"}
 {"clause": "20.24", "sr": 4, "kind": "type", "status": "checked", "where": "src/verify/types.rs:1934", "note": "LTRIM/RTRIM/BTRIM source and trim string must be comparable strings"}
 {"clause": "20.24", "sr": 5, "kind": "type", "status": "generated", "where": "src/context/types.rs:847", "note": "NORMALIZE yields string; default form NFC"}
 {"clause": "20.25", "sr": 1, "kind": "type", "status": "generated", "where": "src/context/types.rs:853", "note": "byte substring yields bytes"}
@@ -937,7 +937,7 @@
 {"clause": "21.3", "sr": 1, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:34; checked src/verify.rs:439", "note": "identifier start is always 'a'"}
 {"clause": "21.3", "sr": 2, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:35; checked src/verify.rs:443", "note": "identifier extend is always 'b'"}
 {"clause": "21.3", "sr": 3, "kind": "constraint", "status": "grammar", "where": "BNF <regular identifier> ::= <identifier start> [...]", "note": "regular identifier always has a start character, so never empty"}
-{"clause": "21.3", "sr": 4, "kind": "constraint", "status": "not modelled", "where": "", "note": "empty delimited identifiers \"\" and `` are generated (seen in purdom snapshot)"}
+{"clause": "21.3", "sr": 4, "kind": "constraint", "status": "generated", "where": "src/refine.rs", "note": "DelimitedNotEmpty refuses an empty delimited identifier; the same sequence as a string literal stays"}
 {"clause": "21.3", "sr": 5, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:34; src/leaf.rs:38", "note": "identifier characters are only a, b, x and doubled quotes; always short"}
 {"clause": "21.3", "sr": 6, "kind": "constraint", "status": "generated", "where": "src/leaf.rs:43; checked src/verify.rs:448", "note": "whitespace leaf is a single space"}
 {"clause": "21.3", "sr": 7, "kind": "implementation", "status": "n/a", "where": "src/leaf.rs:43", "note": "truncating whitespace subset is IV023; code picks space only"}

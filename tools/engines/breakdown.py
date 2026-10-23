@@ -56,6 +56,8 @@ def bucket(r):
         return "engine: documented deviation", m.split(": ", 1)[-1][:60]
     if re.search(r"EXISTS\s*[{(][^})]*KEEP", s):
         return "engine: parse gap", "KEEP after a graph pattern inside EXISTS"
+    if st == "42001" and re.search(r'@["`]', s):
+        return "engine: parse gap", "<no escape> @ before a delimited identifier"
     if re.search(r"\bVALUE \w+ ", s):
         return "engine: parse gap", "typed VALUE with a reference, record or closed type"
     return "unsorted", m[:70]

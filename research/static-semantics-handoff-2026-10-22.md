@@ -117,6 +117,15 @@ cached set, without losing a production or cdrc pair
    come from what `leaf.rs` spells, so the fix is the provider refusing those
    spellings in those contexts. 20.24 SR 3 (TRIM with a bare FROM) is grammar
    shape, not a leaf: an automaton
+   **partly done on `tushar/exists-table` (2026-10-23)**: 16.11 SR 3 a ii by
+   `order_bounds` in `src/context/extract.rs` (the upper bound re-spelled at
+   spelling time, as names are: the engine never reads a value), 20.24 SR 3
+   and 21.3 SR 4 as automata in `refine.rs`, and `NULL . a` refused by
+   `types.rs` (20.1 SR 4-6, 21.2 SR 67); see
+   `research/static-semantics-last-ten-2026-10-23.md`. the never counts stayed
+   153 productions and 333 pairs. 18.9 SR 7, 10, 29 and 22.1 SR 3 are still
+   open, and the next smallest witness for a record property is `{ } . a`
+   (20.11 SR 2 a, checker-flagged): step 4's first case
 4. **typing gaps**: groupability for DISTINCT (14.11 SR 4, 14.12 SR 5), closed
    node and edge types, union types and nullability (18.9, 20.8 SR 10, 22.10,
    22.19). widening `types.rs`; check the checker agrees first
