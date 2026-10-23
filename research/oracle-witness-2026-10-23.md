@@ -337,6 +337,42 @@ every pattern variable against what the witness bound (`check_vars`): on the
 with the field, 1,287 rows naming a variable) 0 over the 246 witness records
 that bind one. the earlier cached sets predate the field
 
+### parameters
+
+a query with `$b` needs the parameter sent along with it, of a class its site
+accepts. a parameter's class is dynamic (4.14.4: it stands wherever a class is
+checked), so the rules never store what a site asks of it, and storing it
+would be a new fact in the label, which is what blows the run. instead the
+export asks the rules: `context::parameter_classes` re-runs the whole context
+over the tree once per candidate class with the parameter's label forced to
+that class (`Context::with_class`, at every node that is exactly the
+parameter, since `<general value specification>` sets the dynamic class
+itself), and keeps the classes under which the tree is still accepted at the
+top. no new rule, no new label; the cost is one `accepts` per class per
+parameter, only on the 42 of 3,834 sentences that have one. the record:
+
+```
+"params": [{"name": "$b", "classes": ["exact", "approx"]}]
+```
+
+`oracle` gives each parameter a value of the first class its site admits
+among exact (`1`), string (`'a'`) and boolean (`TRUE`), as `parameters`, and
+both probes send it (turbolay's `ParameterMap`, neo4j's `parameters`). a
+parameter whose site admits none of the three leaves the core with the reason:
+a list, a record, an element or a temporal value the harness has no way to
+pass yet, or a site that admits nothing
+
+what the 1-slot set says (96 parameter sites): 11 sites admit every class
+(`LIMIT $b`, `OFFSET $b`, `SHORTEST $b`: the rules do not type a
+non-negative integer specification, and `1` is right there), 85 admit nothing.
+the 85 are all `VALUE x <type> NOT NULL = $b`: the types rule accepts only a
+dynamic value as the initializer of a `NOT NULL` typed `VALUE`, and no literal
+(`VALUE x FLOAT NOT NULL = 1.5` is refused at `<boolean predicand>`). so these
+sentences exist only because a parameter stands anywhere, and no class is
+known for them: a reading in `types.rs` for the soundness track to look at,
+and until then they stay out of the core. `examples/params_debug.rs` prints
+the admitted classes of one sentence with the rules' trace (`GQL_TRACE=trace`)
+
 ## what is built on this branch
 
 - `src/oracle.rs`: the ir, the label expression models, `W`, the record, the

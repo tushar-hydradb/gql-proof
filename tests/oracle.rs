@@ -21,7 +21,7 @@ fn record(text: &str, mode: MatchModeDefault) -> Oracle {
             verifier.verify(&n.export(&ISO), &n.render(&ISO)).is_empty()
         })
         .unwrap_or_else(|e| panic!("{text}: {e}"));
-    oracle(text, &parsed.tree.export(&ISO), None, mode)
+    oracle(text, &parsed.tree.export(&ISO), None, None, mode)
 }
 
 fn witness(text: &str) -> Oracle {
@@ -183,6 +183,26 @@ fn what_is_out_of_the_core_still_gets_a_graph() {
 }
 
 #[test]
+fn parameters_get_a_value_of_an_admitted_class() {
+    let tokens = Grammar::new(&ISO_BNF);
+    let verifier = Verifier::new(Grammar::new(&ISO_BNF));
+    let parser = Parser::new(&ISO, &tokens, "GQL-program").unwrap();
+    let text = "MATCH ( x ) RETURN x NEXT RETURN x LIMIT $b";
+    let parsed = parser
+        .parse(text, |n| verifier.verify(&n.export(&ISO), &n.render(&ISO)).is_empty())
+        .unwrap();
+    let params = serde_json::json!([{ "name": "$b", "classes": ["exact"] }]);
+    let r = oracle(text, &parsed.tree.export(&ISO), None, Some(&params), MatchModeDefault::DifferentEdges);
+    assert_eq!(r.parameters["b"], gql_proof::oracle::Value::Int(1));
+    assert_eq!(r.expect.tier, Tier::Witness, "{:?}", r.why);
+    let r = oracle(text, &parsed.tree.export(&ISO), None, None, MatchModeDefault::DifferentEdges);
+    assert_eq!(r.expect.tier, Tier::Status);
+    let params = serde_json::json!([{ "name": "$b", "classes": ["list"] }]);
+    let r = oracle(text, &parsed.tree.export(&ISO), None, Some(&params), MatchModeDefault::DifferentEdges);
+    assert_eq!(r.expect.tier, Tier::Status);
+}
+
+#[test]
 fn the_generation_record_is_checked_against_the_witness() {
     let tokens = Grammar::new(&ISO_BNF);
     let verifier = Verifier::new(Grammar::new(&ISO_BNF));
@@ -192,9 +212,9 @@ fn the_generation_record_is_checked_against_the_witness() {
         .parse(text, |n| verifier.verify(&n.export(&ISO), &n.render(&ISO)).is_empty())
         .unwrap();
     let agree = serde_json::json!([{ "name": "x", "decl": ["node"], "out": ["node"] }]);
-    let r = oracle(text, &parsed.tree.export(&ISO), Some(&agree), MatchModeDefault::DifferentEdges);
+    let r = oracle(text, &parsed.tree.export(&ISO), Some(&agree), None, MatchModeDefault::DifferentEdges);
     assert_eq!(r.expect.tier, Tier::Witness);
     let disagree = serde_json::json!([{ "name": "x", "decl": ["edge"] }]);
-    let r = oracle(text, &parsed.tree.export(&ISO), Some(&disagree), MatchModeDefault::DifferentEdges);
+    let r = oracle(text, &parsed.tree.export(&ISO), Some(&disagree), None, MatchModeDefault::DifferentEdges);
     assert!(r.why.iter().any(|w| w.contains("generation record")), "{:?}", r.why);
 }

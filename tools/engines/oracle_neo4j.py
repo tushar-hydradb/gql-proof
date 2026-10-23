@@ -15,8 +15,8 @@ import json
 import urllib.request
 
 
-def run(url, statement):
-    body = json.dumps({"statements": [{"statement": statement}]}).encode()
+def run(url, statement, parameters=None):
+    body = json.dumps({"statements": [{"statement": statement, "parameters": parameters or {}}]}).encode()
     request = urllib.request.Request(url, body, {"Content-Type": "application/json"})
     response = json.load(urllib.request.urlopen(request))
     if response["errors"]:
@@ -90,11 +90,12 @@ def main():
                     verdict, detail = "unloadable", error
                     break
             if verdict is None:
-                result, error = run(args.url, sentence)
+                parameters = record.get("parameters") or {}
+                result, error = run(args.url, sentence, parameters)
                 if error:
                     verdict, detail = "refused", error
                 elif record.get("observe"):
-                    result, error = run(args.url, record["observe"]["query"])
+                    result, error = run(args.url, record["observe"]["query"], parameters)
                     verdict, detail = ("observe refused", error) if error else judge(record, result)
                 else:
                     verdict, detail = judge(record, result)

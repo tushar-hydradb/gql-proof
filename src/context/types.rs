@@ -1451,6 +1451,33 @@ impl Under<Scope> for Types {
         "value expressions typed"
     }
 
+    fn with_class(&self, _: &Scoped, label: &Label, class: &str) -> Option<Label> {
+        let c = match class {
+            "exact" => Exact,
+            "approx" => Approx,
+            "str" => Str,
+            "bytes" => Bytes,
+            "bool" => Bool,
+            "date" => Date,
+            "localtime" => LocalTime,
+            "zonedtime" => ZonedTime,
+            "localdatetime" => LocalDatetime,
+            "zoneddatetime" => ZonedDatetime,
+            "yearmonth" => YearMonth,
+            "daytime" => DayTime,
+            "list" => List,
+            "record" => Record,
+            "node" => Node,
+            "edge" => Edge,
+            "path" => Path,
+            _ => return None,
+        };
+        Some(Label {
+            class: Some(Ty::Is(c)),
+            ..label.clone()
+        })
+    }
+
     fn describe(&self, _: &Scoped, label: &Label) -> Vec<serde_json::Map<String, serde_json::Value>> {
         let class = |c: Class| serde_json::Value::String(format!("{c:?}").to_ascii_lowercase());
         label

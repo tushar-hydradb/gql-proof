@@ -150,9 +150,10 @@ async fn run_oracle_records() {
             continue;
         }
         let witness = record["expect"]["tier"] == json!("witness");
+        let parameters: ParameterMap = properties(&record["parameters"]);
         let engine = CypherEngine::new(storage(setup));
         let prepared = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            engine.prepare_with_lists(&sentence, &ParameterMap::new(), &ListParameterMap::new())
+            engine.prepare_with_lists(&sentence, &parameters, &ListParameterMap::new())
         }));
         let mut rows_json: Vec<Vec<Value>> = Vec::new();
         let mut columns: Vec<String> = Vec::new();
@@ -196,7 +197,7 @@ async fn run_oracle_records() {
                 // The observation query: the same patterns with their variables returned.
                 let query = record["observe"]["query"].as_str().unwrap_or("").to_string();
                 let engine = CypherEngine::new(storage(setup));
-                let prepared = engine.prepare_with_lists(&query, &ParameterMap::new(), &ListParameterMap::new());
+                let prepared = engine.prepare_with_lists(&query, &parameters, &ListParameterMap::new());
                 match prepared {
                     Err(e) => ("observe refused", format!("{}: {e}", e.gql_status())),
                     Ok(p) => {

@@ -554,10 +554,23 @@ fn context_run<C: gql_proof::context::Context>(
                 }
             }
             if args.sentences && args.jsonl {
+                // Parameters: the classes each site admits, asked of the rules themselves.
+                let mut refs = Vec::new();
+                parameters_in(&plain, &mut refs);
+                let params: Vec<serde_json::Value> = refs
+                    .iter()
+                    .map(|p| {
+                        serde_json::json!({
+                            "name": p,
+                            "classes": gql_proof::context::parameter_classes(ctx, &plain, p),
+                        })
+                    })
+                    .collect();
                 let record = serde_json::json!({
                     "target": covers.to_string(),
                     "sentence": sentence,
                     "vars": vars,
+                    "params": params,
                 });
                 println!("{record}");
             } else if args.sentences {
@@ -1443,6 +1456,20 @@ struct Covered {
     scope: Vec<(String, Option<String>, Option<String>)>,
 }
 
+/// The distinct parameter references of a tree (`$b`), in order of first appearance.
+fn parameters_in(p: &gql_proof::verify::Plain, out: &mut Vec<String>) {
+    if let gql_proof::verify::Plain::Def { name, children, .. } = p {
+        if name == "general parameter reference" {
+            let text = p.text();
+            if !out.contains(&text) {
+                out.push(text);
+            }
+            return;
+        }
+        children.iter().for_each(|c| parameters_in(c, out));
+    }
+}
+
 /// The names a sentence's variables and columns could have: its binding variables and
 /// identifiers.
 fn names_in(p: &gql_proof::verify::Plain, out: &mut BTreeSet<String>) {
@@ -1467,12 +1494,12 @@ fn oracle(args: OracleArgs) -> Result<()> {
     let mut unloadable: BTreeMap<String, usize> = BTreeMap::new();
     for path in &args.files {
         let sentences = read_records(path)?;
-        let distinct: Vec<(&str, Option<&serde_json::Value>)> = {
+        let distinct: Vec<(&str, Option<&serde_json::Value>, Option<&serde_json::Value>)> = {
             let mut seen = BTreeSet::new();
             sentences
                 .iter()
-                .map(|(s, v)| (s.as_str(), v.as_ref()))
-                .filter(|(s, _)| seen.insert(*s))
+                .map(|(s, v, p)| (s.as_str(), v.as_ref(), p.as_ref()))
+                .filter(|(s, _, _)| seen.insert(*s))
                 .collect()
         };
         let records: Vec<(String, Option<gql_proof::oracle::Oracle>)> = pool.install(|| {
@@ -1486,12 +1513,12 @@ fn oracle(args: OracleArgs) -> Result<()> {
                             .expect("the iso grammar builds");
                         (parser, verifier)
                     },
-                    |(parser, verifier), (s, vars)| {
+                    |(parser, verifier), (s, vars, params)| {
                         let accept = |n: &gql_proof::tree::Node| {
                             verifier.verify(&n.export(&cfg), &n.render(&cfg)).is_empty()
                         };
                         let record = parser.parse(s, accept).ok().map(|p| {
-                            gql_proof::oracle::oracle(s, &p.tree.export(&cfg), *vars, id086)
+                            gql_proof::oracle::oracle(s, &p.tree.export(&cfg), *vars, *params, id086)
                         });
                         (s.to_string(), record)
                     },
@@ -1540,8 +1567,9 @@ fn oracle(args: OracleArgs) -> Result<()> {
     Ok(())
 }
 
-/// Sentences with their generation record (`vars`), when the file carries one.
-fn read_records(path: &PathBuf) -> Result<Vec<(String, Option<serde_json::Value>)>> {
+/// Sentences with their generation record (`vars`, `params`), when the file carries one.
+type Record = (String, Option<serde_json::Value>, Option<serde_json::Value>);
+fn read_records(path: &PathBuf) -> Result<Vec<Record>> {
     let text = std::fs::read_to_string(path)?;
     let mut out = Vec::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
@@ -1553,9 +1581,9 @@ fn read_records(path: &PathBuf) -> Result<Vec<(String, Option<serde_json::Value>
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("{}: a record with no query", path.display()))?
                     .to_string();
-                out.push((sentence, record.remove("vars")));
+                out.push((sentence, record.remove("vars"), record.remove("params")));
             }
-            _ => out.push((line.to_string(), None)),
+            _ => out.push((line.to_string(), None, None)),
         }
     }
     Ok(out)

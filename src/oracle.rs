@@ -120,6 +120,10 @@ pub struct Oracle {
     /// engine evaluates the MATCH the same way whichever result statement follows.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observe: Option<Observe>,
+    /// The parameters the query takes, each given a value of a class its site admits (from
+    /// the generation record's `params`): sent with the query by the probes.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub parameters: BTreeMap<String, Value>,
     /// Why the row is not of the witness tier, or why the pattern cannot match.
     pub why: Vec<String>,
 }
@@ -1702,9 +1706,14 @@ pub fn oracle(
     sentence: &str,
     tree: &Plain,
     vars: Option<&serde_json::Value>,
+    params: Option<&serde_json::Value>,
     mode_default: MatchModeDefault,
 ) -> Oracle {
     let mut b = Builder::new(mode_default);
+    let (parameters, parameter_problems) = parameter_values(tree, params);
+    for why in parameter_problems {
+        b.out_of_core(why);
+    }
     let mut had_match = false;
     let mut shape = Shape::Other("no statement block".to_string());
     let mut blocks = Vec::new();
@@ -1802,8 +1811,74 @@ pub fn oracle(
         setup,
         expect,
         observe,
+        parameters,
         why,
     }
+}
+
+/// A value per parameter of the tree: of the first class in `exact`, `str`, `bool` that its
+/// site admits by the generation record (`params`: name and classes). A parameter the
+/// record does not know, or whose site admits none of the three (a list, a record, an
+/// element, a temporal value: the harness has no way to pass those yet), leaves the core.
+fn parameter_values(
+    tree: &Plain,
+    params: Option<&serde_json::Value>,
+) -> (BTreeMap<String, Value>, Vec<String>) {
+    let mut refs = Vec::new();
+    find_all(tree, "general parameter reference", &mut refs);
+    let mut values = BTreeMap::new();
+    let mut problems = Vec::new();
+    let known: Vec<(String, Vec<String>)> = params
+        .and_then(|p| p.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|p| {
+                    Some((
+                        p["name"].as_str()?.to_string(),
+                        p["classes"]
+                            .as_array()?
+                            .iter()
+                            .filter_map(|c| c.as_str().map(str::to_string))
+                            .collect(),
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    for r in refs {
+        let spelling = r.text();
+        let Some(name) = child(r, "parameter name") else { continue };
+        let key = parameter_key(&name.text());
+        if values.contains_key(&key) {
+            continue;
+        }
+        let Some((_, classes)) = known.iter().find(|(n, _)| *n == spelling) else {
+            problems.push(format!("a parameter without a recorded class: {spelling}"));
+            continue;
+        };
+        let value = if classes.iter().any(|c| c == "exact") {
+            Value::Int(1)
+        } else if classes.iter().any(|c| c == "str") {
+            Value::Str("a".to_string())
+        } else if classes.iter().any(|c| c == "bool") {
+            Value::Bool(true)
+        } else {
+            problems.push(format!(
+                "a parameter of a class the harness cannot pass: {spelling} admits {}",
+                if classes.is_empty() { "nothing".to_string() } else { classes.join(", ") }
+            ));
+            continue;
+        };
+        values.insert(key, value);
+    }
+    (values, problems)
+}
+
+/// The key a parameter is passed under: the name without `$`, a delimited name unquoted,
+/// a separated one (`@x`) without its `@`.
+fn parameter_key(name: &str) -> String {
+    let t = name.strip_prefix('@').unwrap_or(name);
+    identifier(&Plain::Term(t.to_string()))
 }
 
 enum Shape {
@@ -1874,9 +1949,13 @@ fn statement(s: &Plain, b: &mut Builder, had_match: &mut bool) -> Result<Shape, 
         if let Some(limit) = child(page, "limit clause") {
             let mut ints = Vec::new();
             find_all(limit, "unsigned integer", &mut ints);
+            let mut params = Vec::new();
+            find_all(limit, "general parameter reference", &mut params);
             match ints.first().and_then(|i| unsigned(&i.text())) {
                 Some(0) => return Err("LIMIT 0 drops every row".to_string()),
                 Some(_) => {}
+                // A parameter is given the value 1 (`parameter_values`), which keeps the row.
+                None if !params.is_empty() => {}
                 None => return Err("a LIMIT that is not a literal".to_string()),
             }
         }
