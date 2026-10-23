@@ -10,7 +10,7 @@ upper bound below the lower (`MATCH <- { 8 , 0o2 } FINISH`) and 1 property of
 a bare NULL (`RETURN NULL . a AS x`). four rules, four homes, none of them the
 context engine's labels. branch `tushar/exists-table`, worktree
 `gql-proof-exists`, commits 5d0108d and 0412020 (code) and the ones after
-(records)
+(records); the set is from 32d38c9
 
 ## the bounds: order settled at spelling time (16.11 SR 3 a ii)
 
@@ -27,8 +27,13 @@ every lower. value buckets in the automaton (digit count by radix) multiply
 copies and still do not order across radixes.
 
 so the engine stays value blind and the order is settled where names are:
-`order_bounds` in `src/context/extract.rs`, called right after `name` in
-`cover`'s `extract` closure. at every `general quantifier` with both bounds
+`order_bounds` in `src/tree.rs`, called right after `name` in `cover`'s
+`extract` closure (`src/context/extract.rs`) and by purdom's `settle` after
+every tree it builds (`src/purdom.rs`, `purdom/targeted.rs`), so both
+generators agree with the checker; the first version ran it in `cover` only
+and `iso_targeted_trees_verify` said so. the prefixed digits can take a
+purdom tree at its height cap above it, so that test exempts trees holding a
+general quantifier with both bounds from the cap (`has_both_bounds`). at every `general quantifier` with both bounds
 it reads the values (`verify::unsigned_integer_value`, shared with the
 checker) and, when the upper is below the lower, re-spells the upper with
 digits prefixed to the ones it was extracted for, in its own radix: `0o2`
@@ -47,10 +52,10 @@ cover run (`--slots 1 --phase cover --cdrc`, 9 s), which already extracts
 `{ 8 , 0o152 }`-shaped trees.
 
 the checker reports the order as `16.11 SR 3 a ii`, a name apart from the
-automaton's `16.11 SR 3` (upper bound 0), because the differential tests in
-`tests/refine.rs` compare the automaton with the verifier over generated
-trees and the grammar alone does not enforce the order;
-`refined_trees_satisfy_the_rules` filters that one rule out and says why.
+automaton's `16.11 SR 3` (upper bound 0), because the differential test
+`automaton_and_verifier_agree` in `tests/refine.rs` compares the automaton
+with the verifier over generated trees and the grammar alone does not enforce
+the order.
 readings: an `<other digit>` is worth 1 in a value (the generator spells
 U+0663), as the checker already read it
 
@@ -91,8 +96,7 @@ portable; turbolay refuses it. `types.rs` at `property reference`: a Null
 source is refused (the other 20.1 SR 4-6 sites keep admitting Null, so
 `PATH [ NULL , NULL , NULL ]` is unchanged: turbolay runs it, a dynamic
 error). the checker (`verify/types.rs`) treated `Ty::Null` as wild there and
-now reports it. no label changes: the types label at 1 slot went from 34,580
-to 34,523
+now reports it. no label changes for this one
 
 ## cost
 
@@ -100,16 +104,15 @@ to 34,523
 |---|---|---|
 | refined grammar | 2,972 nts, 7,854 prods | 2,980 nts, 7,859 prods |
 | scope 2 slots, labels | 34,941 | 34,949 |
-| types 1 slot, labels | 34,580 | 34,523 |
-| 2-variable run | 559 s, 1.57 GB, 3,843 trees | 548 s (503 s extraction), 1.41 GB, 3,834 trees |
+| types 1 slot, labels | 34,580 | 33,343 |
+| 2-variable run | 559 s, 1.57 GB, 3,843 trees | 485 s (442 s extraction), 1.38 GB, 3,834 trees |
 | never covered | 153 productions, 333 pairs | 153 productions, 333 pairs |
 
 ## the set and turbolay
 
 `sentences/typed-2vars-turbolay-claim-last-ten.jsonl`: 3,834 rows, 3,800
-distinct; 0 trees fail the syntax rules or the scope checker, 5 only the
-types checker (the four `x + NULL` TRIM counts, the unsettled reading, and
-`{ } . a` above). `violations.py`: only the open 18.9 SR 7/10/29 class, 3
+distinct; 0 trees fail the syntax rules or the scope checker, 4 only the
+types checker (the four `x + NULL` TRIM counts, the unsettled reading). `violations.py`: only the open 18.9 SR 7/10/29 class, 3
 sentences (`CHAR ( 0b0 )`). turbolay #243 (484d1a72)
 by `breakdown.py`:
 
@@ -139,15 +142,15 @@ by `breakdown.py`:
                  e.g. 'RETURN CURRENT_DATE AS x NEXT CALL ( x ) { FINISH }'
               2  a subquery inside a LET body is not supported
                  e.g. 'FILTER LET x = CURRENT_DATE IN EXISTS { <- } END IS NULL FINISH'
-   335    8.8%  engine: parse gap
-            243  typed VALUE with a reference, record or closed type
+   334    8.8%  engine: parse gap
+            242  typed VALUE with a reference, record or closed type
                  e.g. 'VALUE x ( ) = NULL FINISH'
              88  KEEP after a graph pattern inside EXISTS
                  e.g. 'FILTER EXISTS { <- KEEP WALK } FINISH'
               4  <no escape> @ before a delimited identifier
                  e.g. 'LIMIT $@"x" FINISH'
-    25    0.7%  environment
-             25  no parameters passed by the runner
+    26    0.7%  environment
+             26  no parameters passed by the runner
                  e.g. 'LIMIT $b FINISH'
     19    0.5%  dynamic: raised as it should
               8  invalid date, time, or datetime function field name: the rec
@@ -167,7 +170,7 @@ by `breakdown.py`:
                  e.g. 'MATCH ( x ) RETURN x NEXT YIELD x FINISH'
               1  FINISH in a composite query or before NEXT CALL
                  e.g. 'FINISH NEXT CALL { FINISH }'
-valid, outside documented deviations and the environment: 2791 of 3130 handled (89%)
+valid, outside documented deviations and the environment: 2791 of 3129 handled (89%)
 ```
 
 ## the next smallest witness
@@ -175,11 +178,14 @@ valid, outside documented deviations and the environment: 2791 of 3130 handled (
 closing `NULL . a` moved the record derivation of `<property source>` to its
 next cheapest witness, `RETURN { } . a AS x`: a closed record with no fields,
 which 20.11 SR 2 a refuses and the types checker reports (`RECORD {} has no
-field a`). the types engine knows a record's class, not its fields ("not
-followed", 20.11 SR 2 is `checked` in the inventory), so this one stays in the
-set as a checker-flagged tree, like the four `x + NULL` TRIM counts, until
-step 4 of the handoff (typing gaps) follows field names. refusing every record
-source instead would lose the target, which `{ a : 1 } . a` can cover
+field a`); `extraction_matches_emission` (0 bad trees) caught it. the types
+engine knows a record's class, not its fields ("not followed"), so it cannot
+show any record source to have the field: `types.rs` now refuses a record
+source at `property reference` until step 4 of the handoff (typing gaps)
+follows field names. the record derivation of `<property source>` is still
+covered, by a dynamic source (`ORDER BY $b . a FINISH`, 20.11 SR 2 b), so the
+never counts did not move; the types label at 1 slot went from 34,523 to
+33,343 with it
 
 ## what is left on our side
 
@@ -191,4 +197,4 @@ sentences that moved from "ours" are the `@"x"` and `` @`x` `` delimited
 identifiers with a `<no escape>` prefix, which turbolay does not parse: an
 engine parse gap now, sorted by `breakdown.py`. accepted 2,772 of 3,800
 (72.9%, was 72.8%); the valid sentences outside documented deviations and the
-environment handled 2,791 of 3,130 (89%)
+environment handled 2,791 of 3,129 (89%)

@@ -30,13 +30,13 @@ and `tools/inventory/violations.py` read them as they are
   x }`. turbolay #243 (484d1a72) results in
   `research/static-semantics-exists-table-2026-10-22.md`
 - `typed-2vars-turbolay-claim-last-ten.jsonl`: the same command on
-  `tushar/exists-table` (2026-10-23, 29c562b), after the last four classes
+  `tushar/exists-table` (2026-10-23, 32d38c9), after the last four classes
   turbolay refused as ours: bounds ordered at spelling time (16.11 SR 3 a ii,
-  `order_bounds` in `src/context/extract.rs`), TRIM's FROM (20.24 SR 3) and
-  empty delimited identifiers (21.3 SR 4) as automata, a property of NULL
-  refused by `types.rs`. 3,834 rows, 3,800 distinct, 548 s, 1.41 GB, the
-  never-covered counts unchanged at 153 and 333; 5 trees flagged by the types
-  checker only (`x + NULL` as a TRIM count, `{ } . a`). turbolay #243
+  `tree::order_bounds`, run by both generators), TRIM's FROM (20.24 SR 3) and
+  empty delimited identifiers (21.3 SR 4) as automata, a property of NULL or
+  of a record refused by `types.rs`. 3,834 rows, 3,800 distinct, 485 s,
+  1.38 GB, the never-covered counts unchanged at 153 and 333; 4 trees flagged
+  by the types checker only (`x + NULL` as a TRIM count). turbolay #243
   (484d1a72) results in `research/static-semantics-last-ten-2026-10-23.md`
 - `typed-2vars-turbolay-claim-path-minimums.jsonl`: the turbolay command with
   `--match-mode-default different-edges` (turbolay's ID086, now in the recipe)

@@ -771,7 +771,7 @@
 {"clause": "20.10", "sr": 2, "kind": "constraint", "status": "generated", "where": "src/context/scope.rs:21", "note": "ELEMENT_ID needs a singleton reference; no element variable is declared under quantifiers"}
 {"clause": "20.10", "sr": 3, "kind": "implementation", "status": "n/a", "where": "", "note": "ELEMENT_ID type is ID076; generator types it opaque"}
 {"clause": "20.11", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
-{"clause": "20.11", "sr": 2, "kind": "type", "status": "checked", "where": "src/verify/types.rs:1912", "note": "property of a closed record must name an existing field; generator types it opaque"}
+{"clause": "20.11", "sr": 2, "kind": "type", "status": "generated", "where": "src/context/types.rs (property reference), src/verify/types.rs:1912", "note": "fields are not followed, so no record source can be shown to have the field: refused as a property source (the record derivation of <property source> is a never target); the checker names the missing field"}
 {"clause": "20.11", "sr": 3, "kind": "catalog", "status": "generated", "where": "src/context/types.rs:809, src/context/types.rs:1302", "note": "no catalog, so element types are open and properties dynamic"}
 {"clause": "20.12", "sr": 1, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
 {"clause": "20.12", "sr": 2, "kind": "definition", "status": "n/a", "where": "", "note": "sets up names or an equivalence; nothing to violate"}
