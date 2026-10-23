@@ -610,13 +610,7 @@ proptest! {
         }
         for tree in generate(&refined.cfg, refined.start, seed, max_depth) {
             let rendered = verifier.render(&tree);
-            // The order of a general quantifier's bounds is settled at spelling time
-            // (`extract::order_bounds`), which this generator does not run.
-            let violations: Vec<_> = verifier
-                .verify(&tree, &rendered)
-                .into_iter()
-                .filter(|v| v.rule != "16.11 SR 3 a ii")
-                .collect();
+            let violations = verifier.verify(&tree, &rendered);
             prop_assert!(violations.is_empty(), "{:?}", violations);
         }
     }
@@ -1026,7 +1020,8 @@ fn a_selective_pattern_stands_alone_under_different_edges() {
 // --- 16.11 SR 3 a ii: the order of the bounds is settled at spelling time, not in the grammar
 
 /// The automaton knows zero or nonzero, so it accepts `{ 8 , 2 }`; the checker reads the
-/// values and reports it. `order_bounds` keeps the two apart in a generated set.
+/// values and reports it. `tree::order_bounds` keeps the two apart in a generated set, in
+/// both generators.
 #[test]
 fn an_upper_bound_below_the_lower_is_the_checkers_alone() {
     let out_of_order = one(bare_pattern(factor(quantified(general(
@@ -1064,7 +1059,7 @@ fn an_upper_bound_below_the_lower_is_the_checkers_alone() {
 
 #[test]
 fn a_raised_bound_keeps_its_digits_and_radix() {
-    use gql_proof::context::extract::raised_bound;
+    use gql_proof::tree::raised_bound;
     use gql_proof::verify::unsigned_integer_value;
     use rand::SeedableRng;
     let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(7);

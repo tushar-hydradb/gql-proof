@@ -837,8 +837,10 @@ impl Types {
             // 20.11 SR 3 b: a property of an element with no closed type is dynamic.
             // A closed record's field has a type, not followed: opaque. A bare NULL has no
             // node, edge or record type to take from this context (21.2 SR 67, 20.1 SR 4-6).
+            // A record's fields are not followed, so no record source can be shown to have
+            // the field (20.11 SR 2 a): refused until they are, rather than `{ } . a`.
             "property reference" => match at("property source") {
-                Some(Null) => None,
+                Some(Null | Record) => None,
                 Some(Node | Edge | Dynamic) => Some(Some(Dynamic)),
                 _ => Some(Some(Opaque)),
             },

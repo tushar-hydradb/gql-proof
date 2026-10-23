@@ -435,7 +435,8 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
             }
             self.slack = cap.map_or(i64::MAX / 2, |c| i64::from(c) - i64::from(shortest));
             let before = self.unused.count_ones(..);
-            let root = self.expand(start, depth, shortest);
+            let mut root = self.expand(start, depth, shortest);
+            self.settle(&mut root);
             let new = before - self.unused.count_ones(..);
             // Every round picks up at least one production: the root follows a finite cost
             // within the slack, and nothing before that path can consume its target without
@@ -550,6 +551,13 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
             }
         }
         best
+    }
+
+    /// What is settled at spelling time, after a tree is built: the order of a general
+    /// quantifier's bounds (`tree::order_bounds`).
+    fn settle(&mut self, root: &mut Node) {
+        let a = self.a;
+        crate::tree::order_bounds(self.cfg, root, &|nt, t| a.spell(nt, t), &mut self.rng);
     }
 
     fn expand(&mut self, nt: NtId, r: u32, plan: u32) -> Node {
