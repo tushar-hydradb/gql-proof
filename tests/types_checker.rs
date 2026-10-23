@@ -949,3 +949,41 @@ fn never_on_a_tree(text: &str, rule: &str) {
         "{text:?}: {all:#?}"
     );
 }
+
+#[test]
+fn session_parameters_set_twice() {
+    // 7.1 SR 6 d ii 1 B: a later SESSION SET of a parameter takes a type assignable to the
+    // declared type the first gave it
+    ok("SESSION SET VALUE $b INT = 1 SESSION SET VALUE $b = 2");
+    ok("SESSION SET VALUE $b INT = 1 SESSION SET VALUE $b INT = 2");
+    ok("SESSION SET VALUE $b ANY = 1 SESSION SET VALUE $b = 'a'");
+    ok("SESSION SET VALUE $c = 1 SESSION SET VALUE $b STRING = 'a'");
+    bad(
+        "SESSION SET VALUE $b INT = 1 SESSION SET VALUE $b = 'a'",
+        "7.1 SR 6",
+    );
+    bad(
+        "SESSION SET VALUE $b INT = 1 SESSION SET VALUE $b STRING = 'a'",
+        "7.1 SR 6",
+    );
+    // the first command's type, whatever came between (SR 6 d ii 1 C)
+    bad(
+        "SESSION SET VALUE $b INT = 1 SESSION SET VALUE $b = 2 SESSION SET VALUE $b = TRUE",
+        "7.1 SR 6",
+    );
+    // nullability is not inferred: an undeclared type is nullable
+    bad(
+        "SESSION SET VALUE $b INT NOT NULL = 1 SESSION SET VALUE $b = 2",
+        "7.1 SR 6",
+    );
+    // across kinds
+    bad(
+        "SESSION SET GRAPH $b = CURRENT_GRAPH SESSION SET VALUE $b = 1",
+        "7.1 SR 6",
+    );
+    ok("SESSION SET GRAPH $b ANY GRAPH = CURRENT_GRAPH SESSION SET GRAPH $b = CURRENT_GRAPH");
+    bad(
+        "SESSION SET TABLE $b TABLE { x INT } = { RETURN 1 AS x } SESSION SET TABLE $b TABLE { y INT } = { RETURN 1 AS y }",
+        "7.1 SR 6",
+    );
+}
