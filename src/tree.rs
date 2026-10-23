@@ -139,13 +139,16 @@ impl Node {
 /// lower: `{ 8 , 0o12 }`. Its digits and radix stay, so every production the tree was found
 /// for is still in it; the prefix only adds digit productions. Like naming, this is the one
 /// place the value is looked at; both generators (`context::extract::cover`, `purdom`) run it.
+/// Returns whether a bound was re-spelled: the tree then holds more nodes than the search
+/// that built it counted, so purdom's height and length caps do not hold for it.
 pub fn order_bounds(
     cfg: &Cfg,
     root: &mut Node,
     spell: &impl Fn(NtId, &str) -> Option<Node>,
     rng: &mut ChaCha8Rng,
-) {
-    let Sym::Nt(nt) = root.sym else { return };
+) -> bool {
+    let Sym::Nt(nt) = root.sym else { return false };
+    let mut changed = false;
     if cfg.base(nt) == "general quantifier" {
         let lower = through_groups(cfg, root, "lower bound")
             .map(|b| crate::verify::unsigned_integer_value(&b.render(cfg)));
@@ -166,13 +169,15 @@ pub fn order_bounds(
                     && let Some(spelt) = spell(radix_nt, &raised)
                 {
                     *radix = spelt;
+                    changed = true;
                 }
             }
         }
     }
     for child in &mut root.children {
-        order_bounds(cfg, child, spell, rng);
+        changed |= order_bounds(cfg, child, spell, rng);
     }
+    changed
 }
 
 /// The child of `node` whose definition is `base`, looking through synthetic groups only.

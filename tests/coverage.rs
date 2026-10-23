@@ -243,19 +243,6 @@ fn xu_fully_covered() {
 static ISO: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static BASE: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO));
 
-/// Whether a general quantifier in the tree has both bounds: the generator's `settle` may have
-/// prefixed digits to an upper bound below its lower (`tree::order_bounds`), which can take a
-/// tree at the height cap above it.
-fn has_both_bounds(cfg: &Cfg, n: &Node) -> bool {
-    fn holds(cfg: &Cfg, n: &Node, base: &str) -> bool {
-        matches!(n.sym, Sym::Nt(nt) if cfg.base(nt) == base)
-            || n.children.iter().any(|c| holds(cfg, c, base))
-    }
-    let quantifier = matches!(n.sym, Sym::Nt(nt) if cfg.base(nt) == "general quantifier");
-    (quantifier && holds(cfg, n, "lower bound") && holds(cfg, n, "upper bound"))
-        || n.children.iter().any(|c| has_both_bounds(cfg, c))
-}
-
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(6))]
 
@@ -272,8 +259,9 @@ proptest! {
             let plain = t.root.export(&refined.cfg);
             let violations = verifier.verify(&plain, &t.root.render(&refined.cfg));
             prop_assert!(violations.is_empty(), "{:?}", violations);
+            // A settled tree grew after the search, by the digits the bound repair added.
             prop_assert!(
-                t.root.height() <= depth || has_both_bounds(&refined.cfg, &t.root),
+                t.root.height() <= depth || t.settled,
                 "height {} above the cap {depth}",
                 t.root.height()
             );

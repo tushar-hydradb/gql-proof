@@ -32,8 +32,11 @@ so the engine stays value blind and the order is settled where names are:
 every tree it builds (`src/purdom.rs`, `purdom/targeted.rs`), so both
 generators agree with the checker; the first version ran it in `cover` only
 and `iso_targeted_trees_verify` said so. the prefixed digits can take a
-purdom tree at its height cap above it, so that test exempts trees holding a
-general quantifier with both bounds from the cap (`has_both_bounds`). at every `general quantifier` with both bounds
+purdom tree at its height or length cap above it, and the productions it adds
+must count as used or the targeted search seeks them again
+(`short_sentences_cover_what_packed_ones_do`): `settle` marks them and sets
+`Generated::settled`, which the cap checks in `tests/purdom.rs` and
+`tests/coverage.rs` honour. at every `general quantifier` with both bounds
 it reads the values (`verify::unsigned_integer_value`, shared with the
 checker) and, when the upper is below the lower, re-spells the upper with
 digits prefixed to the ones it was extracted for, in its own radix: `0o2`
@@ -46,7 +49,10 @@ elsewhere. `spell` derives the new text under the radix's own definition, the
 child of `<unsigned integer>`: derived from `<unsigned integer>` itself,
 `0o152` came out as a decimal integer whose `o` was an `<other digit>`, a
 prose leaf that takes any character (the first run showed it, 2 trees failing
-21.4 SR 2). a spelling the copy cannot derive leaves the tree alone and the
+21.4 SR 2); and `Analysis::spell` now takes the derivation with the fewest
+prose leaves, since a refined copy lists its productions in no grammar order
+and `10` under a `@want` copy came out with an `<other digit>` for the `0`
+(`refined_trees_satisfy_the_rules` showed that one). a spelling the copy cannot derive leaves the tree alone and the
 checker reports it. the quick check for this kind of change is the 1 slot
 cover run (`--slots 1 --phase cover --cdrc`, 9 s), which already extracts
 `{ 8 , 0o152 }`-shaped trees.

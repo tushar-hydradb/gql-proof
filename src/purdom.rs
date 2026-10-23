@@ -80,6 +80,10 @@ pub struct Generated {
     pub length: u32,
     /// The CDRC or k-path target a targeted tree was built for; `None` for Purdom's trees.
     pub covers: Option<String>,
+    /// Whether the bound repair re-spelled an upper bound after the search
+    /// (`tree::order_bounds`): the tree then exceeds what the height and length caps
+    /// allowed, by the digits added.
+    pub settled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -193,9 +197,23 @@ impl<'g> Analysis<'g> {
     /// variable after generation).
     pub fn spell(&self, nt: NtId, text: &str) -> Option<Node> {
         let chars: Vec<char> = text.chars().collect();
+        // A prose leaf takes any character, so of the derivations the one with the fewest is
+        // the one that read the text: `10` by two <standard digit>s, not an <other digit> for
+        // the `0` (a refined copy lists its productions in no grammar order).
+        let prose = |n: &Node| -> usize {
+            fn count(cfg: &Cfg, n: &Node) -> usize {
+                let here = match n.sym {
+                    Sym::Lit(l) => usize::from(matches!(cfg.lits[l as usize], Lit::Opaque(_))),
+                    Sym::Nt(_) => 0,
+                };
+                here + n.children.iter().map(|c| count(cfg, c)).sum::<usize>()
+            }
+            count(self.cfg, n)
+        };
         derive(self.cfg, &self.fillable, nt, &chars, 0, 0)
             .into_iter()
-            .find(|(_, end)| *end == chars.len())
+            .filter(|(_, end)| *end == chars.len())
+            .min_by_key(|(node, _)| prose(node))
             .map(|(node, _)| node)
     }
 
@@ -436,7 +454,7 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
             self.slack = cap.map_or(i64::MAX / 2, |c| i64::from(c) - i64::from(shortest));
             let before = self.unused.count_ones(..);
             let mut root = self.expand(start, depth, shortest);
-            self.settle(&mut root);
+            let settled = self.settle(&mut root);
             let new = before - self.unused.count_ones(..);
             // Every round picks up at least one production: the root follows a finite cost
             // within the slack, and nothing before that path can consume its target without
@@ -448,6 +466,7 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
                 new,
                 length,
                 covers: None,
+                settled,
             });
         }
         let uncovered = self.classify(start, &covering, cap);
@@ -555,9 +574,21 @@ impl<'a, 'g, L: LeafProvider> Generator<'a, 'g, L> {
 
     /// What is settled at spelling time, after a tree is built: the order of a general
     /// quantifier's bounds (`tree::order_bounds`).
-    fn settle(&mut self, root: &mut Node) {
+    fn settle(&mut self, root: &mut Node) -> bool {
         let a = self.a;
-        crate::tree::order_bounds(self.cfg, root, &|nt, t| a.spell(nt, t), &mut self.rng);
+        // A copy of the stream: the repair's draws must not shift the choices the search
+        // makes after it, which keep the packed and the short runs on one path.
+        let mut rng = self.rng.clone();
+        let settled = crate::tree::order_bounds(self.cfg, root, &|nt, t| a.spell(nt, t), &mut rng);
+        if settled {
+            // What the repair added is covered by this tree, so the search does not seek it.
+            let mut used = Vec::new();
+            root.prods(&mut used);
+            for p in used {
+                self.mark_used(p);
+            }
+        }
+        settled
     }
 
     fn expand(&mut self, nt: NtId, r: u32, plan: u32) -> Node {

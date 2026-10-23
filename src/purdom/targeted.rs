@@ -475,7 +475,8 @@ impl<L: LeafProvider> Generator<'_, '_, L> {
                 length, cost,
                 "a realized tree has the length its search found"
             );
-            self.settle(&mut root);
+            let settled = self.settle(&mut root);
+            let length = size(cfg, &root);
             let found = coverage::observe(cfg, &root, criteria);
             assert!(found.contains(&t), "a realized tree contains its target");
             seen.extend(found);
@@ -485,6 +486,7 @@ impl<L: LeafProvider> Generator<'_, '_, L> {
                 new: before - self.unused.count_ones(..),
                 length,
                 covers: Some(coverage::describe_target(base, &t)),
+                settled,
             });
         }
 
