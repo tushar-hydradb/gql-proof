@@ -2068,6 +2068,23 @@ impl<'t> Checker<'t> {
                 self.walk(node, env);
                 Ty::Table
             }
+            // 20.1 SR 2, 3 on this tree's derivation: a <value expression primary> that derives
+            // as a graph (binding table) reference value expression has a graph (binding table)
+            // type; an unknown, dynamic or null one passes (4.14.4), as everywhere
+            "graph reference value expression" | "binding table reference value expression" => {
+                let Some(primary) = own(node, "value expression primary") else {
+                    return Ty::Any;
+                };
+                let t = self.ty(primary, env);
+                let (class, rule) = if n == "graph reference value expression" {
+                    (Class::Graph, "20.1 SR 2")
+                } else {
+                    (Class::Table, "20.1 SR 3")
+                };
+                self.expect(primary, &t, &[class], rule);
+                t
+            }
+
             // 11.1 SR 3 a ii, 11.2 SR 4 b ii
             "graph expression" | "binding table expression" => {
                 let (want, rule, ty) = if n == "graph expression" {

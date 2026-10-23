@@ -1,4 +1,5 @@
 use gql_proof::ISO_BNF_XML;
+use gql_proof::MatchModeDefault;
 use gql_proof::bnf;
 use gql_proof::cfg::Cfg;
 use gql_proof::parse::Parser;
@@ -10,25 +11,42 @@ use std::sync::LazyLock;
 static ISO_BNF: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static ISO: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO_BNF));
 
-/// The typing violations of `text`, the same for every tree of it the verifier accepts. Types
-/// are only read on trees whose names are in scope: `TABLE / a` also derives as a division of
-/// two unbound variables.
-fn violations(text: &str) -> Vec<Violation> {
-    violations_in(text, Verifier::new(Grammar::new(&ISO_BNF)).with_scope())
+/// The grammar sentences are parsed with: the ISO grammar refined by the syntax rules, so a
+/// parse of the wrong statement kind (9.1 SR 4-7) is no tree the parser spends its limit on.
+static PARSE: LazyLock<Cfg> = LazyLock::new(|| {
+    let start = ISO.require("GQL-program").unwrap();
+    gql_proof::refine::refine(
+        &ISO,
+        &gql_proof::refine::all_rules(MatchModeDefault::Portable),
+        start,
+    )
+    .unwrap()
+    .cfg
+});
+
+/// Rules stated on one derivation a bare primary can take among others, so they hold on some
+/// trees of a sentence and fail on others (H3): 20.1 SR 2, 3.
+const PER_TREE: &[&str] = &["20.1 SR 2", "20.1 SR 3"];
+
+/// The typing violations of every tree of `text` the verifier accepts.
+fn verdicts(text: &str, verifier: &Verifier) -> Vec<Vec<Violation>> {
+    verdicts_in(&PARSE, text, verifier)
 }
 
-fn violations_in(text: &str, verifier: Verifier) -> Vec<Violation> {
+fn verifier() -> Verifier<'static> {
+    Verifier::new(Grammar::new(&ISO_BNF)).with_scope()
+}
+
+fn verdicts_in(grammar: &Cfg, text: &str, verifier: &Verifier) -> Vec<Vec<Violation>> {
     let tokens = Grammar::new(&ISO_BNF);
-    let parser = Parser::new(&ISO, &tokens, "GQL-program").unwrap();
+    let parser = Parser::new(grammar, &tokens, "GQL-program").unwrap();
     let verdicts = RefCell::new(Vec::new());
     // Accept no tree, so the parser offers every one up to its limit.
     let parsed = parser
         .parse(text, |n| {
-            let plain = n.export(&ISO);
-            if verifier.verify(&plain, &n.render(&ISO)).is_empty() {
-                let mut rules: Vec<_> = types::check(&plain).iter().map(|v| v.rule).collect();
-                rules.sort();
-                verdicts.borrow_mut().push((rules, plain));
+            let plain = n.export(grammar);
+            if verifier.verify(&plain, &n.render(grammar)).is_empty() {
+                verdicts.borrow_mut().push(types::check(&plain));
             }
             false
         })
@@ -39,13 +57,48 @@ fn violations_in(text: &str, verifier: Verifier) -> Vec<Violation> {
         "{text:?}: no tree passes the verifier ({} trees)",
         parsed.trees
     );
-    for (rules, _) in &verdicts[1..] {
+    verdicts
+}
+
+/// The typing violations of `text` but the `PER_TREE` rules, the same for every tree of it the
+/// verifier accepts (the parser offers trees up to a limit, so a tree avoiding a `PER_TREE` rule
+/// need not be among them). Types are only read on trees whose names are in scope: `TABLE / a`
+/// also derives as a division of two unbound variables.
+fn violations(text: &str) -> Vec<Violation> {
+    violations_in(text, Verifier::new(Grammar::new(&ISO_BNF)).with_scope())
+}
+
+fn violations_in(text: &str, verifier: Verifier) -> Vec<Violation> {
+    let all = verdicts(text, &verifier);
+    let rules = |v: &Vec<Violation>| {
+        let mut r: Vec<&str> = v
+            .iter()
+            .map(|v| v.rule)
+            .filter(|r| !PER_TREE.contains(r))
+            .collect();
+        r.sort();
+        r
+    };
+    for v in &all[1..] {
         assert_eq!(
-            rules, &verdicts[0].0,
+            rules(v),
+            rules(&all[0]),
             "{text:?}: the verdict depends on the tree"
         );
     }
-    types::check(&verdicts[0].1)
+    let mut first = all.into_iter().next().unwrap();
+    first.retain(|v| !PER_TREE.contains(&v.rule));
+    first
+}
+
+/// `rule` is reported on some tree of `text` (a `PER_TREE` rule).
+#[track_caller]
+fn bad_on_a_tree(text: &str, rule: &str) {
+    let all = verdicts(text, &Verifier::new(Grammar::new(&ISO_BNF)).with_scope());
+    assert!(
+        all.iter().any(|v| v.iter().any(|v| v.rule == rule)),
+        "{text:?}: expected {rule} on some tree, got {all:#?}"
+    );
 }
 
 #[track_caller]
@@ -183,7 +236,12 @@ fn lists_and_paths() {
     bad("MATCH p = (a) RETURN p || 'a' AS q", "20.13 SR 2");
     // 20.16
     ok("RETURN TRIM([1, 2], 1) AS x");
-    bad("RETURN TRIM([1, 2], 1.5) AS x", "20.16 SR 1");
+    // the refined grammar keeps the count an integer form, so this is a tree of the ISO grammar
+    assert!(
+        verdicts_in(&ISO, "RETURN TRIM([1, 2], 1.5) AS x", &verifier())
+            .iter()
+            .all(|v| v.iter().any(|v| v.rule == "20.16 SR 1"))
+    );
     bad("RETURN TRIM('ab', 1) AS x", "20.15 SR 1");
     ok("MATCH p = (a)-[e]->(b) RETURN ELEMENTS(p) AS x");
     bad("MATCH (a) RETURN ELEMENTS(a) AS x", "20.13 SR 2");
@@ -650,9 +708,9 @@ fn closed_element_types() {
         "MATCH (x) RETURN CAST(x AS (:L {a STRING})).a + 1 AS y",
         "20.21 SR 3",
     );
-    ok("MATCH (x) LET v = CAST(x AS NODE TYPE t (:L {a INT})) RETURN v.a AS y");
+    ok("MATCH (x) LET v = CAST(x AS (:L {a INT})) RETURN v.a AS y");
     bad(
-        "MATCH (x) LET v = CAST(x AS NODE TYPE t (:L {a INT})) RETURN v.b AS y",
+        "MATCH (x) LET v = CAST(x AS (:L {a INT})) RETURN v.b AS y",
         "20.11 SR 3",
     );
     bad(
@@ -864,4 +922,30 @@ fn select_bodies_and_session_values() {
     bad("SESSION SET VALUE $b INT = 'a'", "7.1 SR 6");
     bad("SESSION SET VALUE $b BOOL NOT NULL = NULL", "7.1 SR 6");
     bad("SESSION SET VALUE $b = 1 + TRUE", "20.21 SR 3");
+}
+
+#[test]
+fn reference_value_expressions() {
+    // 20.1 SR 2, 3 on the derivation a tree takes: a primary read as a <graph reference value
+    // expression> has a graph type, as a <binding table reference value expression> a table type
+    bad_on_a_tree("RETURN 1 AS x", "20.1 SR 2");
+    bad_on_a_tree("RETURN 'a' AS x", "20.1 SR 3");
+    bad_on_a_tree("GRAPH g = CURRENT_GRAPH RETURN g AS x", "20.1 SR 3");
+    bad_on_a_tree("FOR x IN [1, 2] RETURN x AS y", "20.1 SR 3");
+    // a graph, an unknown or a dynamic value is no violation of SR 2 on any tree
+    never_on_a_tree("GRAPH g = CURRENT_GRAPH RETURN g AS x", "20.1 SR 2");
+    never_on_a_tree("RETURN $p AS x", "20.1 SR 2");
+    never_on_a_tree("RETURN $p AS x", "20.1 SR 3");
+    never_on_a_tree("MATCH (a) RETURN CAST(a.k AS ANY) AS x", "20.1 SR 2");
+    never_on_a_tree("TABLE t = { RETURN $p AS a } RETURN t AS x", "20.1 SR 3");
+}
+
+/// No tree of `text` reports `rule`.
+#[track_caller]
+fn never_on_a_tree(text: &str, rule: &str) {
+    let all = verdicts(text, &Verifier::new(Grammar::new(&ISO_BNF)).with_scope());
+    assert!(
+        all.iter().all(|v| v.iter().all(|v| v.rule != rule)),
+        "{text:?}: {all:#?}"
+    );
 }
