@@ -19,14 +19,30 @@
 //! Readings where the text leaves room:
 //! - the conformance claim is the minimal one: no GA04 (universal comparison, so comparison
 //!   operands are comparable value types, 22.13-22.14 CR 1) and no GV65 (dynamic union types, so
-//!   CASE, COALESCE, list constructors and list concatenation combine statically, 22.19)
+//!   CASE, COALESCE, list constructors, list concatenation and the columns of a composite query
+//!   combine statically, 22.19, and a dynamic union type in a combination is reported, 22.19 SR
+//!   2: right under GV65's absence, stricter than the text under it)
+//! - the supported property value types (4.3.4) are, by hypothesis H2, the predefined types
+//!   (boolean, string, numeric, temporal) and no others are known to be: a value SET as a
+//!   property, a property type's value type (13.3 SR 3, 18.6-18.7 SR 4) is one of them, not the
+//!   null or the empty type; a cast from the dynamic property value type (20.8 SR 10) reaches
+//!   only what a predefined type casts to; the dynamic property value type holds values of
+//!   non-comparable components (14.2 SR 10 a vii)
+//! - a dynamic union type a cast targets takes only subtypes (20.8 SR 9), and nullability is not
+//!   inferred, so a NOT NULL one takes nothing but is reported
 //! - the null type (4.16.8) is a subtype of every nullable type, so it meets every "shall be"
 //!   requirement on an operand; nullability is not otherwise inferred (4.17.4), only NULL itself
 //!   is kept out of NOT NULL sites (10.3 SR 8, 20.8 SR 5)
-//! - an operand of an unknown, open or dynamic type meets every requirement: 4.14.4 lets the
-//!   implementation cure it with type tests at run time
-//! - a property of a node or edge has the dynamic property value type: with no catalog every
-//!   graph element type is open (20.11 SR 3 b, 20.12 SR 13 a, IW011)
+//! - an operand of an unknown, open or dynamic type meets every requirement of an operator:
+//!   4.14.4 lets the implementation cure it with type tests at run time
+//! - a pattern or insert variable has an open node or edge type (IW011, IW012: with no catalog
+//!   the open type is the one that holds every element), and its property the dynamic property
+//!   value type (20.11 SR 3 b); a closed node or edge type comes from a <value type> (a CAST
+//!   target, a declared type) and is followed through variables, lists, records and
+//!   combinations; where it is not followed (different closed types combined) a property or a
+//!   label of it is reported (20.11 SR 3 a, 16.8 SR 4 b ii)
+//! - a graph's type is not followed, and a binding table's only as a nested query's columns: a
+//!   closed declared type over any other initializer is reported (10.1-10.2 SR 8, 7.1 SR 6 c)
 //! - a datetime or duration operand that is no temporal instant or duration breaks 20.26 GR 1
 //!   and Table 1 at every evaluation, so it is rejected statically; DURATION_BETWEEN's operands
 //!   alike (20.28 SR 3 b already asks them to be essentially comparable)
@@ -49,21 +65,28 @@
 //! - catalog-modifying statements, session commands, a <select statement> with a body, and the
 //!   result of a named procedure call
 //! - ELEMENT_ID (ID076), ELEMENTS' element type (ID005), the element type of an empty list
-//!   (ID004), and closed graph, node and edge types, which only a catalog could interpret
-//! - a <value type> with a union of several components in it: `INT | STRING LIST` derives as a
-//!   union with a list and as a list of a union
-//! - lengths, precisions and maximum cardinalities of string, number and list types
+//!   (ID004), and the graph types a catalog gives
+//! - lengths, precisions and maximum cardinalities of string, number and list types (so a
+//!   subtype of a union's component is read by kind, 20.8 SR 9)
+//!
+//! A <value type> is read on its tree: `INT | STRING LIST` is a union with a list on one and a
+//! list of a union on another (H3).
+
 //! - grouping operations (22.15) and sort keys, whose operands are compared with themselves
 
 use super::{Plain, Violation};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+
 use std::fmt;
 
 /// Declared types, cut down to what the Syntax Rules distinguish.
 #[derive(Debug, Clone, PartialEq)]
 enum Ty {
-    /// Unknown, open or dynamic.
+    /// Unknown: what the environment (a parameter, a catalog object) or an implementation-defined
+    /// choice gives, or what the checker does not model.
     Any,
+    /// A dynamic union type (4.14).
+    Dyn(Union),
     /// The null type.
     Null,
     /// The empty type.
@@ -92,10 +115,43 @@ enum Ty {
     /// A record type, closed with these field types or open.
     Record(Option<Fields>),
     Path,
-    Node,
-    Edge,
+    Node(Elem),
+    Edge(Elem),
     Graph,
     Table,
+}
+
+/// The dynamic union types a declared type can be (4.14.3, 18.9 SR 80-88).
+#[derive(Debug, Clone, PartialEq)]
+enum Union {
+    /// `ANY [VALUE]`, and the type of a property of an open record (20.11 SR 2 b): every value.
+    Open,
+    /// The dynamic property value type (4.3.4, 18.9 SR 82): its components are the supported
+    /// property value types, which hypothesis H2 takes to include the predefined types and
+    /// nothing else is known to (see `scalar`).
+    Property,
+    /// A <component type list> of these types (18.9 SR 84, 87).
+    Closed(Vec<Ty>),
+}
+
+/// The constraining GQL-object type of a node or edge reference value type.
+#[derive(Debug, Clone, PartialEq)]
+enum Elem {
+    /// An open graph element reference value type: a pattern or insert variable (IW011, IW012,
+    /// read as open with no catalog), `NODE`, `EDGE`.
+    Open,
+    /// A closed one specified by a <node type specification> or <edge type specification>.
+    Closed(Shape),
+    /// Closed, or possibly closed, in a way the checker does not follow (a combination of
+    /// different closed types, 22.19 SR 4 n v, IW019): every rule on it is reported.
+    Unfollowed,
+}
+
+/// A node or edge type's label set and property types (18.2, 18.3, 18.4).
+#[derive(Debug, Clone, PartialEq)]
+struct Shape {
+    labels: BTreeSet<String>,
+    props: Fields,
 }
 
 /// Temporal duration unit groups (4.16.6.3).
@@ -128,7 +184,7 @@ enum Class {
 impl Ty {
     fn class(&self) -> Option<Class> {
         Some(match self {
-            Ty::Any | Ty::Null | Ty::Nothing => return None,
+            Ty::Any | Ty::Dyn(_) | Ty::Null | Ty::Nothing => return None,
             Ty::Bool => Class::Bool,
             Ty::Exact { .. } | Ty::Approx | Ty::Number => Class::Numeric,
             Ty::Char => Class::Char,
@@ -140,8 +196,8 @@ impl Ty {
             Ty::List { .. } => Class::List,
             Ty::Record(_) => Class::Record,
             Ty::Path => Class::Path,
-            Ty::Node => Class::Node,
-            Ty::Edge => Class::Edge,
+            Ty::Node(_) => Class::Node,
+            Ty::Edge(_) => Class::Edge,
             Ty::Graph => Class::Graph,
             Ty::Table => Class::Table,
         })
@@ -155,12 +211,48 @@ impl Ty {
     fn is(&self, classes: &[Class]) -> bool {
         self.class().is_none_or(|c| classes.contains(&c))
     }
+
+    /// A predefined value type (18.9: boolean, string, numeric, temporal), the ones hypothesis H2
+    /// takes to be supported property value types.
+    fn scalar(&self) -> bool {
+        matches!(
+            self.class(),
+            Some(
+                Class::Bool
+                    | Class::Numeric
+                    | Class::Char
+                    | Class::Bytes
+                    | Class::Instant
+                    | Class::Duration
+            )
+        )
+    }
+}
+
+impl fmt::Display for Elem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Elem::Open => Ok(()),
+            Elem::Unfollowed => write!(f, " (a closed type not followed)"),
+            Elem::Closed(s) => {
+                let labels: Vec<&str> = s.labels.iter().map(String::as_str).collect();
+                let props: Vec<String> = s.props.iter().map(|(n, t)| format!("{n} {t}")).collect();
+                write!(f, " (:{} {{{}}})", labels.join("&"), props.join(", "))
+            }
+        }
+    }
 }
 
 impl fmt::Display for Ty {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Ty::Any => write!(f, "ANY"),
+            Ty::Any => write!(f, "unknown"),
+            Ty::Dyn(Union::Open) => write!(f, "ANY"),
+            Ty::Dyn(Union::Property) => write!(f, "ANY PROPERTY VALUE"),
+            Ty::Dyn(Union::Closed(cs)) => {
+                let cs: Vec<String> = cs.iter().map(Ty::to_string).collect();
+                write!(f, "ANY<{}>", cs.join(" | "))
+            }
             Ty::Null => write!(f, "NULL"),
             Ty::Nothing => write!(f, "NOTHING"),
             Ty::Bool => write!(f, "BOOLEAN"),
@@ -187,8 +279,8 @@ impl fmt::Display for Ty {
                 write!(f, "RECORD {{{}}}", fields.join(", "))
             }
             Ty::Path => write!(f, "PATH"),
-            Ty::Node => write!(f, "NODE"),
-            Ty::Edge => write!(f, "EDGE"),
+            Ty::Node(e) => write!(f, "NODE{e}"),
+            Ty::Edge(e) => write!(f, "EDGE{e}"),
             Ty::Graph => write!(f, "GRAPH"),
             Ty::Table => write!(f, "BINDING TABLE"),
         }
@@ -231,25 +323,43 @@ fn comparable(a: &Ty, b: &Ty) -> bool {
     }
 }
 
+/// Why a static combination fails.
+enum Apart {
+    /// SR 2: an input is a dynamic union type.
+    Dynamic(Ty),
+    /// SR 4: the inputs have no combination.
+    Apart,
+}
+
 /// 22.19 without GV65 (22.18 SR 2): the static combination of `types`, if there is one.
-fn combine(types: &[Ty]) -> Option<Ty> {
+///
+/// SR 5 (the material variant when every input is material) is not inferred: every type the
+/// checker computes stands for its nullable variant, and no rule here is read as needing a
+/// material operand, so the nullable result is the stricter one.
+fn combine(types: &[Ty]) -> Result<Ty, Apart> {
     let material: Vec<&Ty> = types
         .iter()
         .filter(|t| !matches!(t, Ty::Null | Ty::Nothing))
         .collect();
+    // SR 2, read strictly: with GV65 (22.18 SR 3-5) a dynamic input is combined generally, but
+    // the checker claims no feature, and without GV65 22.18 SR 2 applies 22.19 to every input
+    if let Some(d) = material.iter().find(|t| matches!(t, Ty::Dyn(_))) {
+        return Err(Apart::Dynamic((*d).clone()));
+    }
     let Some(&first) = material.first() else {
         // SR 4 a
-        return Some(Ty::Null);
+        return Ok(Ty::Null);
     };
     if material.contains(&&Ty::Any) {
-        return Some(Ty::Any);
+        return Ok(Ty::Any);
     }
+    let apart = Err(Apart::Apart);
     let all = |c: Class| material.iter().all(|t| t.class() == Some(c));
     let any = |t: &Ty| material.contains(&t);
-    let class = first.class()?;
+    let class = first.class().ok_or(Apart::Apart)?;
     match class {
         // SR 4 d
-        Class::Numeric if all(class) => Some(if any(&Ty::Approx) {
+        Class::Numeric if all(class) => Ok(if any(&Ty::Approx) {
             Ty::Approx
         } else if any(&Ty::Number) {
             Ty::Number
@@ -263,19 +373,21 @@ fn combine(types: &[Ty]) -> Option<Ty> {
             let datetime = |t: &&Ty| matches!(t, Ty::LocalDatetime | Ty::ZonedDatetime);
             let time = |t: &&Ty| matches!(t, Ty::LocalTime | Ty::ZonedTime);
             if material.iter().all(datetime) {
-                Some(if any(&Ty::ZonedDatetime) {
+                Ok(if any(&Ty::ZonedDatetime) {
                     Ty::ZonedDatetime
                 } else {
                     Ty::LocalDatetime
                 })
             } else if material.iter().all(time) {
-                Some(if any(&Ty::ZonedTime) {
+                Ok(if any(&Ty::ZonedTime) {
                     Ty::ZonedTime
                 } else {
                     Ty::LocalTime
                 })
+            } else if material.iter().all(|t| **t == Ty::Date) {
+                Ok(Ty::Date)
             } else {
-                material.iter().all(|t| **t == Ty::Date).then_some(Ty::Date)
+                apart
             }
         }
         // SR 4 h-i
@@ -284,12 +396,12 @@ fn combine(types: &[Ty]) -> Option<Ty> {
             for t in &material {
                 if let Ty::Duration(Some(u)) = t {
                     if unit.is_some_and(|x| x != *u) {
-                        return None;
+                        return apart;
                     }
                     unit = Some(*u);
                 }
             }
-            Some(Ty::Duration(unit))
+            Ok(Ty::Duration(unit))
         }
         // SR 4 k
         Class::List if all(class) => {
@@ -301,7 +413,7 @@ fn combine(types: &[Ty]) -> Option<Ty> {
                     group &= g;
                 }
             }
-            Some(Ty::List {
+            Ok(Ty::List {
                 elem: Box::new(combine(&elems)?),
                 group,
             })
@@ -312,31 +424,78 @@ fn combine(types: &[Ty]) -> Option<Ty> {
             for t in &material {
                 match t {
                     Ty::Record(Some(fields)) => closed.push(fields),
-                    _ => return None,
+                    _ => return apart,
                 }
             }
             if closed.iter().any(|f| f.keys().ne(closed[0].keys())) {
-                return None;
+                return apart;
             }
             let mut out = Fields::new();
             for n in closed[0].keys() {
                 let types: Vec<Ty> = closed.iter().map(|f| f[n].clone()).collect();
                 out.insert(n.clone(), combine(&types)?);
             }
-            Some(Ty::Record(Some(out)))
+            Ok(Ty::Record(Some(out)))
+        }
+        // SR 4 n v: a supertype of every input of the base type, chosen by IW019. A supertype of
+        // an open type is open; of one closed type, that type is read; of different closed
+        // types, it is not followed
+        Class::Node | Class::Edge if all(class) => {
+            let elems: Vec<&Elem> = material
+                .iter()
+                .filter_map(|t| match t {
+                    Ty::Node(e) | Ty::Edge(e) => Some(e),
+                    _ => None,
+                })
+                .collect();
+            let elem = if elems.contains(&&Elem::Open) {
+                Elem::Open
+            } else if elems.iter().all(|e| *e == elems[0]) {
+                elems[0].clone()
+            } else {
+                Elem::Unfollowed
+            };
+            Ok(match class {
+                Class::Node => Ty::Node(elem),
+                _ => Ty::Edge(elem),
+            })
         }
         // SR 4 b, c, j, l, n
-        _ => all(class).then(|| first.clone()),
+        _ if all(class) => Ok(first.clone()),
+        _ => apart,
     }
 }
 
 /// Assignability of a value of `src` to a site of `tgt` (3.9.6, 4.14-4.16, 4.17.3).
 fn assignable(src: &Ty, tgt: &Declared) -> bool {
     match (src, &tgt.ty) {
-        (Ty::Any | Ty::Nothing, _) | (_, Ty::Any) => true,
+        // a dynamic source: 4.14.4 lets the implementation test the value at run time
+        (Ty::Any | Ty::Dyn(_) | Ty::Nothing, _) | (_, Ty::Any) => true,
         // 4.16.8: the null value only goes to a nullable site
         (Ty::Null, _) => tgt.nullable,
         (_, Ty::Null | Ty::Nothing) => false,
+        // 4.14.3: a value goes to a dynamic union site when it goes to one of its components
+        (_, Ty::Dyn(Union::Open)) => true,
+        (s, Ty::Dyn(Union::Property)) => s.scalar(),
+        (s, Ty::Dyn(Union::Closed(cs))) => cs.iter().any(|c| {
+            assignable(
+                s,
+                &Declared {
+                    ty: c.clone(),
+                    nullable: true,
+                },
+            )
+        }),
+        // 4.16.7: the referent's type is the constraining type; an open or unknown source is not
+        // known to be of a closed one
+        (Ty::Node(s) | Ty::Edge(s), Ty::Node(t) | Ty::Edge(t)) if src.class() == tgt.ty.class() => {
+            match t {
+                Elem::Open => true,
+                Elem::Closed(_) => s == t,
+                Elem::Unfollowed => false,
+            }
+        }
+
         // 4.15.3
         (
             Ty::List { elem, group },
@@ -405,7 +564,7 @@ enum CastClass {
 
 fn cast_class(t: &Ty) -> CastClass {
     match t {
-        Ty::Any | Ty::Null | Ty::Nothing => CastClass::Dy,
+        Ty::Any | Ty::Dyn(_) | Ty::Null | Ty::Nothing => CastClass::Dy,
         Ty::Bool => CastClass::Bo,
         Ty::Exact { .. } | Ty::Approx | Ty::Number => CastClass::Numeric,
         Ty::Char => CastClass::C,
@@ -418,21 +577,92 @@ fn cast_class(t: &Ty) -> CastClass {
         Ty::Record(_) => CastClass::R,
         Ty::Path => CastClass::P,
         Ty::Graph => CastClass::Gr,
-        Ty::Node => CastClass::Nr,
-        Ty::Edge => CastClass::Er,
+        Ty::Node(_) => CastClass::Nr,
+        Ty::Edge(_) => CastClass::Er,
         Ty::Table => CastClass::Tr,
     }
 }
 
-/// 20.8 SR 8-12: Table 4, with the "M" entries resolved by SR 9-12.
-fn castable(sd: &Ty, td: &Ty) -> bool {
+/// The predefined types standing for the dynamic property value type's components in a cast
+/// from it (20.8 SR 10): hypothesis H2 takes the supported property value types to include the
+/// predefined types; no other type is known to be one.
+const PROPERTY_COMPONENTS: &[Ty] = &[
+    Ty::Bool,
+    Ty::Exact { int: false },
+    Ty::Approx,
+    Ty::Char,
+    Ty::Bytes,
+    Ty::Date,
+    Ty::LocalTime,
+    Ty::LocalDatetime,
+    Ty::Duration(None),
+];
+
+/// 20.8 SR 9: every value of `s` is a value of the dynamic union type `u` (nullability aside):
+/// `s` is a subtype of one of its components, or a union of such.
+fn within(s: &Ty, u: &Union) -> bool {
+    match (s, u) {
+        (_, Union::Open) | (Ty::Null | Ty::Nothing, _) => true,
+        (Ty::Dyn(Union::Property), Union::Property) => true,
+        (Ty::Dyn(Union::Closed(ss)), _) => ss.iter().all(|c| within(c, u)),
+        // unknown, or a union with components the target may lack
+        (Ty::Any | Ty::Dyn(_), _) => false,
+        (s, Union::Property) => s.scalar(),
+        (s, Union::Closed(cs)) => cs.iter().any(|c| subtype(s, c)),
+    }
+}
+
+/// `s` is a subtype of `t` (4.12, 4.14-4.16), nullability aside; lengths and precisions are
+/// not modelled (the module's documented gap), so types of one kind are read as one type.
+fn subtype(s: &Ty, t: &Ty) -> bool {
+    match (s, t) {
+        (Ty::Null | Ty::Nothing, _) => true,
+        (_, Ty::Dyn(u)) => within(s, u),
+        (Ty::Any | Ty::Dyn(_), _) => false,
+        (
+            Ty::List { elem, group },
+            Ty::List {
+                elem: te,
+                group: tg,
+            },
+        ) => group == tg && subtype(elem, te),
+        (Ty::Record(_), Ty::Record(None)) => true,
+        (Ty::Record(Some(a)), Ty::Record(Some(b))) => {
+            a.keys().eq(b.keys()) && a.iter().all(|(n, at)| subtype(at, &b[n]))
+        }
+        (Ty::Node(_), Ty::Node(Elem::Open)) | (Ty::Edge(_), Ty::Edge(Elem::Open)) => true,
+        (Ty::Node(Elem::Unfollowed), _) | (Ty::Edge(Elem::Unfollowed), _) => false,
+        _ => s == t,
+    }
+}
+
+/// 20.8 SR 8-12: the rule a cast from `sd` to `td` breaks, if any, by Table 4 with the "M"
+/// entries resolved by SR 9-12. Nullability is the caller's (SR 5, SR 9).
+fn cast_fault(sd: &Ty, td: &Ty) -> Option<&'static str> {
     use CastClass::*;
+    match (sd, td) {
+        // SR 9
+        (_, Ty::Dyn(u)) => return (!within(sd, u)).then_some("20.8 SR 9"),
+        // SR 10: a component of the source casts to the target
+        (Ty::Dyn(u), _) => {
+            let some = match u {
+                // 4.14.3: a largest supertype of every static base type
+                Union::Open => true,
+                Union::Property => PROPERTY_COMPONENTS
+                    .iter()
+                    .any(|c| cast_fault(c, td).is_none()),
+                Union::Closed(cs) => cs.iter().any(|c| cast_fault(c, td).is_none()),
+            };
+            return (!some).then_some("20.8 SR 10");
+        }
+        _ => {}
+    }
     let (s, t) = (cast_class(sd), cast_class(td));
     if s == Dy || t == Dy {
-        // SR 9 (the open dynamic union type includes every type), SR 10 (left to run time)
-        return true;
+        // an unknown operand (the environment's, H1), or an immaterial one (SR 4, 5)
+        return None;
     }
-    match s {
+    let ok = match s {
         Numeric => matches!(t, Numeric | C),
         C => matches!(t, Numeric | C | D | T | Dt | Du | Bo),
         D => matches!(t, C | D | Dt),
@@ -450,14 +680,29 @@ fn castable(sd: &Ty, td: &Ty) -> bool {
                     elem: te,
                     group: tg,
                 },
-            ) => (*group || !tg) && castable(elem, te),
+            ) => {
+                if !*group && *tg {
+                    return Some("20.8 SR 8");
+                }
+                return cast_fault(elem, te);
+            }
             _ => false,
         },
         R => match (sd, td) {
             // SR 12
-            (Ty::Record(Some(s)), Ty::Record(Some(t))) => t
-                .iter()
-                .all(|(n, tt)| s.get(n).is_some_and(|st| castable(st, tt))),
+            (Ty::Record(Some(s)), Ty::Record(Some(t))) => {
+                for (n, tt) in t {
+                    match s.get(n) {
+                        Some(st) => {
+                            if let Some(rule) = cast_fault(st, tt) {
+                                return Some(rule);
+                            }
+                        }
+                        None => return Some("20.8 SR 8"),
+                    }
+                }
+                true
+            }
             _ => t == R,
         },
         P => t == P,
@@ -466,7 +711,8 @@ fn castable(sd: &Ty, td: &Ty) -> bool {
         Er => matches!(t, P | Er),
         Tr => matches!(t, P | Tr),
         Dy => true,
-    }
+    };
+    (!ok).then_some("20.8 SR 8")
 }
 
 /// What an expression sees.
@@ -508,6 +754,7 @@ pub fn check(tree: &Plain) -> Vec<Violation> {
     };
     checker.parents(tree);
     checker.root(tree);
+    checker.value_types(tree);
     checker.out
 }
 
@@ -549,6 +796,63 @@ impl<'t> Checker<'t> {
         });
     }
 
+    /// The rules on a <value type> wherever it is, a session command or a graph type
+    /// included: 18.9 SR 68, 88; 18.6 SR 4, 18.7 SR 4.
+    fn value_types(&mut self, node: &'t Plain) {
+        match name(node) {
+            // SR 68
+            Some("list value type")
+                if own(node, "list value type name")
+                    .is_some_and(|n| kids(n).iter().any(|k| keyword(k, "GROUP"))) =>
+            {
+                if let Some(vt) = own(node, "value type")
+                    && !element_reference(vt)
+                {
+                    self.report(
+                        vt,
+                        "18.9 SR 68",
+                        format!("a group list of {}", value_type(vt).ty),
+                    );
+                }
+            }
+            // SR 88, nullability by SR 4, 85-86
+            Some("component type list") => {
+                let comps = owns(node, "component type");
+                let material: Vec<bool> = comps.iter().map(|c| known_not_null(c)).collect();
+                if material.iter().any(|m| *m) && material.iter().any(|m| !m) {
+                    self.report(
+                        node,
+                        "18.9 SR 88",
+                        "some components are known not nullable and some possibly nullable".into(),
+                    );
+                }
+            }
+            // 18.6 SR 4, 18.7 SR 4. Reading: H2 takes the predefined types to be supported
+            // property value types and no others; the immaterial types are not (4.3.4)
+            Some("property value type") => {
+                let t = value_type(node).ty;
+                if !t.scalar() {
+                    let why = if matches!(t, Ty::Null | Ty::Nothing) {
+                        format!("{t} is an immaterial value type")
+                    } else {
+                        format!("(reading) {t} is not known to be a supported property value type")
+                    };
+                    self.report(node, "18.7 SR 4", why.clone());
+                    let at = self
+                        .parent
+                        .get(&(node as *const Plain))
+                        .copied()
+                        .unwrap_or(node);
+                    self.report(at, "18.6 SR 4", why);
+                }
+            }
+            _ => {}
+        }
+        for k in kids(node) {
+            self.value_types(k);
+        }
+    }
+
     /// Report unless `t` is one of `classes`.
     fn expect(&mut self, at: &Plain, t: &Ty, classes: &[Class], rule: &'static str) {
         if !t.is(classes) {
@@ -566,8 +870,124 @@ impl<'t> Checker<'t> {
             Some("procedure body") => {
                 self.body(node, Scope::default());
             }
+            // 7.1 SR 6 c: a typed graph or binding table session parameter; the other session
+            // commands are unmodelled
+            Some("session set graph parameter clause") => {
+                if let Some(otgi) = own(node, "opt typed graph initializer") {
+                    self.graph_initializer(otgi, &Env::default(), "7.1 SR 6");
+                }
+            }
+            Some("session set binding table parameter clause") => {
+                if let Some(otbti) = own(node, "opt typed binding table initializer")
+                    && own(otbti, "binding table reference value type").is_some()
+                {
+                    self.table_initializer(otbti, &Env::default(), "7.1 SR 6");
+                }
+            }
+            // 7.1 SR 6 c iii 3 A I: the initializer of a typed value parameter is assignable
+            Some("session set value parameter clause") => {
+                let Some(otvi) = own(node, "opt typed value initializer") else {
+                    return;
+                };
+                let env = Env::default();
+                let Some(ve) =
+                    own(otvi, "value initializer").and_then(|vi| own(vi, "value expression"))
+                else {
+                    return;
+                };
+                let t = self.ty(ve, &env);
+                if let Some(vt) = own(otvi, "value type") {
+                    let declared = value_type(vt);
+                    if !assignable(&t, &declared) {
+                        self.report(
+                            node,
+                            "7.1 SR 6",
+                            format!("{t} is not assignable to {declared}"),
+                        );
+                    }
+                }
+            }
+            Some("session activity" | "session set command" | "session set parameter clause") => {
+                kids(node).into_iter().for_each(|k| self.root(k))
+            }
             Some(n) if n.starts_with("session") => {}
             _ => kids(node).into_iter().for_each(|k| self.root(k)),
+        }
+    }
+
+    /// 10.1 SR 8 b i 1, 7.1 SR 6 c i 3 A I: the initializer's graph type is assignable to a
+    /// declared graph reference value type. An open one (`ANY GRAPH`) takes every graph; the
+    /// checker follows no graph's type, so a closed one is reported (reading).
+    fn graph_initializer(&mut self, otgi: &'t Plain, env: &Env, rule: &'static str) {
+        self.walk(otgi, env);
+        let Some(grvt) = own(otgi, "graph reference value type") else {
+            return;
+        };
+        if contains(grvt, "closed graph reference value type") {
+            self.report(
+                grvt,
+                rule,
+                "(reading) the initializer's graph type is not followed, so it is not known to be assignable to a closed graph reference value type".into(),
+            );
+        }
+    }
+
+    /// 10.2 SR 8 b i 1, 7.1 SR 6 c ii 3 A I: the initializer's binding table type is assignable
+    /// to the declared binding table reference value type: when the initializer is a nested
+    /// query whose columns are known, column name-equal and each column assignable; otherwise
+    /// not followed and reported (reading).
+    fn table_initializer(&mut self, otbti: &'t Plain, env: &Env, rule: &'static str) {
+        let bte = own(otbti, "binding table initializer")
+            .and_then(|bti| own(bti, "binding table expression"));
+        let cols = match bte {
+            Some(bte) => match own(bte, "nested binding table query specification")
+                .and_then(|n| first(n, "procedure body"))
+            {
+                Some(pb) => self.body(
+                    pb,
+                    Scope {
+                        record: env.vars.clone(),
+                        table: Fields::new(),
+                    },
+                ),
+                None => {
+                    self.ty(bte, env);
+                    None
+                }
+            },
+            None => None,
+        };
+        let Some(btrvt) = own(otbti, "binding table reference value type") else {
+            return;
+        };
+        let declared = table_fields(btrvt);
+        match cols {
+            None => self.report(
+                btrvt,
+                rule,
+                "(reading) the initializer's binding table type is not followed, so it is not known to be assignable to the declared one".into(),
+            ),
+            Some(cols) => {
+                if !cols.keys().eq(declared.keys()) {
+                    let have: Vec<&String> = cols.keys().collect();
+                    let want: Vec<&String> = declared.keys().collect();
+                    self.report(
+                        btrvt,
+                        rule,
+                        format!("columns {have:?} are not the declared columns {want:?}"),
+                    );
+                    return;
+                }
+                for (n, d) in &declared {
+                    if !assignable(&cols[n], d) {
+                        self.report(
+                            btrvt,
+                            rule,
+                            format!("column {n} of type {} is not assignable to {d}", cols[n]),
+                        );
+                    }
+                }
+            }
         }
     }
 
@@ -585,11 +1005,21 @@ impl<'t> Checker<'t> {
                 let env = Env::new(record.clone());
                 let bound = match name(def) {
                     Some("graph variable definition") => {
-                        self.walk(def, &env);
+                        match own(def, "opt typed graph initializer") {
+                            Some(otgi) => self.graph_initializer(otgi, &env, "10.1 SR 8"),
+                            None => self.walk(def, &env),
+                        }
                         own(def, "binding variable").map(|bv| (bv.text(), Ty::Graph))
                     }
                     Some("binding table variable definition") => {
-                        self.walk(def, &env);
+                        match own(def, "opt typed binding table initializer") {
+                            Some(otbti)
+                                if own(otbti, "binding table reference value type").is_some() =>
+                            {
+                                self.table_initializer(otbti, &env, "10.2 SR 8")
+                            }
+                            _ => self.walk(def, &env),
+                        }
                         own(def, "binding variable").map(|bv| (bv.text(), Ty::Table))
                     }
                     _ => self.value_definition(def, &env),
@@ -646,18 +1076,88 @@ impl<'t> Checker<'t> {
         }
     }
 
-    /// 14.2: every operand sees the same scope; the result is read off the first.
+    /// 14.2: every operand sees the same scope (SR 8-9, 10 a ii-iii); with a query conjunction
+    /// the result is the combined columns (SR 10 a vi, 4.13.3).
     fn composite(&mut self, cqe: &'t Plain, scope: Scope) -> Option<Fields> {
-        let mut operands = Vec::new();
-        conjuncts(cqe, &mut operands);
-        let mut first = None;
-        for (i, op) in operands.into_iter().enumerate() {
-            let result = self.linear(op, scope.clone());
-            if i == 0 {
-                first = result;
+        let primary =
+            own(cqe, "composite query primary").and_then(|p| own(p, "linear query statement"));
+        let Some(qc) = own(cqe, "query conjunction") else {
+            return primary.and_then(|lqs| self.linear(lqs, scope));
+        };
+        let left = own(cqe, "composite query expression")
+            .and_then(|inner| self.composite(inner, scope.clone()));
+        let right = primary.and_then(|lqs| self.linear(lqs, scope));
+        let (Some(left), Some(right)) = (left, right) else {
+            return None;
+        };
+        // SR 1: DISTINCT is implicit; SR 10 a vii: every set operator but UNION ALL
+        let distinct = own(qc, "set operator").is_some_and(|so| {
+            !(kids(so).iter().any(|k| keyword(k, "UNION"))
+                && own(so, "set quantifier").is_some_and(|q| contains_kw(q, "ALL")))
+        });
+        let mut cols = Fields::new();
+        for (n, lt) in &left {
+            // column name-equality is `scope`'s (14.2 SR 10)
+            let Some(rt) = right.get(n) else {
+                continue;
+            };
+            // SR 10 a v: column-combinable is field type-combinable (4.10.3, 4.15.4): the
+            // column types are comparable and have a combination (22.18)
+            if !comparable(lt, rt) {
+                self.report(
+                    qc,
+                    "14.2 SR 10",
+                    format!("column {n}: {lt} and {rt} are not comparable"),
+                );
             }
+            let t = match combine(&[lt.clone(), rt.clone()]) {
+                Ok(t) => t,
+                Err(Apart::Dynamic(d)) => {
+                    self.report(
+                        qc,
+                        "22.19 SR 2",
+                        format!(
+                            "(reading, without GV65) 14.2 SR 10: column {n} has the dynamic union type {d}"
+                        ),
+                    );
+                    Ty::Any
+                }
+                Err(Apart::Apart) => {
+                    self.report(
+                        qc,
+                        "14.2 SR 10",
+                        format!("column {n}: {lt} and {rt} do not combine"),
+                    );
+                    Ty::Any
+                }
+            };
+            // SR 10 a vii 1: no column of a union type with two non-comparable components; a
+            // dynamic operand column makes the combined column dynamic (22.18 SR 3-5)
+            if distinct {
+                for t in [lt, rt] {
+                    if let Ty::Dyn(u) = t
+                        && !match u {
+                            Union::Closed(cs) => {
+                                cs.iter().all(|a| cs.iter().all(|b| comparable(a, b)))
+                            }
+                            // H2: the predefined types include non-comparable ones
+                            Union::Open | Union::Property => false,
+                        }
+                    {
+                        self.report(
+                            qc,
+                            "14.2 SR 10",
+                            format!(
+                                "column {n} has the dynamic union type {t}, with non-comparable components, under {}",
+                                qc.text()
+                            ),
+                        );
+                    }
+                }
+            }
+            cols.insert(n.clone(), t);
         }
-        first
+        Some(cols)
     }
 
     /// 14.3 and 13.1: the statements of a linear statement, left to right.
@@ -690,6 +1190,10 @@ impl<'t> Checker<'t> {
             Some("for statement") => self.for_statement(node, scope),
             Some("call procedure statement") => self.call(node, scope),
             Some("insert statement") => self.insert(node, scope),
+            Some("set statement") => {
+                self.set_statement(node, &Env::new(scope.merged()));
+                scope
+            }
             // 14.6, 14.9, 13.3-13.5: the scope passes through
             _ => {
                 self.walk(node, &Env::new(scope.merged()));
@@ -906,6 +1410,69 @@ impl<'t> Checker<'t> {
         scope
     }
 
+    /// 13.3 SR 3 a iv, b iii 2: a value set as a property has a supported property value type.
+    /// Reading: H2 takes the predefined types to be supported property value types and no
+    /// others; the null type and the empty type are not (4.3.4: material); an unknown or a
+    /// dynamic value is tested at run time (4.14.4). And SR 3 a v, b iii 3: a property of a
+    /// closed type names one of its property types.
+    fn set_statement(&mut self, ss: &'t Plain, env: &Env) {
+        let mut items = Vec::new();
+        find_any(
+            ss,
+            &["set property item", "set all properties item"],
+            &mut items,
+        );
+        for item in items {
+            let bt = own(item, "binding variable reference").map(|b| self.ty(b, env));
+            let mut pairs: Vec<(String, &'t Plain)> = Vec::new();
+            if name(item) == Some("set property item") {
+                if let Some(ve) = own(item, "value expression") {
+                    pairs.push((
+                        own(item, "property name").map(ident).unwrap_or_default(),
+                        ve,
+                    ));
+                }
+            } else {
+                let mut kvs = Vec::new();
+                find(item, "property key value pair", &mut kvs);
+                for kv in kvs {
+                    if let Some(ve) = own(kv, "value expression") {
+                        pairs.push((own(kv, "property name").map(ident).unwrap_or_default(), ve));
+                    }
+                }
+            }
+            for (pn, ve) in pairs {
+                let t = if null_literal(ve) {
+                    Ty::Null
+                } else {
+                    self.ty(ve, env)
+                };
+                if !(t.scalar() || matches!(t, Ty::Any | Ty::Dyn(_))) {
+                    self.report(
+                        ve,
+                        "13.3 SR 3",
+                        format!(
+                            "(reading) {pn} is set to {t}, not a supported property value type"
+                        ),
+                    );
+                }
+                match &bt {
+                    Some(Ty::Node(Elem::Closed(s)) | Ty::Edge(Elem::Closed(s)))
+                        if !s.props.contains_key(&pn) =>
+                    {
+                        self.report(item, "13.3 SR 3", format!("no property type {pn}"));
+                    }
+                    Some(Ty::Node(Elem::Unfollowed) | Ty::Edge(Elem::Unfollowed)) => self.report(
+                        item,
+                        "13.3 SR 3",
+                        format!("(reading) whether {pn} is a property type is not known"),
+                    ),
+                    _ => {}
+                }
+            }
+        }
+    }
+
     /// 13.2: an insert pattern binds its new element variables.
     fn insert(&mut self, is: &'t Plain, mut scope: Scope) -> Scope {
         let incoming = scope.merged();
@@ -923,8 +1490,8 @@ impl<'t> Checker<'t> {
                 continue;
             };
             let t = match name(p) {
-                Some("insert edge pattern") => Ty::Edge,
-                _ => Ty::Node,
+                Some("insert edge pattern") => Ty::Edge(Elem::Open),
+                _ => Ty::Node(Elem::Open),
             };
             if !incoming.contains_key(&bv.text()) {
                 scope.table.insert(bv.text(), t);
@@ -936,11 +1503,35 @@ impl<'t> Checker<'t> {
     /// 14.12 SR 27 a: without a body a SELECT is a RETURN of its items; with one it is
     /// unmodelled.
     fn select(&mut self, sel: &'t Plain, scope: &Scope) -> Option<Fields> {
-        let env = Env::new(scope.merged());
-        if own(sel, "select statement body").is_some() {
-            return None;
+        // 14.12 SR 27 b-c: a body is a USE and MATCH, or a nested query, ahead of the items
+        let mut scope = scope.clone();
+        if let Some(body) = own(sel, "select statement body") {
+            if let Some(list) = own(body, "select graph match list") {
+                for gm in owns(list, "select graph match") {
+                    if let Some(ge) = own(gm, "graph expression") {
+                        self.ty(ge, &Env::new(scope.record.clone()));
+                    }
+                    if let Some(ms) = own(gm, "match statement") {
+                        scope = self.match_statement(ms, scope);
+                    }
+                }
+            } else if let Some(qs) = own(body, "select query specification") {
+                if let Some(ge) = own(qs, "graph expression") {
+                    self.ty(ge, &Env::new(scope.record.clone()));
+                }
+                let cols = own(qs, "nested query specification")
+                    .and_then(|n| first(n, "procedure body"))
+                    .and_then(|pb| self.body(pb, scope.clone()));
+                if let Some(cols) = cols {
+                    scope.table.extend(cols);
+                }
+            }
         }
+        let env = Env::new(scope.merged());
         let mut cols = Fields::new();
+        if own(sel, "asterisk").is_some() {
+            cols = scope.table.clone();
+        }
         for item in own(sel, "select item list")
             .map(|l| owns(l, "select item"))
             .unwrap_or_default()
@@ -956,7 +1547,7 @@ impl<'t> Checker<'t> {
                 cols.insert(n, t);
             }
         }
-        self.walk_except(sel, &env, &["select item list"]);
+        self.walk_except(sel, &env, &["select item list", "select statement body"]);
         Some(cols)
     }
 
@@ -987,6 +1578,33 @@ impl<'t> Checker<'t> {
             }
             if let Some(gbc) = own(body, "group by clause") {
                 self.walk(gbc, &env);
+                // 14.11 SR 10 a ii as Cor 1 has it: no item is both grouping (its alias is a
+                // grouping element) and aggregating
+                let mut refs = Vec::new();
+                find(gbc, "binding variable reference", &mut refs);
+                let grouping: Vec<String> = refs.into_iter().map(Plain::text).collect();
+                for item in own(body, "return item list")
+                    .map(|l| owns(l, "return item"))
+                    .unwrap_or_default()
+                {
+                    let Some(ave) = own(item, "aggregating value expression") else {
+                        continue;
+                    };
+                    let alias = own(item, "return item alias")
+                        .and_then(|a| own(a, "identifier"))
+                        .map(ident)
+                        .or_else(|| bare(ave));
+                    if let Some(n) = alias
+                        && grouping.contains(&n)
+                        && directly(ave, "aggregate function")
+                    {
+                        self.report(
+                            item,
+                            "14.11 SR 10",
+                            format!("{n} is both a grouping and an aggregating item"),
+                        );
+                    }
+                }
             }
         }
         if let Some(ops) = own(prs, "order by and page statement") {
@@ -1170,7 +1788,10 @@ impl<'t> Checker<'t> {
             }
             "labeled predicate" | "property_exists predicate" => {
                 for evr in owns(node, "element variable reference") {
-                    self.element(evr, env, ELEMENT, "16.10 SR 3");
+                    let t = self.element(evr, env, ELEMENT, "16.10 SR 3");
+                    if let Some(part) = own(node, "labeled predicate part 2") {
+                        self.labels(part, &t);
+                    }
                 }
                 Ty::Bool
             }
@@ -1647,8 +2268,18 @@ impl<'t> Checker<'t> {
     /// 22.18 applied for `rule`: the combination, or a report and the unknown type.
     fn combined(&mut self, at: &Plain, types: &[Ty], rule: &'static str) -> Ty {
         match combine(types) {
-            Some(t) => t,
-            None => {
+            Ok(t) => t,
+            Err(Apart::Dynamic(d)) => {
+                self.report(
+                    at,
+                    "22.19 SR 2",
+                    format!(
+                        "(reading, without GV65) {rule}: {d} is a dynamic union type in a static combination"
+                    ),
+                );
+                Ty::Any
+            }
+            Err(Apart::Apart) => {
                 let names: Vec<String> = types.iter().map(Ty::to_string).collect();
                 self.report(
                     at,
@@ -1709,7 +2340,14 @@ impl<'t> Checker<'t> {
         let operands = owns(ca, "value expression");
         let types: Vec<Ty> = operands.iter().map(|o| self.ty(o, env)).collect();
         if kids(ca).first().is_some_and(|k| keyword(k, "NULLIF")) {
-            // CASE WHEN V1 = V2 THEN NULL ELSE V1 END
+            // CASE WHEN V1 = V2 THEN NULL ELSE V1 END: 20.7 SR 3 when V1 is NULL
+            if operands.first().is_some_and(|v| null_literal(v)) {
+                self.report(
+                    ca,
+                    "20.7 SR 3",
+                    "NULLIF of NULL: every <result> is NULL".into(),
+                );
+            }
             if types.len() == 2 && !comparable(&types[0], &types[1]) {
                 self.report(
                     ca,
@@ -1718,6 +2356,17 @@ impl<'t> Checker<'t> {
                 );
             }
             return types.into_iter().next().unwrap_or(Ty::Any);
+        }
+        // COALESCE (.., Vn-1, Vn) ends in CASE WHEN NOT Vn-1 IS NULL THEN Vn-1 ELSE Vn END
+        if let [.., a, b] = operands.as_slice()
+            && null_literal(a)
+            && null_literal(b)
+        {
+            self.report(
+                ca,
+                "20.7 SR 3",
+                "COALESCE ending in two NULLs: every <result> of its last CASE is NULL".into(),
+            );
         }
         self.combined(ca, &types, "20.7 SR 5")
     }
@@ -1774,7 +2423,10 @@ impl<'t> Checker<'t> {
             Some("directed predicate part 2") => {
                 self.case_element(co, ct, &[Class::Edge], "19.8 SR 3")
             }
-            Some("labeled predicate part 2") => self.case_element(co, ct, ELEMENT, "16.10 SR 3"),
+            Some("labeled predicate part 2") => {
+                self.case_element(co, ct, ELEMENT, "16.10 SR 3");
+                self.labels(inner, ct);
+            }
             Some("source predicate part 2" | "destination predicate part 2") => {
                 self.case_element(co, ct, &[Class::Node], "19.10 SR 2");
                 if let Some(er) = first(inner, "edge reference") {
@@ -1782,6 +2434,34 @@ impl<'t> Checker<'t> {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// 16.8 SR 4 b ii: the labels a <labeled predicate part 2> names on a value of type `t` are
+    /// labels of its constraining type when that is closed.
+    fn labels(&mut self, part: &Plain, t: &Ty) {
+        let elem = match t {
+            Ty::Node(e) | Ty::Edge(e) => e,
+            Ty::List { elem, group: true } => match &**elem {
+                Ty::Node(e) | Ty::Edge(e) => e,
+                _ => return,
+            },
+            _ => return,
+        };
+        let mut names = Vec::new();
+        find(part, "label name", &mut names);
+        for n in names {
+            let label = ident(n);
+            match elem {
+                Elem::Open => {}
+                Elem::Closed(shape) if shape.labels.contains(&label) => {}
+                Elem::Closed(_) => self.report(n, "16.8 SR 4", format!("{t} has no label {label}")),
+                Elem::Unfollowed => self.report(
+                    n,
+                    "16.8 SR 4",
+                    format!("(reading) whether {t} has label {label} is not known"),
+                ),
+            }
         }
     }
 
@@ -1825,8 +2505,32 @@ impl<'t> Checker<'t> {
             if !td.nullable {
                 self.report(cs, "20.8 SR 5", format!("NULL cast to {td}"));
             }
-        } else if !castable(&sd, &td.ty) {
-            self.report(cs, "20.8 SR 8", format!("no cast from {sd} to {td}"));
+            return td.ty;
+        }
+        if matches!(td.ty, Ty::Dyn(_)) && !td.nullable {
+            // SR 9 with nullability (4.17.4.2): a material union has only material subtypes, and
+            // a declared type is nullable unless a rule says otherwise (4.17.4.3), which the
+            // checker does not infer
+            self.report(
+                cs,
+                "20.8 SR 9",
+                format!("(reading) {sd} is not known to be material, cast to {td}"),
+            );
+        }
+        match cast_fault(&sd, &td.ty) {
+            Some(rule @ "20.8 SR 9") => self.report(
+                cs,
+                rule,
+                format!("{sd} is not known to be a subtype of {td}"),
+            ),
+
+            Some(rule @ "20.8 SR 10") => self.report(
+                cs,
+                rule,
+                format!("no component of {sd} casts to {td} (reading: H2 takes only the predefined types to be supported property value types)"),
+            ),
+            Some(rule) => self.report(cs, rule, format!("no cast from {sd} to {td}")),
+            None => {}
         }
         td.ty
     }
@@ -1913,8 +2617,33 @@ impl<'t> Checker<'t> {
                     Ty::Any
                 }
             },
-            // SR 2 b, SR 3 b: open types give a dynamic type
-            Ty::Record(None) | Ty::Node | Ty::Edge => Ty::Any,
+            // SR 2 b: the open dynamic union type
+            Ty::Record(None) => Ty::Dyn(Union::Open),
+            // SR 3 b: the dynamic property value type
+            Ty::Node(Elem::Open) | Ty::Edge(Elem::Open) => Ty::Dyn(Union::Property),
+            // SR 3 a
+            Ty::Node(Elem::Closed(shape)) | Ty::Edge(Elem::Closed(shape)) => {
+                match shape.props.get(&pn) {
+                    Some(t) => t.clone(),
+                    None => {
+                        self.report(pr, "20.11 SR 3", format!("{psd} has no property type {pn}"));
+                        Ty::Any
+                    }
+                }
+            }
+            Ty::Node(Elem::Unfollowed) | Ty::Edge(Elem::Unfollowed) => {
+                self.report(
+                    pr,
+                    "20.11 SR 3",
+                    format!(
+                        "(reading) {pn} of {psd}: whether it names a property type is not known"
+                    ),
+                );
+                Ty::Any
+            }
+            // a property of a dynamic value: dynamic (4.14.4)
+            Ty::Dyn(_) => Ty::Dyn(Union::Open),
+
             // 21.2 SR 67: a bare NULL takes its type from a context that fixes one; a property
             // source fixes none of node, edge or record
             Ty::Null => {
@@ -2080,18 +2809,9 @@ fn duration_unit(node: &Plain) -> Option<Unit> {
     })
 }
 
-/// 18.9: the value type a <value type> (or a <cast target>) specifies.
+/// 18.9: the value type a <value type> (or a <cast target>) specifies, on this tree (`A | B
+/// LIST` is a union with a list on one tree and a list of a union on another, H3).
 fn value_type(node: &Plain) -> Declared {
-    // reading: `A | B LIST` is a union with a list and a list of a union alike, so a type with a
-    // union of several components in it is unmodelled
-    let mut unions = Vec::new();
-    find(node, "component type list", &mut unions);
-    if unions.iter().any(|u| owns(u, "component type").len() > 1) {
-        return Declared {
-            ty: Ty::Any,
-            nullable: true,
-        };
-    }
     let nullable = !not_null(node);
     let ty = match name(node) {
         Some("boolean type") => Ty::Bool,
@@ -2124,8 +2844,18 @@ fn value_type(node: &Plain) -> Declared {
         Some("empty type") => Ty::Nothing,
         Some("open graph reference value type" | "closed graph reference value type") => Ty::Graph,
         Some("binding table reference value type") => Ty::Table,
-        Some("open node reference value type" | "closed node reference value type") => Ty::Node,
-        Some("open edge reference value type" | "closed edge reference value type") => Ty::Edge,
+        Some("open node reference value type") => Ty::Node(Elem::Open),
+        Some("open edge reference value type") => Ty::Edge(Elem::Open),
+        Some("closed node reference value type") => {
+            Ty::Node(Elem::Closed(shape(node, "node type filler")))
+        }
+        Some("closed edge reference value type") => {
+            Ty::Edge(Elem::Closed(shape(node, "edge type filler")))
+        }
+        // SR 80, 83
+        Some("open dynamic union type") => Ty::Dyn(Union::Open),
+        // SR 82
+        Some("dynamic property value type") => Ty::Dyn(Union::Property),
         Some("path value type") => Ty::Path,
         Some("list value type") => Ty::List {
             elem: Box::new(own(node, "value type").map_or(Ty::Any, |v| value_type(v).ty)),
@@ -2146,16 +2876,20 @@ fn value_type(node: &Plain) -> Declared {
             }
             None => Ty::Record(None),
         },
-        // 4.14.3: a union of one component type is that type; others are unmodelled
+        // SR 84-87; 4.14.3: a union of one component type is that type
         Some("closed dynamic union type") => {
             let mut comps = Vec::new();
             if let Some(list) = own(node, "component type list") {
                 comps = owns(list, "component type");
             }
-            match comps.as_slice() {
-                [only] => return value_type(only),
-                _ => Ty::Any,
+            if let [only] = comps.as_slice() {
+                return value_type(only);
             }
+            let comps: Vec<Declared> = comps.into_iter().map(value_type).collect();
+            return Declared {
+                nullable: comps.iter().any(|c| c.nullable),
+                ty: Ty::Dyn(Union::Closed(comps.into_iter().map(|c| c.ty).collect())),
+            };
         }
         _ => match kids(node).as_slice() {
             [only @ Plain::Def { .. }] => return value_type(only),
@@ -2164,6 +2898,144 @@ fn value_type(node: &Plain) -> Declared {
     };
     let nullable = nullable && ty != Ty::Nothing;
     Declared { ty, nullable }
+}
+
+/// The label set and property types of the node or edge type a <node type specification> or
+/// <edge type specification> specifies: the labels and property types of its own `filler`
+/// (an edge's endpoints have fillers of their own kind).
+fn shape(node: &Plain, filler: &str) -> Shape {
+    let mut labels = BTreeSet::new();
+    let mut props = Fields::new();
+    if let Some(f) = first(node, filler) {
+        let mut names = Vec::new();
+        find_outside(f, "label name", "property types specification", &mut names);
+        labels = names.into_iter().map(ident).collect();
+        let mut types = Vec::new();
+        find(f, "property type", &mut types);
+        // the outermost first: a property type's own value type may hold property types
+        let mut seen: Vec<&Plain> = Vec::new();
+        for pt in types {
+            if seen.iter().any(|o| first_ptr(o, pt)) {
+                continue;
+            }
+            seen.push(pt);
+            let n = own(pt, "property name").map(ident).unwrap_or_default();
+            let t = own(pt, "property value type").map_or(Ty::Any, |v| value_type(v).ty);
+            props.insert(n, t);
+        }
+    }
+    Shape { labels, props }
+}
+
+/// `inner` is a node of `outer`'s subtree other than `outer`.
+fn first_ptr(outer: &Plain, inner: &Plain) -> bool {
+    kids(outer)
+        .into_iter()
+        .any(|k| std::ptr::eq(k, inner) || first_ptr(k, inner))
+}
+
+/// Every `<want>` in `node` that is not inside a `<fence>`.
+fn find_outside<'t>(node: &'t Plain, want: &str, fence: &str, out: &mut Vec<&'t Plain>) {
+    if let Plain::Def { name, children, .. } = node {
+        if name == want {
+            out.push(node);
+        }
+        if name != fence {
+            children
+                .iter()
+                .for_each(|c| find_outside(c, want, fence, out));
+        }
+    }
+}
+
+/// The columns a <binding table reference value type> declares (18.9, 18.10).
+fn table_fields(btrvt: &Plain) -> BTreeMap<String, Declared> {
+    let mut out = BTreeMap::new();
+    if let Some(spec) = first(btrvt, "field types specification") {
+        let mut items = Vec::new();
+        find(spec, "field type", &mut items);
+        let mut seen: Vec<&Plain> = Vec::new();
+        for f in items {
+            if seen.iter().any(|o| first_ptr(o, f)) {
+                continue;
+            }
+            seen.push(f);
+            let fname = own(f, "field name").map(ident).unwrap_or_default();
+            let d = own(f, "value type").map_or(
+                Declared {
+                    ty: Ty::Any,
+                    nullable: true,
+                },
+                value_type,
+            );
+            out.insert(fname, d);
+        }
+    }
+    out
+}
+
+/// A <value type> that specifies a node or an edge reference value type (18.9 SR 68): one that
+/// derives as one, not a union of them.
+fn element_reference(vt: &Plain) -> bool {
+    let mut at = vt;
+    loop {
+        match name(at) {
+            Some("node reference value type" | "edge reference value type") => return true,
+            Some("dynamic union type") => return false,
+            _ => {}
+        }
+        match kids(at)
+            .into_iter()
+            .filter(|k| matches!(k, Plain::Def { .. }))
+            .collect::<Vec<_>>()
+            .as_slice()
+        {
+            [only] => at = only,
+            _ => return false,
+        }
+    }
+}
+
+/// 18.9 SR 4, 85, 86: a <value type> (or <component type>) specifies known not nullable.
+fn known_not_null(vt: &Plain) -> bool {
+    let mut at = vt;
+    loop {
+        match name(at) {
+            Some("closed dynamic union type") => {
+                return own(at, "component type list")
+                    .is_some_and(|l| owns(l, "component type").iter().all(|c| known_not_null(c)));
+            }
+            Some("empty type") => return true,
+            _ => {}
+        }
+        match kids(at)
+            .into_iter()
+            .filter(|k| matches!(k, Plain::Def { .. }))
+            .collect::<Vec<_>>()
+            .as_slice()
+        {
+            [only] if !matches!(name(only), Some("not null")) => at = only,
+            _ => return not_null(at),
+        }
+    }
+}
+
+/// `node` holds a `<want>` outside any nested <procedure body>.
+fn directly(node: &Plain, want: &str) -> bool {
+    match node {
+        Plain::Def { name, .. } if name == want => true,
+        Plain::Def { name, .. } if name == "procedure body" => false,
+        Plain::Def { children, .. } => children.iter().any(|c| directly(c, want)),
+        _ => false,
+    }
+}
+
+fn contains_kw(node: &Plain, kw: &str) -> bool {
+    match node {
+        Plain::Kw(_) => keyword(node, kw),
+        Plain::Def { children, .. } => children.iter().any(|c| contains_kw(c, kw)),
+        _ => false,
+    }
 }
 
 /// A <not null> that belongs to this type, not to a type inside it.
@@ -2194,12 +3066,12 @@ fn pattern_vars(node: &Plain, kind: Option<Ty>, group: bool, out: &mut Fields) {
     match name(node) {
         Some("node pattern") => {
             for k in kids(node) {
-                pattern_vars(k, Some(Ty::Node), group, out);
+                pattern_vars(k, Some(Ty::Node(Elem::Open)), group, out);
             }
         }
         Some("edge pattern") => {
             for k in kids(node) {
-                pattern_vars(k, Some(Ty::Edge), group, out);
+                pattern_vars(k, Some(Ty::Edge(Elem::Open)), group, out);
             }
         }
         Some("quantified path primary") => {
@@ -2512,15 +3384,4 @@ fn unwrap(mut node: &Plain) -> &Plain {
         }
     }
     node
-}
-
-/// The <linear query statement>s of a composite query expression, left to right.
-fn conjuncts<'t>(cqe: &'t Plain, out: &mut Vec<&'t Plain>) {
-    for k in kids(cqe) {
-        match name(k) {
-            Some("composite query expression") => conjuncts(k, out),
-            Some("composite query primary") => out.extend(own(k, "linear query statement")),
-            _ => {}
-        }
-    }
 }
