@@ -655,6 +655,48 @@ fn syntax_rules<'t>(
             "upper bound" if bound_value(node) == 0 => {
                 out.push(violation(&path, "16.11 SR 3", "an upper bound of 0".into()));
             }
+            // 20.24 SR 3 b i 1 (byte strings by the reading in `refine::TrimOperands`): FROM
+            // in a TRIM follows a specification or a trim string.
+            "trim operands" | "byte string trim operands" => {
+                let from = flat(children)
+                    .iter()
+                    .any(|c| matches!(c, Plain::Kw(k) if k.eq_ignore_ascii_case("FROM")));
+                let has = ["trim specification", "trim character string", "trim byte string"]
+                    .iter()
+                    .any(|w| own(node, w).is_some());
+                if from && !has {
+                    out.push(violation(
+                        &path,
+                        "20.24 SR 3",
+                        "FROM with neither a trim specification nor a trim string".into(),
+                    ));
+                }
+            }
+            // 21.3 SR 4: a delimited identifier is not empty.
+            "delimited identifier" => {
+                if !contains(node, "double quoted character representation")
+                    && !contains(node, "accent quoted character representation")
+                {
+                    out.push(violation(
+                        &path,
+                        "21.3 SR 4",
+                        "an empty delimited identifier".into(),
+                    ));
+                }
+            }
+            // 16.11 SR 3 a ii: the lower bound is at most the upper.
+            "general quantifier" => {
+                if let Some(l) = own(node, "lower bound")
+                    && let Some(u) = own(node, "upper bound")
+                    && bound_value(u) < bound_value(l)
+                {
+                    out.push(violation(
+                        &path,
+                        "16.11 SR 3 a ii",
+                        "the upper bound is below the lower".into(),
+                    ));
+                }
+            }
             "simplified negation"
                 if complex(node) || contains(node, "simplified direction override") =>
             {
@@ -1115,13 +1157,14 @@ fn lower_bound(q: Option<&Plain>) -> u64 {
     }
 }
 
-/// The value of the <unsigned integer> under a bound: decimal, or 0x, 0o, 0b prefixed,
-/// underscores skipped; a non-ASCII digit counts as 1, a missing integer as 0.
+/// The value of the <unsigned integer> under a bound, a missing integer as 0.
 fn bound_value(node: &Plain) -> u64 {
-    let Some(n) = own(node, "unsigned integer") else {
-        return 0;
-    };
-    let text = n.text();
+    own(node, "unsigned integer").map_or(0, |n| unsigned_integer_value(&n.text()))
+}
+
+/// The value an <unsigned integer> spells: decimal, or 0x, 0o, 0b prefixed, underscores
+/// skipped; a non-ASCII digit counts as 1 (a reading: the generator spells U+0663).
+pub fn unsigned_integer_value(text: &str) -> u64 {
     let lower = text.to_ascii_lowercase();
     let (digits, radix): (&str, u32) = match lower.as_bytes() {
         [b'0', b'x', ..] => (&lower[2..], 16),

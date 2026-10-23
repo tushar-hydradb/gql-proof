@@ -15,8 +15,10 @@ use std::sync::LazyLock;
 static ISO: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static BASE: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO));
 
-const RULES: [&str; 13] = [
+const RULES: [&str; 15] = [
     "16.4 SR 14",
+    "20.24 SR 3",
+    "21.3 SR 4",
     "16.4 SR 6",
     "13.1 SR 5",
     "16.7 SR 8",
@@ -608,7 +610,13 @@ proptest! {
         }
         for tree in generate(&refined.cfg, refined.start, seed, max_depth) {
             let rendered = verifier.render(&tree);
-            let violations = verifier.verify(&tree, &rendered);
+            // The order of a general quantifier's bounds is settled at spelling time
+            // (`extract::order_bounds`), which this generator does not run.
+            let violations: Vec<_> = verifier
+                .verify(&tree, &rendered)
+                .into_iter()
+                .filter(|v| v.rule != "16.11 SR 3 a ii")
+                .collect();
             prop_assert!(violations.is_empty(), "{:?}", violations);
         }
     }
@@ -1010,6 +1018,207 @@ fn a_selective_pattern_stands_alone_under_different_edges() {
     );
     expect(
         &graph_pattern(Some("DIFFERENT"), vec![plain(), plain()], None),
+        PORTABLE,
+        None,
+    );
+}
+
+// --- 16.11 SR 3 a ii: the order of the bounds is settled at spelling time, not in the grammar
+
+/// The automaton knows zero or nonzero, so it accepts `{ 8 , 2 }`; the checker reads the
+/// values and reports it. `order_bounds` keeps the two apart in a generated set.
+#[test]
+fn an_upper_bound_below_the_lower_is_the_checkers_alone() {
+    let out_of_order = one(bare_pattern(factor(quantified(general(
+        Some(&["8"]),
+        Some(&["2"]),
+    )))));
+    let (automaton, broken) = verdicts(&out_of_order, PORTABLE);
+    assert!(automaton, "the automaton does not read values");
+    assert!(broken.is_empty(), "the rules compiled into the grammar: {broken:?}");
+    let verifier = Verifier::new(Grammar::new(&ISO)).with_syntax_rules(PORTABLE);
+    let reported: Vec<&str> = verifier
+        .verify(&out_of_order, &verifier.render(&out_of_order))
+        .iter()
+        .map(|v| v.rule)
+        .filter(|r| *r != "ISO BNF")
+        .collect();
+    assert_eq!(reported, ["16.11 SR 3 a ii"]);
+    expect(
+        &one(bare_pattern(factor(quantified(general(
+            Some(&["2"]),
+            Some(&["8"]),
+        ))))),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &one(bare_pattern(factor(quantified(general(
+            Some(&["8"]),
+            Some(&["8"]),
+        ))))),
+        PORTABLE,
+        None,
+    );
+}
+
+#[test]
+fn a_raised_bound_keeps_its_digits_and_radix() {
+    use gql_proof::context::extract::raised_bound;
+    use gql_proof::verify::unsigned_integer_value;
+    use rand::SeedableRng;
+    let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(7);
+    for (text, lower) in [
+        ("0o2", 8),
+        ("0b1", 8),
+        ("0xA", 11),
+        ("2", 8),
+        ("0o_2", 8),
+        ("8_08", 900),
+        ("0b1", 300),
+        ("08", 10),
+    ] {
+        for _ in 0..8 {
+            let raised = raised_bound(text, lower, &mut rng);
+            let value = unsigned_integer_value(&raised);
+            assert!(value >= lower, "{text} under {lower} became {raised} ({value})");
+            let digits = text.trim_start_matches("0x").trim_start_matches("0o").trim_start_matches("0b");
+            assert!(raised.ends_with(digits), "{text} under {lower} became {raised}");
+            assert_eq!(&raised[..text.len() - digits.len()], &text[..text.len() - digits.len()]);
+            if lower <= 255 {
+                assert!(value <= 255, "{text} under {lower} became {raised} ({value})");
+            }
+        }
+    }
+    assert_eq!(unsigned_integer_value(&raised_bound("0o2", 8, &mut rng)) % 8, 2);
+}
+
+// --- 20.24 SR 3: TRIM's FROM follows a specification or a trim string ----------------------
+
+fn trim(parts: Vec<Plain>) -> Plain {
+    d("trim operands", parts)
+}
+
+fn trim_source() -> Plain {
+    d("trim source", vec![])
+}
+
+#[test]
+fn a_bare_from_in_trim_is_refused() {
+    expect(&trim(vec![kw("FROM"), trim_source()]), PORTABLE, Some("20.24 SR 3"));
+    expect(
+        &trim(vec![
+            d("trim specification", vec![kw("BOTH")]),
+            kw("FROM"),
+            trim_source(),
+        ]),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &trim(vec![
+            d("trim character string", vec![]),
+            kw("FROM"),
+            trim_source(),
+        ]),
+        PORTABLE,
+        None,
+    );
+    expect(
+        &trim(vec![
+            d("trim specification", vec![kw("LEADING")]),
+            d("trim character string", vec![]),
+            kw("FROM"),
+            trim_source(),
+        ]),
+        PORTABLE,
+        None,
+    );
+    expect(&trim(vec![trim_source()]), PORTABLE, None);
+    expect(
+        &d(
+            "byte string trim operands",
+            vec![kw("FROM"), d("byte string trim source", vec![])],
+        ),
+        PORTABLE,
+        Some("20.24 SR 3"),
+    );
+    expect(
+        &d(
+            "byte string trim operands",
+            vec![
+                d("trim byte string", vec![]),
+                kw("FROM"),
+                d("byte string trim source", vec![]),
+            ],
+        ),
+        PORTABLE,
+        None,
+    );
+    // BTRIM(x, y): a trim string with no FROM, which must not leak upwards.
+    expect(
+        &d(
+            "multi-character trim function",
+            vec![
+                kw("BTRIM"),
+                Plain::Term("(".into()),
+                trim_source(),
+                Plain::Term(",".into()),
+                d("trim character string", vec![]),
+                Plain::Term(")".into()),
+            ],
+        ),
+        PORTABLE,
+        None,
+    );
+}
+
+// --- 21.3 SR 4: a delimited identifier is not empty -----------------------------------------
+
+fn quoted(accent: bool, characters: usize) -> Plain {
+    let (quote, seq, unbroken, rep) = if accent {
+        (
+            "grave accent",
+            "accent quoted character sequence",
+            "unbroken accent quoted character sequence",
+            "accent quoted character representation",
+        )
+    } else {
+        (
+            "double quote",
+            "double quoted character sequence",
+            "unbroken double quoted character sequence",
+            "double quoted character representation",
+        )
+    };
+    let mark = || d(quote, vec![Plain::Term(if accent { "`" } else { "\"" }.into())]);
+    let mut inner = vec![mark()];
+    for _ in 0..characters {
+        inner.push(d(
+            rep,
+            vec![Plain::Leaf {
+                def: "character representation".into(),
+                text: "x".into(),
+            }],
+        ));
+    }
+    inner.push(mark());
+    d(seq, vec![d(unbroken, inner)])
+}
+
+fn delimited(accent: bool, characters: usize) -> Plain {
+    d("delimited identifier", vec![quoted(accent, characters)])
+}
+
+#[test]
+fn an_empty_delimited_identifier_is_refused() {
+    expect(&delimited(false, 0), PORTABLE, Some("21.3 SR 4"));
+    expect(&delimited(true, 0), PORTABLE, Some("21.3 SR 4"));
+    expect(&delimited(false, 1), PORTABLE, None);
+    expect(&delimited(true, 2), PORTABLE, None);
+    // `""` is the empty string literal, the same sequence under another definition.
+    expect(
+        &d("character string literal", vec![quoted(false, 0)]),
         PORTABLE,
         None,
     );

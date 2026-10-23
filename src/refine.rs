@@ -157,6 +157,8 @@ pub fn all_rules(id086: MatchModeDefault) -> Vec<Box<dyn Rule>> {
         Box::new(PathMinimums),
         Box::new(SimplifiedShape),
         Box::new(SelectiveAlone { id086 }),
+        Box::new(TrimOperands),
+        Box::new(DelimitedNotEmpty),
     ]
 }
 
@@ -695,6 +697,99 @@ impl Rule for SimplifiedShape {
             return None;
         }
         Some(s)
+    }
+}
+
+/// 20.24 SR 3 b i 1: FROM in a single-character TRIM needs a <trim specification> or a <trim
+/// character string> before it.
+///
+/// Reading: 20.25 has no twin for <byte string trim operands>, but its General Rule 2 b reads
+/// the <trim byte string> as if present, so a bare FROM is refused there too.
+pub struct TrimOperands;
+
+/// Synthesized: a trim specification or trim string below, up to the operands.
+const TRIMMING: Fact = 23;
+const TRIM_OPERANDS: [&str; 2] = ["trim operands", "byte string trim operands"];
+
+impl Rule for TrimOperands {
+    fn name(&self) -> &str {
+        "TRIM's FROM follows a specification or a trim string"
+    }
+
+    fn cite(&self) -> &str {
+        "20.24 SR 3: a single-character trim function with FROM has a <trim specification> or a <trim character string> (byte strings alike)"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(TRIMMING, "trimming")])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn step(&self, node: &Node, _inh: &State, _children: &[State], s: State) -> Option<State> {
+        let owner = node.def.split('/').next().unwrap_or(node.def);
+        match node.def {
+            "trim specification" | "trim character string" | "trim byte string" => {
+                return Some(s.with(TRIMMING));
+            }
+            // BTRIM(x, y): a trim string with no FROM.
+            "multi-character trim function" => return Some(s.without(TRIMMING)),
+            _ => {}
+        }
+        if TRIM_OPERANDS.contains(&owner) {
+            let from = node.items.iter().any(|i| *i == Item::Token("FROM"));
+            if from && !s.has(TRIMMING) {
+                return None;
+            }
+            if !node.group {
+                return Some(s.without(TRIMMING));
+            }
+        }
+        Some(s)
+    }
+}
+
+/// 21.3 SR 4: a <delimited identifier> is not the zero-length string: `""` and ` `` ` are
+/// refused (the empty alternative of the optional inside the accent quotes has no valid
+/// witness, so its targets are never covered). `""` as a <character string literal> is the
+/// same <double quoted character sequence> and stays.
+pub struct DelimitedNotEmpty;
+
+/// Synthesized: a character representation below, up to the quoted sequence.
+const QUOTED: Fact = 31;
+
+impl Rule for DelimitedNotEmpty {
+    fn name(&self) -> &str {
+        "delimited identifier not empty"
+    }
+
+    fn cite(&self) -> &str {
+        "21.3 SR 4: the representative form of a <delimited identifier> is not the zero-length character string"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(QUOTED, "quoted")])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn step(&self, node: &Node, _inh: &State, _children: &[State], s: State) -> Option<State> {
+        match node.def {
+            "double quoted character representation" | "accent quoted character representation" => {
+                Some(s.with(QUOTED))
+            }
+            // The sequences are shared with <character string literal>, where `""` is the
+            // empty string: the fact is judged at the identifier and dropped at the literal.
+            "delimited identifier" => {
+                if s.has(QUOTED) { Some(s.without(QUOTED)) } else { None }
+            }
+            "character string literal" => Some(s.without(QUOTED)),
+            _ => Some(s),
+        }
     }
 }
 
