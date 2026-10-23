@@ -69,11 +69,13 @@ multiset alternation to union, SR 12 element where to parenthesized where, SR
   pattern whose witness is its only match on `G(q)`, which the construction
   checks and otherwise reports (theorem 2 lifts this)
 
-and whose other statements are `FINISH`, `RETURN` of variables (with `AS`,
-`DISTINCT`, `GROUP BY` of variables), `NEXT`, `FILTER` of the same core
-predicates, `ORDER BY` of variables, `LIMIT`/`OFFSET`/`SKIP` with literals. the
-graph plays no part in a `q` without a `MATCH`: `G(q)` is empty, and `q_r` is
-the business of the expression evaluator, not this note
+and whose statements, walked in order through `NEXT`, are `MATCH` (above),
+`FILTER` of the same core predicates (a requirement made true on the witness,
+14.6), `RETURN` of variables (with `AS`, `DISTINCT`, `GROUP BY`; the record is
+renamed to the columns, 14.11), `ORDER BY` (keeps the row), `LIMIT n` with
+`n > 0`, and `FINISH` last. `OFFSET`/`SKIP` and `LIMIT 0` may drop the row and
+leave the core. the graph plays no part in a `q` without a `MATCH`: `G(q)` is
+empty, and `q_r` is the business of the expression evaluator, not this note
 
 everything else (a where clause with an arbitrary expression, a `LET`, a
 `CALL`, `EXISTS` in a predicate, aggregates, `OPTIONAL`, data modification) is
@@ -89,18 +91,22 @@ pattern core is where the sentences are. `gql-proof oracle` on that set
 
 | tier | sentences |
 | --- | --- |
-| witness (theorem 1) | 1,667 |
-| status only | 2,140 |
-| unsatisfiable on every graph | 1 |
+| witness (theorem 1) | 1,695 |
+| of which no graph matches | 8 |
+| status only | 2,105 |
 
 out of the core by reason, a sentence counted once per reason: no `MATCH` at
-the top level 1,673; more than one statement (`NEXT`) 690; a statement that is
-not `MATCH` (`VALUE`, `FILTER`, `ORDER BY` alone) 610; a selective prefix 203;
-a where clause that is a bare value 107; a return item that is an expression
-83; a property value that is not a test literal 28; a quantifier bound over
-64, 21; `OPTIONAL` 6; the rest under 5 each. the `NEXT` family is the next
-lever: `MATCH ... RETURN x NEXT FILTER <core predicate>` is the pattern core
-plus one relational step
+the top level 1,673; a return item that is an expression 685; a statement that
+is not `MATCH` or a core `FILTER` (`VALUE`, `LET`, `ORDER BY` alone, `CALL`)
+349; a selective prefix 203; `EXISTS` in a where clause 195; a where clause
+that is a bare value 112; `OR`/`XOR` in a where clause 36; a property value
+that is not a test literal 28; a null predicate not on a property 22; a
+comparison that is not property = literal 15; `OPTIONAL` 12; a composite query
+11; a quantifier bound over 64, 21; the rest under 10 each. the two big
+families left are the expression evaluator's (`RETURN <expression>`, 685) and
+`EXISTS` (195: a nested pattern that is true on the witness graph exactly when
+its own witness is a subgraph; the construction applies, the plumbing is not
+done)
 
 ## the construction
 
@@ -326,13 +332,18 @@ open. the record is what generation knew; nothing is recomputed from the text
 
 `oracle` reads `vars` when the file carries it and checks the kind it gives
 every pattern variable against what the witness bound (`check_vars`): on the
-1-slot set, 0 disagreements over 1,262 variables. the cached 2-variable sets
-predate the field; a regeneration with it is in progress and goes beside them
+1-slot set 0 disagreements over 1,262 variables, on the 2-variable set
+(`sentences/typed-2vars-turbolay-claim-vars.jsonl`, regenerated at 202c76d
+with the field, 1,287 rows naming a variable) 0 over the 246 witness records
+that bind one. the earlier cached sets predate the field
 
 ## what is built on this branch
 
 - `src/oracle.rs`: the ir, the label expression models, `W`, the record, the
-  three emitters, and the tier tagging
+  three emitters, and the tier tagging; `tests/oracle.rs` pins the
+  construction on 15 sentence shapes (merges, self loops, unsatisfiable
+  labels and modes, directions, quantifiers, unions, simplified patterns,
+  paths, chains, the record check)
 - `gql-proof oracle <sentences.jsonl>`: parses each sentence with the iso
   grammar, applies the 16.7 transformations, runs `W`, and writes one json
   line per sentence: `sentence`, `graph`, `setup` (`gql`, `cypher`,
@@ -348,10 +359,36 @@ predate the field; a regeneration with it is in progress and goes beside them
   not cypher's `<--`; the 10 are `MATCH ( ) FINISH` shapes. so neo4j is no
   target for the typed set without a gql to cypher rendering, which is out of
   scope; the runner stays for the day one exists
-- **turbolay** (`just turbolay-oracle`, the #243 worktree): the first run,
-  before observation queries, had every witness record that ran agree (1,054,
-  all `FINISH` completions), 1,015 refused in turbolay's known gaps, 0
-  disagreements. the run with observation queries is below
+- **turbolay** (`just turbolay-oracle`, the #243 worktree 484d1a72): the first
+  run, before observation queries, had every witness record that ran agree
+  (1,054, all `FINISH` completions), 1,015 refused in turbolay's known gaps, 0
+  disagreements. with observation queries and chains:
+
+  | verdict | records |
+  | --- | --- |
+  | agree, the witness row among the rows or no rows as expected | 1,337 |
+  | disagree | 3 |
+  | refused (turbolay's parse and planning gaps, `breakdown.py`'s buckets) | 1,013 |
+  | failed at run time (all of the status tier: `PATH [ ... ]`, casts, dates) | 25 |
+  | unjudged (status tier, run for the outcome only) | 1,405 |
+
+  two earlier disagreements were ours (a delimited identifier with a doubled
+  delimiter, ```` is the name made of one backtick, was not unescaped; fixed,
+  with a test). the three left are one finding:
+
+  ```
+  MATCH ( x ) RETURN x NEXT FILTER x : ! % FINISH
+  MATCH ( x ) RETURN x NEXT FILTER x : ! ( % ) FINISH
+  MATCH ( x ) RETURN x NEXT FILTER x IS NOT LABELED % FINISH
+  ```
+
+  on a graph with one labelled node turbolay returns the row. by 22.5 SR 2 b
+  a wildcard is satisfied by every non-empty label set, and by 2 d its
+  negation by none, so the table is empty on every graph (NOTE 399 says every
+  label set is non-empty in this edition). turbolay agrees with that reading
+  for `x : % & ! %` (no row), so its negated wildcard alone is the odd one
+  out: a labeled predicate bug, to file against turbolay with these three
+  sentences and the graph `( n0 :L0 { _id : 0 } )`
 
 ## open
 

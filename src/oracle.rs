@@ -1692,10 +1692,12 @@ fn edge_kind(ep: &Plain) -> (EdgeKind, Option<&Plain>) {
 
 /// The oracle record of a sentence from its tree and its generation record (`vars`, as the
 /// context command exports it: per variable the kinds and class its labels gave it; absent
-/// for sets cached before the export): every top level `MATCH` frozen in order into one
-/// graph, then what the rest of the query lets us claim. The kinds `vars` gives the pattern
-/// variables are checked against what the witness bound: a disagreement is reported, so
-/// the generator's record and the oracle's reading of the tree keep each other honest.
+/// for sets cached before the export): the statements of the top level block walked in
+/// order, every `MATCH` frozen into one graph, every `FILTER` of core predicates made true
+/// on it, every `RETURN` of variables renaming the record, then what the last statement
+/// lets us claim. The kinds `vars` gives the pattern variables are checked against what the
+/// witness bound: a disagreement is reported, so the generator's record and the oracle's
+/// reading of the tree keep each other honest.
 pub fn oracle(
     sentence: &str,
     tree: &Plain,
@@ -1703,26 +1705,31 @@ pub fn oracle(
     mode_default: MatchModeDefault,
 ) -> Oracle {
     let mut b = Builder::new(mode_default);
-    // Top level simple match statements, in order; one under an EXISTS, a nested query or
-    // an OPTIONAL is a different scope and out of the core.
-    let mut matches = Vec::new();
-    top_level_matches(tree, &mut matches, &mut b);
-    for m in &matches {
-        if let Some(gp) = child(m, "graph pattern binding table")
-            .and_then(|t| child(t, "graph pattern"))
-        {
-            b.graph_pattern(gp, None);
-        }
-        if child(m, "graph pattern binding table").is_some_and(|t| child(t, "graph pattern yield clause").is_some()) {
-            b.out_of_core("a graph pattern YIELD");
+    let mut had_match = false;
+    let mut shape = Shape::Other("no statement block".to_string());
+    let mut blocks = Vec::new();
+    find_all(tree, "statement block", &mut blocks);
+    if let Some(block) = blocks.first() {
+        let mut statements = Vec::new();
+        find_all(block, "statement", &mut statements);
+        let n = statements.len();
+        for (i, s) in statements.iter().enumerate() {
+            shape = match statement(s, &mut b, &mut had_match) {
+                Err(why) => Shape::Other(why),
+                Ok(Shape::Finish) if i + 1 < n => {
+                    Shape::Other("FINISH before NEXT".to_string())
+                }
+                Ok(shape) => shape,
+            };
+            if matches!(shape, Shape::Other(_)) {
+                break;
+            }
         }
     }
-    let had_match = !matches.is_empty();
     let (graph, binding, unsat, mut why) = b.finish();
     for disagreement in check_vars(vars, &binding) {
         why.push(disagreement);
     }
-    let shape = query_shape(tree, &binding);
     let mut tier = Tier::Witness;
     if !had_match {
         tier = Tier::Status;
@@ -1733,7 +1740,14 @@ pub fn oracle(
     }
     let (result, row) = match &shape {
         Shape::Finish => (false, None),
-        Shape::Return(cols) => (true, Some(cols.clone())),
+        Shape::Return(cols) => (
+            true,
+            Some(
+                cols.iter()
+                    .filter_map(|c| binding.get(c).map(|v| (c.clone(), v.clone())))
+                    .collect::<BTreeMap<String, Bound>>(),
+            ),
+        ),
         Shape::Other(reason) => {
             tier = Tier::Status;
             why.push(reason.clone());
@@ -1790,6 +1804,118 @@ pub fn oracle(
         observe,
         why,
     }
+}
+
+enum Shape {
+    Finish,
+    /// The columns a RETURN of variables produced, in order.
+    Return(Vec<String>),
+    Other(String),
+}
+
+/// One `<statement>` of the block applied to the builder: its simple query statements
+/// (`MATCH`, or `FILTER` of core predicates) in order, then its result statement.
+fn statement(s: &Plain, b: &mut Builder, had_match: &mut bool) -> Result<Shape, String> {
+    let text = s.text();
+    for kw in ["UNION", "EXCEPT", "INTERSECT", "OTHERWISE"] {
+        if text.contains(kw) {
+            return Err("a composite query".to_string());
+        }
+    }
+    let mut simples = Vec::new();
+    find_all(s, "simple query statement", &mut simples);
+    for q in &simples {
+        let Some(primitive) = child(q, "primitive query statement") else {
+            return Err(format!("a statement that is not MATCH: {}", q.text()));
+        };
+        if let Some(m) = child(primitive, "match statement") {
+            let mut matches = Vec::new();
+            top_level_matches(m, &mut matches, b);
+            if matches.is_empty() {
+                return Err("an OPTIONAL MATCH".to_string());
+            }
+            for m in matches {
+                *had_match = true;
+                let Some(table) = child(m, "graph pattern binding table") else { continue };
+                if let Some(gp) = child(table, "graph pattern") {
+                    b.graph_pattern(gp, None);
+                }
+                if child(table, "graph pattern yield clause").is_some() {
+                    b.out_of_core("a graph pattern YIELD");
+                }
+            }
+        } else if let Some(f) = child(primitive, "filter statement") {
+            // 14.6: rows where the condition is true; the witness row is made one.
+            match child(f, "search condition") {
+                Some(cond) => b.where_clause(cond),
+                None => return Err("a FILTER without a condition".to_string()),
+            }
+        } else {
+            return Err(format!("a statement that is not MATCH: {}", primitive.text()));
+        }
+    }
+    let mut primitives = Vec::new();
+    find_all(s, "primitive result statement", &mut primitives);
+    let Some(result) = primitives.first() else {
+        return Err("no result statement".to_string());
+    };
+    if has_kw(result, "FINISH") || result.text() == "FINISH" {
+        return Ok(Shape::Finish);
+    }
+    let Some(ret) = child(result, "return statement") else {
+        return Err(format!("a result statement that is not RETURN: {}", result.text()));
+    };
+    // 14.9: ORDER BY keeps the row, OFFSET or SKIP may drop it, LIMIT 0 drops it; the
+    // witness claims a row, so only what keeps it stays in the core.
+    if let Some(page) = child(result, "order by and page statement") {
+        if child(page, "offset clause").is_some() {
+            return Err("an OFFSET or SKIP: the witness row may be dropped".to_string());
+        }
+        if let Some(limit) = child(page, "limit clause") {
+            let mut ints = Vec::new();
+            find_all(limit, "unsigned integer", &mut ints);
+            match ints.first().and_then(|i| unsigned(&i.text())) {
+                Some(0) => return Err("LIMIT 0 drops every row".to_string()),
+                Some(_) => {}
+                None => return Err("a LIMIT that is not a literal".to_string()),
+            }
+        }
+    }
+    let Some(body) = child(ret, "return statement body") else {
+        return Err("RETURN without a body".to_string());
+    };
+    if has_kw(body, "NO") {
+        return Err("RETURN NO BINDINGS".to_string());
+    }
+    let Some(list) = child(body, "return item list") else {
+        return Err("RETURN *".to_string());
+    };
+    let mut items = Vec::new();
+    find_all(list, "return item", &mut items);
+    let mut cols: Vec<(String, String)> = Vec::new();
+    for item in items {
+        let kids = logical(item);
+        let Some(expr) = kids.first() else { continue };
+        let Some(var) = exactly(expr, "binding variable reference") else {
+            return Err(format!("a return item that is not a variable: {}", item.text()));
+        };
+        let name = identifier(var);
+        if !b.vars.contains_key(&name) {
+            return Err(format!("a returned variable the patterns do not bind: {name}"));
+        }
+        let col = child(item, "return item alias")
+            .and_then(|a| child(a, "identifier"))
+            .map(identifier)
+            .unwrap_or_else(|| name.clone());
+        cols.push((col, name));
+    }
+    // The outgoing table has exactly these columns (14.11): the record is renamed to them.
+    let renamed: BTreeMap<String, Slot> = cols
+        .iter()
+        .filter_map(|(col, name)| b.vars.get(name).cloned().map(|s| (col.clone(), s)))
+        .collect();
+    b.vars = renamed;
+    Ok(Shape::Return(cols.into_iter().map(|(c, _)| c).collect()))
 }
 
 /// Where the generation record and the witness disagree on a pattern variable's kind: the
@@ -1854,81 +1980,6 @@ fn top_level_matches<'a>(p: &'a Plain, out: &mut Vec<&'a Plain>, b: &mut Builder
             top_level_matches(c, out, b);
         }
     }
-}
-
-enum Shape {
-    Finish,
-    Return(BTreeMap<String, Bound>),
-    Other(String),
-}
-
-/// What the statements after the patterns let us claim: `MATCH ... FINISH` (no result),
-/// `MATCH ... RETURN <variables>` (a row), else the status only.
-fn query_shape(tree: &Plain, binding: &BTreeMap<String, Bound>) -> Shape {
-    let mut blocks = Vec::new();
-    find_all(tree, "statement block", &mut blocks);
-    let Some(block) = blocks.first() else {
-        return Shape::Other("no statement block".to_string());
-    };
-    let mut statements = Vec::new();
-    find_all(block, "statement", &mut statements);
-    if statements.len() != 1 {
-        return Shape::Other("more than one statement (NEXT)".to_string());
-    }
-    let s = statements[0];
-    let mut primitives = Vec::new();
-    find_all(s, "primitive result statement", &mut primitives);
-    let mut simples = Vec::new();
-    find_all(s, "simple query statement", &mut simples);
-    for q in &simples {
-        if child(q, "primitive query statement")
-            .and_then(|p| child(p, "match statement"))
-            .is_none()
-        {
-            return Shape::Other(format!("a statement that is not MATCH: {}", q.text()));
-        }
-    }
-    if s.text().contains("UNION") || s.text().contains("EXCEPT") || s.text().contains("INTERSECT") || s.text().contains("OTHERWISE") {
-        return Shape::Other("a composite query".to_string());
-    }
-    let Some(result) = primitives.first() else {
-        return Shape::Other("no result statement".to_string());
-    };
-    if has_kw(result, "FINISH") || result.text() == "FINISH" {
-        return Shape::Finish;
-    }
-    let Some(ret) = child(result, "return statement") else {
-        return Shape::Other(format!("a result statement that is not RETURN: {}", result.text()));
-    };
-    let Some(body) = child(ret, "return statement body") else {
-        return Shape::Other("RETURN without a body".to_string());
-    };
-    if has_kw(body, "NO") {
-        return Shape::Other("RETURN NO BINDINGS".to_string());
-    }
-    let Some(list) = child(body, "return item list") else {
-        return Shape::Other("RETURN *".to_string());
-    };
-    let mut items = Vec::new();
-    find_all(list, "return item", &mut items);
-    let mut cols = BTreeMap::new();
-    for item in items {
-        let kids = logical(item);
-        let Some(expr) = kids.first() else { continue };
-        let Some(var) = exactly(expr, "binding variable reference") else {
-            return Shape::Other(format!("a return item that is not a variable: {}", item.text()));
-        };
-        let name = identifier(var);
-        let Some(value) = binding.get(&name) else {
-            return Shape::Other(format!("a returned variable the patterns do not bind: {name}"));
-        };
-        let col = child(item, "return item alias")
-            .and_then(|a| child(a, "identifier"))
-            .map(identifier)
-            .unwrap_or(name);
-        cols.insert(col, value.clone());
-    }
-    Shape::Return(cols)
 }
 
 // ---------------------------------------------------------------------------------------------
