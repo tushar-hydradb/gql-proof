@@ -15,7 +15,9 @@ use std::sync::LazyLock;
 static ISO: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static BASE: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO));
 
-const RULES: [&str; 21] = [
+const RULES: [&str; 23] = [
+    "20.16 SR 1",
+    "16.6 SR 2",
     "8.2 SR 2",
     "18.2 SR 2",
     "18.2 SR 3",
@@ -1724,4 +1726,114 @@ fn transaction_characteristics_hold_one_access_mode() {
         PORTABLE,
         None,
     );
+}
+
+// --- 20.16 SR 1 a: TRIM's list count, by its shape ----------------------------------------------
+
+fn nve_of(primary: Plain) -> Plain {
+    d(
+        "numeric value expression",
+        vec![d("term", vec![d("factor", vec![d("numeric primary", vec![primary])])])],
+    )
+}
+
+fn literal(def_chain: &[&str], leaf: Plain) -> Plain {
+    def_chain.iter().rev().fold(leaf, |inner, def| d(def, vec![inner]))
+}
+
+fn int_primary(tokens: &[&str]) -> Plain {
+    literal(
+        &[
+            "value expression primary",
+            "non-parenthesized value expression primary",
+            "non-parenthesized value expression primary special case",
+            "unsigned value specification",
+            "unsigned literal",
+            "unsigned numeric literal",
+            "exact numeric literal",
+        ],
+        integer(tokens),
+    )
+}
+
+fn trim_list(count: Plain) -> Plain {
+    d(
+        "trim list function",
+        vec![
+            kw("TRIM"),
+            Plain::Term("(".into()),
+            d("list value expression", vec![]),
+            Plain::Term(",".into()),
+            count,
+            Plain::Term(")".into()),
+        ],
+    )
+}
+
+#[test]
+fn trims_count_is_an_integer_form() {
+    expect(&trim_list(nve_of(int_primary(&["2"]))), PORTABLE, None);
+    let sum = d(
+        "numeric value expression",
+        vec![
+            nve_of(int_primary(&["2"])),
+            d("plus sign", vec![Plain::Term("+".into())]),
+            d("term", vec![d("factor", vec![d("numeric primary", vec![int_primary(&["1"])])])]),
+        ],
+    );
+    expect(&trim_list(sum), PORTABLE, None);
+    let quotient = d(
+        "numeric value expression",
+        vec![d(
+            "term",
+            vec![
+                d("term", vec![d("factor", vec![d("numeric primary", vec![int_primary(&["2"])])])]),
+                d("solidus", vec![Plain::Term("/".into())]),
+                d("factor", vec![d("numeric primary", vec![int_primary(&["1"])])]),
+            ],
+        )],
+    );
+    expect(&trim_list(quotient), PORTABLE, Some("20.16 SR 1"));
+    let variable = nve_of(d(
+        "value expression primary",
+        vec![d(
+            "non-parenthesized value expression primary",
+            vec![d("binding variable reference", vec![])],
+        )],
+    ));
+    expect(&trim_list(variable), PORTABLE, Some("20.16 SR 1"));
+    let null = nve_of(literal(
+        &[
+            "value expression primary",
+            "non-parenthesized value expression primary",
+            "non-parenthesized value expression primary special case",
+            "unsigned value specification",
+            "unsigned literal",
+            "general literal",
+            "null literal",
+        ],
+        kw("NULL"),
+    ));
+    expect(&trim_list(null), PORTABLE, Some("20.16 SR 1"));
+}
+
+#[test]
+fn a_zero_path_count_is_the_checkers_and_repaired() {
+    use gql_proof::tree::order_bounds;
+    use rand::SeedableRng;
+    let zero = d(
+        "number of paths",
+        vec![d("non-negative integer specification", vec![integer(&["0"])])],
+    );
+    let (automaton, _) = verdicts(&zero, PORTABLE);
+    assert!(automaton);
+    assert_eq!(reported(&zero), ["16.6 SR 2"]);
+    let analysis = Analysis::new(&BASE, &StubProvider);
+    for text in ["0", "0b0", "0x0"] {
+        let nt = BASE.require("number of paths").unwrap();
+        let mut tree = analysis.spell(nt, text).unwrap();
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(3);
+        assert!(order_bounds(&BASE, &mut tree, &|nt, t| analysis.spell(nt, t), &mut rng));
+        assert!(reported(&tree.export(&BASE)).is_empty(), "{}", tree.export(&BASE).text());
+    }
 }

@@ -141,6 +141,7 @@ impl Node {
 /// - 18.9 SR 10: a fixed length is at least 1
 /// - 18.9 SR 29, 38: a precision is at least 1 and at or above its scale
 /// - 18.9 SR 40: an approximate numeric type's precision is at least 2
+/// - 16.6 SR 2 b ii: a literal number of paths or groups is at least 1
 ///
 /// The integer is then re-spelled with digits prefixed to the ones it was extracted for, in its
 /// own radix, to a value at or above the least: `{ 8 , 0o12 }`, `CHAR ( 0b10 )`. Its digits and
@@ -178,6 +179,10 @@ pub fn order_bounds(
             vec![("precision", scale.max(1))]
         }
         "approximate numeric type" => vec![("precision", 2)],
+        // 16.6 SR 2 b ii: a literal number of paths or groups is positive.
+        "number of paths" | "number of groups" => {
+            vec![("non-negative integer specification", 1)]
+        }
         _ => Vec::new(),
     };
     for (holder, least) in wants {

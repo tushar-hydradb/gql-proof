@@ -894,6 +894,31 @@ fn syntax_rules<'t>(
                     out.push(violation(&path, "18.3 SR 4", "UNDIRECTED with a directed shape".into()));
                 }
             }
+            // 20.16 SR 1 a, by the reading in `refine::IntegerCount`: TRIM's list count is
+            // built of integer forms only.
+            "trim list function" => {
+                if let Some(count) = own(node, "numeric value expression")
+                    && let Some(bad) = not_integer_shaped(count)
+                {
+                    out.push(violation(
+                        &path,
+                        "20.16 SR 1",
+                        format!("<{bad}> in TRIM's list count, not an integer form"),
+                    ));
+                }
+            }
+            // 16.6 SR 2 b ii: a literal number of paths or groups is positive.
+            "number of paths" | "number of groups" => {
+                let mut ints = Vec::new();
+                find(node, "unsigned integer", &mut ints);
+                if ints.iter().any(|i| unsigned_integer_value(&i.text()) == 0) {
+                    out.push(violation(
+                        &path,
+                        "16.6 SR 2",
+                        "a number of paths or groups of 0".into(),
+                    ));
+                }
+            }
             // 8.2 SR 2: exactly one access mode.
             "transaction characteristics" => {
                 let mut modes = Vec::new();
@@ -953,6 +978,53 @@ fn contains(node: &Plain, want: &str) -> bool {
     let mut found = Vec::new();
     find(node, want, &mut found);
     !found.is_empty()
+}
+
+/// The first node below a TRIM list count (20.16 SR 1, the reading in `refine::IntegerCount`)
+/// that is not an integer form: an <unsigned integer>, a dynamic parameter, a length or
+/// cardinality expression, and signs, parentheses, `+`, `-`, `*` over them.
+fn not_integer_shaped(node: &Plain) -> Option<String> {
+    let Plain::Def { name, children, .. } = node else {
+        return None;
+    };
+    let kids = flat(children);
+    let defs: Vec<&str> = kids.iter().filter_map(|k| def_name(k)).collect();
+    let tokens: Vec<String> = kids
+        .iter()
+        .filter(|k| matches!(k, Plain::Kw(_) | Plain::Term(_)))
+        .map(|k| k.text())
+        .collect();
+    let ok = match name.as_str() {
+        "unsigned integer" | "length expression" | "cardinality expression"
+        | "dynamic parameter specification" => return None,
+        "numeric value expression" | "factor" | "numeric primary" | "value expression primary"
+        | "parenthesized value expression" | "sign" | "plus sign" | "minus sign" | "asterisk"
+        | "left paren" | "right paren" => true,
+        "term" => !defs.contains(&"solidus") && !tokens.iter().any(|t| t == "/"),
+        "value expression" => defs == ["common value expression"],
+        "common value expression" => defs == ["numeric value expression"],
+        "numeric value function" => {
+            defs == ["length expression"] || defs == ["cardinality expression"]
+        }
+        "non-parenthesized value expression primary" => {
+            defs == ["non-parenthesized value expression primary special case"]
+        }
+        "non-parenthesized value expression primary special case" => {
+            defs == ["unsigned value specification"]
+        }
+        "unsigned value specification" => {
+            defs == ["unsigned literal"] || defs == ["general value specification"]
+        }
+        "general value specification" => defs == ["dynamic parameter specification"],
+        "unsigned literal" => defs == ["unsigned numeric literal"],
+        "unsigned numeric literal" => defs == ["exact numeric literal"],
+        "exact numeric literal" => defs == ["unsigned integer"] && tokens.is_empty(),
+        _ => false,
+    };
+    if !ok {
+        return Some(name.clone());
+    }
+    kids.into_iter().find_map(not_integer_shaped)
 }
 
 /// Whether `node` simply contains a `<want>`: contains one without an intervening `<boundary>`

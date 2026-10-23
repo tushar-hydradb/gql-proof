@@ -464,6 +464,10 @@ fn context_run<C: gql_proof::context::Context>(
         eprint!("{}", profile.stats.summary(args.top));
     }
     let mut stats = analyzed.stats();
+    // Sentences go out only through the checker: without the syntax rules there is none.
+    if args.sentences && verifier.is_none() {
+        bail!("--sentences needs --rules all or --rules syntax: nothing would check the syntax rules");
+    }
     if args.phase == ContextPhase::Cover {
         let began = std::time::Instant::now();
         let names: Vec<String> = ["x", "y", "z", "w"].iter().map(|s| s.to_string()).collect();
@@ -488,6 +492,7 @@ fn context_run<C: gql_proof::context::Context>(
             true,
         );
         let (mut failed, mut untyped) = (0, 0);
+        let mut withheld: Vec<String> = Vec::new();
         for (root, covers) in &covered.trees {
             let plain = root.export(base);
             let sentence = root.render(base);
@@ -535,6 +540,13 @@ fn context_run<C: gql_proof::context::Context>(
                     }
                 }
             }
+            // Fail closed: a tree a checker flags is withheld, never printed, so every
+            // sentence that goes out has passed every checker whatever extraction picked. Its
+            // target counts as covered in the tally above but is reported here.
+            if !violations.is_empty() {
+                withheld.push(covers.to_string());
+                continue;
+            }
             if args.sentences && args.jsonl {
                 let record = serde_json::json!({
                     "target": covers.to_string(),
@@ -572,6 +584,13 @@ fn context_run<C: gql_proof::context::Context>(
             for n in covered.productions.unused.iter().take(args.top) {
                 eprintln!("    {n}");
             }
+        }
+        eprintln!(
+            "withheld {} trees a checker flags (not printed); their targets:",
+            withheld.len()
+        );
+        for w in withheld.iter().take(args.top) {
+            eprintln!("  withheld: {w}");
         }
         if args.cdrc {
             eprintln!(

@@ -161,6 +161,7 @@ pub fn all_rules(id086: MatchModeDefault) -> Vec<Box<dyn Rule>> {
         Box::new(DelimitedNotEmpty),
         Box::new(ElementTypeShape),
         Box::new(OneAccessMode),
+        Box::new(IntegerCount),
     ]
 }
 
@@ -987,6 +988,105 @@ impl Rule for OneAccessMode {
             return None;
         }
         Some(counted(s, 0))
+    }
+}
+
+/// 20.16 SR 1 a: TRIM's list count is an exact number of scale 0.
+///
+/// Reading: the engine's classes carry no scale, and a variable's scale is not followed, so
+/// the count is kept to forms whose scale is 0 by their shape alone: an <unsigned integer>
+/// literal, a dynamic parameter (its type is the request's, hypothesis H), a length or
+/// cardinality expression (scale 0, 20.22 SR 1, 3), with signs, parentheses, `+`, `-` and `*`
+/// over them (20.21 SR 1 b ii, iii: scale max(S1, S2) and S1 + S2). Everything else is refused
+/// in that position: a decimal or approximate literal, `/`, a NULL (21.2 SR 67 b leaves its
+/// type to the implementation, IA014), a variable, any other function. The types checker
+/// (`verify::types`) checks the type itself; `verify::syntax_rules` checks this shape.
+pub struct IntegerCount;
+
+/// Inherited: inside TRIM's list count, down to the integer forms.
+const IN_COUNT: Fact = 45;
+
+/// Whether `node` may stand inside the count: its definition and, for some, its alternative.
+pub fn integer_count_shape(def: &str, items: &[Item]) -> bool {
+    let only = |d: &str| items == [Item::Def(d)];
+    match def {
+        "numeric value expression" | "factor" | "numeric primary" | "value expression primary"
+        | "parenthesized value expression" | "sign" | "plus sign" | "minus sign"
+        | "asterisk" | "left paren" | "right paren" | "unsigned integer"
+        | "length expression" | "cardinality expression" | "dynamic parameter specification" => true,
+        "term" => !items.contains(&Item::Def("solidus")),
+        "value expression" => only("common value expression"),
+        "common value expression" => only("numeric value expression"),
+        "numeric value function" => only("length expression") || only("cardinality expression"),
+        "non-parenthesized value expression primary" => {
+            only("non-parenthesized value expression primary special case")
+        }
+        "non-parenthesized value expression primary special case" => {
+            only("unsigned value specification")
+        }
+        "unsigned value specification" => {
+            only("unsigned literal") || only("general value specification")
+        }
+        "general value specification" => only("dynamic parameter specification"),
+        "unsigned literal" => only("unsigned numeric literal"),
+        "unsigned numeric literal" => only("exact numeric literal"),
+        "exact numeric literal" => only("unsigned integer"),
+        _ => false,
+    }
+}
+
+/// Where the count's shape stops mattering: what is below is an integer, an argument or a
+/// parameter name.
+const COUNT_STOPS: [&str; 4] = [
+    "unsigned integer",
+    "length expression",
+    "cardinality expression",
+    "dynamic parameter specification",
+];
+
+impl Rule for IntegerCount {
+    fn name(&self) -> &str {
+        "TRIM's list count is an integer"
+    }
+
+    fn cite(&self) -> &str {
+        "20.16 SR 1 a: the <numeric value expression> of a <trim list function> is exact numeric with scale 0"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(IN_COUNT, "in-count")])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn down(&self, node: &Node, inh: &State, pos: usize, _left: &[State], out: &mut State) {
+        let owner = node.def.split('/').next().unwrap_or(node.def);
+        let child = owner_of(&node.items[pos]);
+        let opens = owner == "trim list function" && child == Some("numeric value expression");
+        let within = inh.has(IN_COUNT) && !COUNT_STOPS.contains(&owner) && child.is_some();
+        if opens || within {
+            out.set(IN_COUNT, true);
+        }
+    }
+
+    fn rejects(&self, node: &Node, inh: &State) -> bool {
+        if !inh.has(IN_COUNT) {
+            return false;
+        }
+        // A group leads only to definitions, each judged on its own.
+        if node.group {
+            return false;
+        }
+        !integer_count_shape(node.def, node.items)
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if self.rejects(node, inh) {
+            return None;
+        }
+        Some(s)
     }
 }
 
