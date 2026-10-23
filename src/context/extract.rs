@@ -1161,13 +1161,17 @@ pub fn order_bounds(
         {
             let text = int.render(cfg);
             if crate::verify::unsigned_integer_value(&text) < lower {
-                let Sym::Nt(int_nt) = int.sym else {
-                    unreachable!("an unsigned integer is a nonterminal")
-                };
-                // A spelling the copy cannot derive leaves the tree as it was: the checker
+                // Spelled under the radix's own definition, the child of <unsigned integer>:
+                // derived from <unsigned integer> itself, `0o12` reads as a decimal integer
+                // whose `o` is an <other digit>, a prose leaf that takes any character. A
+                // spelling the copy cannot derive leaves the tree as it was: the checker
                 // reports it.
-                if let Some(spelt) = spell(int_nt, &raised_bound(&text, lower, rng)) {
-                    *int = spelt;
+                let raised = raised_bound(&text, lower, rng);
+                if let Some(radix) = int.children.iter_mut().find(|c| matches!(c.sym, Sym::Nt(_)))
+                    && let Sym::Nt(radix_nt) = radix.sym
+                    && let Some(spelt) = spell(radix_nt, &raised)
+                {
+                    *radix = spelt;
                 }
             }
         }

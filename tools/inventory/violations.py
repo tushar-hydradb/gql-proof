@@ -31,7 +31,12 @@ def check(name):
     return wrap
 
 @check("21.3 SR 4: empty delimited identifier")
-def _(s): return '""' in s or "``" in s
+def _(s):
+    # `""` and `@""` are also the empty string literal; only as a name (a parameter `$""`
+    # or `$@""`, a property `.""`, a label `:""`) is it an identifier at text level. Empty
+    # accent quotes are always one, and `""""` is the one-character identifier `"`. A lower
+    # bound.
+    return re.search(r'(?<!`)``(?!`)|\$@?""(?!")|[.:]""(?!")', s) is not None
 
 @check("16.11 SR 3: quantifier upper bound 0 or below lower")
 def _(s):
