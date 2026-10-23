@@ -1,0 +1,210 @@
+//! Runs the witness oracle's records (`gql-proof oracle`) on turbolay's experimental gql
+//! engine: for each record with a turbolay setup, loads the graph into the in-memory
+//! storage, runs the sentence, and compares the rows with what the record expects. One
+//! json line per record: {sentence, outcome, status, message, verdict, detail, rows}.
+//! outcome is as in `turbolay_probe.rs`; verdict is agree, disagree, refused, failed,
+//! timeout, panic or unjudged (a record of the status tier, run for its outcome only).
+//!
+//! Not part of gql-proof's build: `just turbolay-oracle <worktree>` copies it into a
+//! turbolay worktree as `crates/cypher-engine/tests/zz_gql_proof_oracle.rs` and runs it. It
+//! needs `serde_json = { workspace = true }` under that crate's `[dev-dependencies]`.
+
+mod common;
+
+use common::MemoryStorage;
+use hydradb_cypher_engine::{
+    CypherEngine, ListParameterMap, ParameterMap, QueryValue, RelationshipRecord, ScalarValue,
+    VertexRecord,
+};
+use serde_json::{Value, json};
+use std::collections::{BTreeMap, BTreeSet};
+use std::io::Write;
+use std::time::Duration;
+
+fn scalar(v: &Value) -> ScalarValue {
+    match v {
+        Value::Null => ScalarValue::Null,
+        Value::Bool(b) => ScalarValue::Boolean(*b),
+        Value::Number(n) => match n.as_i64() {
+            Some(i) => ScalarValue::Integer(i as i128),
+            None => ScalarValue::Float(n.to_string().into_boxed_str()),
+        },
+        Value::String(s) => ScalarValue::String(s.as_str().into()),
+        other => ScalarValue::String(other.to_string().into_boxed_str()),
+    }
+}
+
+fn properties(v: &Value) -> BTreeMap<String, ScalarValue> {
+    v.as_object()
+        .map(|m| m.iter().map(|(k, v)| (k.clone(), scalar(v))).collect())
+        .unwrap_or_default()
+}
+
+fn storage(setup: &Value) -> MemoryStorage {
+    let vertices = setup["vertices"].as_array().cloned().unwrap_or_default();
+    let relationships = setup["relationships"].as_array().cloned().unwrap_or_default();
+    let vertices = vertices.iter().map(|v| VertexRecord {
+        id: v["id"].as_u64().unwrap_or(0),
+        labels: v["labels"]
+            .as_array()
+            .map(|l| l.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+            .unwrap_or_else(BTreeSet::new),
+        properties: properties(&v["properties"]),
+    });
+    let relationships = relationships.iter().map(|r| RelationshipRecord {
+        id: r["id"].as_u64().unwrap_or(0),
+        source: r["source"].as_u64().unwrap_or(0),
+        target: r["target"].as_u64().unwrap_or(0),
+        relationship_type: r["relationship_type"].as_str().unwrap_or("").to_string(),
+        properties: properties(&r["properties"]),
+    });
+    MemoryStorage::with_graph(vertices, relationships)
+}
+
+/// A result value as json the oracle's bindings compare with: elements by id.
+fn to_json(v: &QueryValue) -> Value {
+    match v {
+        QueryValue::Null => Value::Null,
+        QueryValue::VertexId(id) => json!({ "node": id }),
+        QueryValue::RelationshipId(id) => json!({ "edge": id }),
+        QueryValue::Count(n) => json!(n),
+        QueryValue::Scalar(s) => match s {
+            ScalarValue::Null => Value::Null,
+            ScalarValue::Boolean(b) => json!(b),
+            ScalarValue::Integer(i) => json!(i),
+            other => json!(format!("{other:?}")),
+        },
+        QueryValue::List(items) => Value::Array(items.iter().map(to_json).collect()),
+        QueryValue::Path(p) => {
+            let mut ids = Vec::new();
+            for (i, n) in p.nodes.iter().enumerate() {
+                ids.push(json!(n.id));
+                if let Some(r) = p.relationships.get(i) {
+                    ids.push(json!(r.id));
+                }
+            }
+            json!({ "path": ids })
+        }
+        other => json!(format!("{other:?}")),
+    }
+}
+
+/// Whether a returned value is the expected binding (`{kind, value}` of the oracle).
+fn matches(expected: &Value, got: &Value) -> bool {
+    let value = &expected["value"];
+    match expected["kind"].as_str() {
+        Some("Null") => got.is_null(),
+        Some("Node") => got.get("node") == Some(value),
+        Some("Edge") => got.get("edge") == Some(value),
+        Some("Path") => got.get("path") == Some(value),
+        Some("List") => match (value.as_array(), got.as_array()) {
+            (Some(e), Some(g)) => e.len() == g.len() && e.iter().zip(g).all(|(e, g)| matches(e, g)),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+fn judge(expect: &Value, columns: &[String], rows: &[Vec<Value>]) -> (&'static str, String) {
+    if expect["rows"] == json!(0) {
+        return if rows.is_empty() {
+            ("agree", "no rows, as expected".to_string())
+        } else {
+            ("disagree", format!("expected no rows, got {}", rows.len()))
+        };
+    }
+    if expect["result"] == json!(false) {
+        return ("agree", "completed, no result expected".to_string());
+    }
+    let Some(row) = expect["row"].as_object() else {
+        return ("agree", format!("completed, {} rows, no row claimed", rows.len()));
+    };
+    for got in rows {
+        let values: BTreeMap<&str, &Value> = columns.iter().map(String::as_str).zip(got).collect();
+        if row
+            .iter()
+            .all(|(col, bound)| values.get(col.as_str()).is_some_and(|g| matches(bound, g)))
+        {
+            return ("agree", format!("the witness row is among {}", rows.len()));
+        }
+    }
+    (
+        "disagree",
+        format!("the witness row is not among {} rows", rows.len()),
+    )
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn run_oracle_records() {
+    let input = std::env::var("GQL_PROOF_IN").expect("GQL_PROOF_IN");
+    let output = std::env::var("GQL_PROOF_OUT").expect("GQL_PROOF_OUT");
+    let mut out = std::fs::File::create(output).unwrap();
+    for line in std::fs::read_to_string(input).unwrap().lines() {
+        let record: Value = serde_json::from_str(line).unwrap();
+        let Some(sentence) = record["sentence"].as_str().map(str::to_string) else {
+            continue;
+        };
+        let setup = &record["setup"]["turbolay"];
+        if setup.is_null() {
+            continue;
+        }
+        let witness = record["expect"]["tier"] == json!("witness");
+        let engine = CypherEngine::new(storage(setup));
+        let prepared = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            engine.prepare_with_lists(&sentence, &ParameterMap::new(), &ListParameterMap::new())
+        }));
+        let mut rows_json: Vec<Vec<Value>> = Vec::new();
+        let mut columns: Vec<String> = Vec::new();
+        let (outcome, status, message) = match prepared {
+            Err(_) => ("panic", String::new(), "prepare panicked".to_string()),
+            Ok(Err(e)) => ("refused", e.gql_status().to_string(), e.to_string()),
+            Ok(Ok(p)) => {
+                let run = tokio::time::timeout(Duration::from_secs(5), async {
+                    tokio::spawn(async move {
+                        engine.execute_prepared_with_status(&p).await.map(|o| {
+                            let columns: Vec<String> =
+                                o.result.columns.iter().map(|c| c.name.clone()).collect();
+                            let rows: Vec<Vec<Value>> = o
+                                .result
+                                .rows
+                                .iter()
+                                .map(|r| r.values.iter().map(to_json).collect())
+                                .collect();
+                            (o.status.status.to_string(), columns, rows)
+                        })
+                    })
+                    .await
+                })
+                .await;
+                match run {
+                    Err(_) => ("timeout", String::new(), String::new()),
+                    Ok(Err(_)) => ("panic", String::new(), "execute panicked".to_string()),
+                    Ok(Ok(Err(e))) => ("failed", e.gql_status().to_string(), e.to_string()),
+                    Ok(Ok(Ok((s, c, r)))) => {
+                        let n = r.len();
+                        columns = c;
+                        rows_json = r;
+                        ("ok", s, format!("{n} rows"))
+                    }
+                }
+            }
+        };
+        let (verdict, detail) = match (outcome, witness) {
+            ("ok", true) => judge(&record["expect"], &columns, &rows_json),
+            ("ok", false) => ("unjudged", "status tier".to_string()),
+            (other, _) => (other, message.clone()),
+        };
+        let shown: Vec<&Vec<Value>> = rows_json.iter().take(3).collect();
+        let row = json!({
+            "sentence": sentence,
+            "outcome": outcome,
+            "status": status,
+            "message": message,
+            "verdict": verdict,
+            "detail": detail,
+            "columns": columns,
+            "rows": shown,
+        });
+        writeln!(out, "{row}").unwrap();
+    }
+}

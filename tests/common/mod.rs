@@ -127,7 +127,7 @@ pub fn extraction_matches_emission<C: Context>(
         }
     }
     let mut bad = 0;
-    for (root, _) in &covered.trees {
+    for (root, _, _) in &covered.trees {
         walk(base, root, &mut x_prods, &mut x_pairs);
         let plain = root.export(base);
         let mut violations = gql_proof::verify::scope::check(&plain);

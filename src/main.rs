@@ -44,6 +44,23 @@ enum Cmd {
     /// Run the context engine alone on a part of the grammar and report where its time and
     /// labels went (`GQL_TRACE` filters logs, `--trace` writes a chrome trace).
     Context(ContextArgs),
+    /// For every sentence, the witness graph its patterns freeze into and the outcome the
+    /// query must have on it (`research/oracle-witness-2026-10-23.md`), one json line each.
+    Oracle(OracleArgs),
+}
+
+#[derive(Parser)]
+struct OracleArgs {
+    /// Sentence files: jsonl with a `query` or `sentence` field, or one sentence per line.
+    files: Vec<PathBuf>,
+    #[arg(long, default_value = "GQL-program")]
+    start: String,
+    /// The match mode a `<graph pattern>` without one gets on the engine (ID086).
+    #[arg(long, value_enum, default_value_t = Id086::Portable)]
+    match_mode_default: Id086,
+    /// Only the summary on stderr, no records.
+    #[arg(long)]
+    summary: bool,
 }
 
 #[derive(Parser)]
@@ -328,6 +345,7 @@ fn main() -> Result<()> {
         .spawn(move || match cmd {
             Cmd::Purdom(args) => purdom(args),
             Cmd::CheckGrammar(args) => check_grammar(args),
+            Cmd::Oracle(args) => oracle(args),
             Cmd::Negatives(args) => negatives(args),
             Cmd::Features(args) => features(args),
             Cmd::Cover(args) => cover(args),
@@ -488,7 +506,7 @@ fn context_run<C: gql_proof::context::Context>(
             true,
         );
         let (mut failed, mut untyped) = (0, 0);
-        for (root, covers) in &covered.trees {
+        for (root, covers, vars) in &covered.trees {
             let plain = root.export(base);
             let sentence = root.render(base);
             // The syntax rules and the claim's conformance rules, when the grammar was refined
@@ -539,6 +557,7 @@ fn context_run<C: gql_proof::context::Context>(
                 let record = serde_json::json!({
                     "target": covers.to_string(),
                     "sentence": sentence,
+                    "vars": vars,
                 });
                 println!("{record}");
             } else if args.sentences {
@@ -1433,6 +1452,113 @@ fn names_in(p: &gql_proof::verify::Plain, out: &mut BTreeSet<String>) {
         }
         children.iter().for_each(|c| names_in(c, out));
     }
+}
+
+fn oracle(args: OracleArgs) -> Result<()> {
+    let bnf = read_grammar(&None)?;
+    let cfg = Cfg::from_bnf(&bnf);
+    let id086 = MatchModeDefault::from(args.match_mode_default);
+    let pool = rayon::ThreadPoolBuilder::new()
+        .stack_size(1 << 30)
+        .build()?;
+    let mut out = io::stdout().lock();
+    let (mut witness, mut status, mut unsat, mut unparsed) = (0usize, 0usize, 0usize, 0usize);
+    let mut reasons: BTreeMap<String, usize> = BTreeMap::new();
+    let mut unloadable: BTreeMap<String, usize> = BTreeMap::new();
+    for path in &args.files {
+        let sentences = read_records(path)?;
+        let distinct: Vec<(&str, Option<&serde_json::Value>)> = {
+            let mut seen = BTreeSet::new();
+            sentences
+                .iter()
+                .map(|(s, v)| (s.as_str(), v.as_ref()))
+                .filter(|(s, _)| seen.insert(*s))
+                .collect()
+        };
+        let records: Vec<(String, Option<gql_proof::oracle::Oracle>)> = pool.install(|| {
+            distinct
+                .par_iter()
+                .map_init(
+                    || {
+                        let tokens = Grammar::new(&bnf);
+                        let verifier = Verifier::new(Grammar::new(&bnf));
+                        let parser = gql_proof::parse::Parser::new(&cfg, &tokens, &args.start)
+                            .expect("the iso grammar builds");
+                        (parser, verifier)
+                    },
+                    |(parser, verifier), (s, vars)| {
+                        let accept = |n: &gql_proof::tree::Node| {
+                            verifier.verify(&n.export(&cfg), &n.render(&cfg)).is_empty()
+                        };
+                        let record = parser.parse(s, accept).ok().map(|p| {
+                            gql_proof::oracle::oracle(s, &p.tree.export(&cfg), *vars, id086)
+                        });
+                        (s.to_string(), record)
+                    },
+                )
+                .collect()
+        });
+        for (sentence, record) in records {
+            let Some(record) = record else {
+                unparsed += 1;
+                if !args.summary {
+                    let line = serde_json::json!({"sentence": sentence, "why": ["no ISO parse"]});
+                    writeln!(out, "{line}")?;
+                }
+                continue;
+            };
+            match (record.expect.tier, record.expect.rows) {
+                (_, Some(0)) => unsat += 1,
+                (gql_proof::oracle::Tier::Witness, _) => witness += 1,
+                (gql_proof::oracle::Tier::Status, _) => status += 1,
+            }
+            for why in &record.why {
+                // The reason without its sentence specific tail, to count families.
+                let key = why.split(':').next().unwrap_or(why).to_string();
+                *reasons.entry(key).or_default() += 1;
+            }
+            for (engine, _) in &record.setup.unloadable {
+                *unloadable.entry(engine.to_string()).or_default() += 1;
+            }
+            if !args.summary {
+                writeln!(out, "{}", serde_json::to_string(&record)?)?;
+            }
+        }
+    }
+    eprintln!(
+        "witness {witness}, status only {status}, unsatisfiable on every graph {unsat}, no parse {unparsed}"
+    );
+    eprintln!("out of the core by reason:");
+    let mut reasons: Vec<(String, usize)> = reasons.into_iter().collect();
+    reasons.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    for (why, n) in reasons {
+        eprintln!("  {n:6}  {why}");
+    }
+    for (engine, n) in unloadable {
+        eprintln!("unloadable on {engine}: {n}");
+    }
+    Ok(())
+}
+
+/// Sentences with their generation record (`vars`), when the file carries one.
+fn read_records(path: &PathBuf) -> Result<Vec<(String, Option<serde_json::Value>)>> {
+    let text = std::fs::read_to_string(path)?;
+    let mut out = Vec::new();
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        match serde_json::from_str::<serde_json::Value>(line) {
+            Ok(serde_json::Value::Object(mut record)) => {
+                let sentence = record
+                    .get("query")
+                    .or_else(|| record.get("sentence"))
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("{}: a record with no query", path.display()))?
+                    .to_string();
+                out.push((sentence, record.remove("vars")));
+            }
+            _ => out.push((line.to_string(), None)),
+        }
+    }
+    Ok(out)
 }
 
 fn read_sentences(path: &PathBuf) -> Result<Vec<String>> {

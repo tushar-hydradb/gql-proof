@@ -100,7 +100,9 @@ pub struct Kind {
 
 /// What `cover` found: the trees, one per target it was extracted for, and the tally.
 pub struct Covered {
-    pub trees: Vec<(tree::Node, String)>,
+    /// Each tree, what it was extracted for, and its variables as the root label describes
+    /// them (`vars`: name, kinds, class), for export beside the sentence.
+    pub trees: Vec<(tree::Node, String, serde_json::Value)>,
     pub productions: Kind,
     pub cdrc: Kind,
     pub stats: ExtractStats,
@@ -863,11 +865,64 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
         root: &mut tree::Node,
         names: &[String],
         spell: impl Fn(NtId, &str) -> Option<tree::Node>,
-    ) -> Result<()> {
+    ) -> Result<super::Naming> {
         let linking = link_slots(&XView { x, e: self.e })?;
         assign_names(root, linking, names, spell, |nt| {
             self.cfg().name(nt).to_string()
         })
+    }
+
+    /// The variables of `x` as json, one object per name: what the rules say of it in every
+    /// label that holds a slot of it, the distinct values per key collected (`decl:
+    /// ["node"]`, `need: ["node"]`, `class: ["exact"]`, ...). The root label closes every
+    /// variable and says nothing of it, so the labels below are where the record lives.
+    pub fn vars(&self, x: &XNode<C::Label>, named: &super::Naming) -> serde_json::Value {
+        let mut per_name: BTreeMap<String, BTreeMap<String, Vec<serde_json::Value>>> =
+            BTreeMap::new();
+        for (path, base, slots) in &named.nodes {
+            let mut node = x;
+            let mut found = true;
+            for &i in path {
+                match node.children.get(i) {
+                    Some(XChild::Node(n)) => node = n,
+                    _ => {
+                        found = false;
+                        break;
+                    }
+                }
+            }
+            if !found {
+                continue;
+            }
+            let described = self.e.ctx.describe(&node.label);
+            for (i, m) in described.into_iter().enumerate().take(*slots) {
+                let Some(name) = named.names.get(base + i).cloned().flatten() else {
+                    continue;
+                };
+                let entry = per_name.entry(name).or_default();
+                for (k, v) in m {
+                    if !v.is_null() {
+                        let seen = entry.entry(k).or_default();
+                        if !seen.contains(&v) {
+                            seen.push(v);
+                        }
+                    }
+                }
+            }
+        }
+        serde_json::Value::Array(
+            per_name
+                .into_iter()
+                .map(|(name, keys)| {
+                    let mut m = serde_json::Map::new();
+                    m.insert("name".into(), serde_json::Value::String(name));
+                    for (k, vs) in keys {
+                        m.insert(k, serde_json::Value::Array(vs));
+                    }
+                    serde_json::Value::Object(m)
+                })
+                .collect(),
+        )
     }
 
     pub fn stats(&self) -> ExtractStats {
@@ -898,15 +953,17 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
         let mut said = Instant::now();
         let mut extract = |t: Option<Rc<XNode<C::Label>>>,
                            covers: String,
-                           trees: &mut Vec<(tree::Node, String)>,
+                           trees: &mut Vec<(tree::Node, String, serde_json::Value)>,
                            seen: &mut BTreeSet<Target>,
                            prods_seen: &mut BTreeSet<ProdId>|
          -> bool {
             let Some(x) = t else { return false };
             let mut root = self.to_tree(&x, leaf, template, &mut rng);
-            if let Err(err) = self.name(&x, &mut root, names, &spell) {
-                panic!("naming an extracted tree: {err}");
-            }
+            let named = match self.name(&x, &mut root, names, &spell) {
+                Ok(n) => n,
+                Err(err) => panic!("naming an extracted tree: {err}"),
+            };
+            let vars = self.vars(&x, &named);
             tree::order_bounds(cfg, &mut root, &spell, &mut rng);
             // The productions as the tree uses them: in a refined grammar, each copy is its
             // own target.
@@ -914,7 +971,7 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             let mut ps = Vec::new();
             root.prods(&mut ps);
             prods_seen.extend(ps);
-            trees.push((root, covers));
+            trees.push((root, covers, vars));
             true
         };
         // cdrc pairs, longest first in the sense the targeted generator uses: by target order.

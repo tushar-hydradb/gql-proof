@@ -113,3 +113,22 @@ corpus-261 worktree:
     trap 'git -C {{worktree}} checkout -- '$test EXIT
     (cd {{worktree}} && GQL_PROOF_OUT=$out cargo test --release -q -p hydradb-cypher-engine --test gql_rule_properties zz_gql_proof_dump >/dev/null)
     cargo run --release -q -- cover --scope $out
+
+# the witness oracle's records (`gql-proof oracle`) run on the gql engine in a turbolay
+# worktree: each graph loaded into the in-memory storage, the sentence run, the rows compared
+# with the record's expectation
+turbolay-oracle worktree oracle="target/engines/oracle-typed.jsonl":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    grep -q '^serde_json' {{worktree}}/crates/cypher-engine/Cargo.toml || { echo "add serde_json = { workspace = true } to [dev-dependencies] of {{worktree}}/crates/cypher-engine/Cargo.toml" >&2; exit 1; }
+    mkdir -p target/engines
+    cp tools/engines/turbolay_oracle_probe.rs {{worktree}}/crates/cypher-engine/tests/zz_gql_proof_oracle.rs
+    in=$(cd "$(dirname {{oracle}})" && pwd)/$(basename {{oracle}})
+    out=$PWD/target/engines
+    (cd {{worktree}} && GQL_PROOF_IN=$in GQL_PROOF_OUT=$out/turbolay-oracle-results.jsonl cargo test --release -q -p hydradb-cypher-engine --test zz_gql_proof_oracle >/dev/null)
+    python3 -I - target/engines/turbolay-oracle-results.jsonl <<'PY'
+    import json, sys, collections
+    rows = [json.loads(l) for l in open(sys.argv[1])]
+    c = collections.Counter(r["verdict"] for r in rows)
+    for k, n in c.most_common(): print(f"{n:6}  {k}")
+    PY

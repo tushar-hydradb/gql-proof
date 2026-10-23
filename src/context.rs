@@ -80,6 +80,11 @@ pub trait Context {
     fn spells(&self, def: &str, label: &Self::Label) -> bool;
     /// A short form of `label`, for naming nonterminals.
     fn show(&self, label: &Self::Label) -> String;
+    /// What `label` says of each of its slots, for export beside the sentence (the oracle
+    /// reads kinds and classes from here instead of recomputing them): one map per slot.
+    fn describe(&self, label: &Self::Label) -> Vec<serde_json::Map<String, serde_json::Value>> {
+        (0..self.slots(label)).map(|_| serde_json::Map::new()).collect()
+    }
     /// The facts this rule's labels hold that only some definitions read (see [`live`]).
     /// Undeclared facts are always kept.
     fn facts(&self) -> Vec<FactSpec> {
@@ -1874,6 +1879,7 @@ impl Built {
         assign_names(root, linking, names, spell, |nt| {
             self.cfg.name(nt).to_string()
         })
+        .map(|_| ())
     }
 }
 
@@ -1955,6 +1961,8 @@ pub(crate) struct Linking {
     pairs: Vec<(usize, usize)>,
     /// The path and own slot of every node that spells a name.
     spelling: Vec<(Vec<usize>, usize)>,
+    /// Every node with a label: its path, the first of its own slots and how many.
+    nodes: Vec<(Vec<usize>, usize, usize)>,
 }
 
 pub(crate) fn link_slots<N: Linked>(root: &N) -> Result<Linking> {
@@ -1962,6 +1970,7 @@ pub(crate) fn link_slots<N: Linked>(root: &N) -> Result<Linking> {
         count: 0,
         pairs: Vec::new(),
         spelling: Vec::new(),
+        nodes: Vec::new(),
     };
     walk_linked(root, &mut Vec::new(), &mut linking)?;
     Ok(linking)
@@ -1976,6 +1985,7 @@ fn walk_linked<N: Linked>(node: &N, path: &mut Vec<usize>, linking: &mut Linking
     let own = linking.count;
     let slots = node.slots();
     linking.count += slots;
+    linking.nodes.push((path.clone(), own, slots));
     if node.spells() {
         if slots != 1 {
             bail!("<{}> spells a name but has {slots} slots", node.describe());
@@ -2054,7 +2064,9 @@ pub(crate) fn assign_names(
     names: &[String],
     spell: impl Fn(NtId, &str) -> Option<tree::Node>,
     name_of: impl Fn(NtId) -> String,
-) -> Result<()> {
+) -> Result<Naming> {
+    let count = linking.count;
+    let nodes = linking.nodes.clone();
     let mut sets = UnionFind::<usize>::new(linking.count);
     for (a, b) in linking.pairs {
         sets.union(a, b);
@@ -2079,7 +2091,19 @@ pub(crate) fn assign_names(
         };
         *node = spelt;
     }
-    Ok(())
+    // The name of every slot, the root's first: a slot nothing spells has none.
+    Ok(Naming {
+        names: (0..count).map(|s| given.get(&sets.find(s)).cloned()).collect(),
+        nodes,
+    })
+}
+
+/// What naming a tree found: the name of every slot (by `link_slots` numbering; a slot
+/// nothing spells has none) and every labelled node with the first of its slots and how
+/// many it has.
+pub struct Naming {
+    pub names: Vec<Option<String>>,
+    pub nodes: Vec<(Vec<usize>, usize, usize)>,
 }
 
 /// The `k`th name: from `names`, then numbered.
