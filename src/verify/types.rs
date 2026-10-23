@@ -1915,6 +1915,16 @@ impl<'t> Checker<'t> {
             },
             // SR 2 b, SR 3 b: open types give a dynamic type
             Ty::Record(None) | Ty::Node | Ty::Edge => Ty::Any,
+            // 21.2 SR 67: a bare NULL takes its type from a context that fixes one; a property
+            // source fixes none of node, edge or record
+            Ty::Null => {
+                self.report(
+                    source,
+                    "20.1 SR 4-6",
+                    "NULL fixes no node, edge or record type (21.2 SR 67)".into(),
+                );
+                Ty::Any
+            }
             _ if psd.wild() => Ty::Any,
             // 20.1 SR 4-6 on the three derivations of <property source>
             _ => {

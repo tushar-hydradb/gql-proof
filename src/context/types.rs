@@ -835,11 +835,13 @@ impl Types {
                 Some(Some(if token("SESSION_USER") { Str } else { Dynamic }))
             }
             // 20.11 SR 3 b: a property of an element with no closed type is dynamic.
-            // A closed record's field has a type, not followed: opaque.
-            "property reference" => Some(Some(match at("property source") {
-                Some(Node | Edge | Dynamic) => Dynamic,
-                _ => Opaque,
-            })),
+            // A closed record's field has a type, not followed: opaque. A bare NULL has no
+            // node, edge or record type to take from this context (21.2 SR 67, 20.1 SR 4-6).
+            "property reference" => match at("property source") {
+                Some(Null) => None,
+                Some(Node | Edge | Dynamic) => Some(Some(Dynamic)),
+                _ => Some(Some(Opaque)),
+            },
             "value query expression" | "element_id function" => Some(Some(Opaque)),
             // 20.27: the datetime value functions.
             "date function" => Some(Some(Date)),

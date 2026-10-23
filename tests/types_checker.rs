@@ -578,3 +578,12 @@ fn order_and_page() {
     bad("MATCH (a) RETURN a ORDER BY a + 1", "20.21 SR 3");
     ok("MATCH (a) ORDER BY a.k LIMIT 1 RETURN a");
 }
+
+/// 20.1 SR 4-6 with 21.2 SR 67: a bare NULL has no node, edge or record type to take from a
+/// property source.
+#[test]
+fn a_property_of_null() {
+    bad("RETURN NULL . a AS x", "20.1 SR 4-6");
+    ok("MATCH (x) RETURN x . a AS y");
+    ok("MATCH (x)-[e]->(y) RETURN e . a AS z");
+}
