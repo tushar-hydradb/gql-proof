@@ -62,6 +62,15 @@ def load(paths):
                 elif f'"{q}"' not in tests and q not in PROBE_EXEMPT:
                     unprobed.add(q)
     UNPROBED = sorted(unprobed)
+    # A `checked` row is kept by the gate alone: its rule strings are in verify::GATE_ONLY, so
+    # a flag on them withholds a tree instead of stopping a run.
+    m = re.search(r"pub const GATE_ONLY: &\[&str\] = &\[(.*?)\];", open("src/verify.rs").read(), re.S)
+    gate = set(re.findall(r'"([^"]+)"', m.group(1))) if m else set()
+    for r in rows:
+        if r["status"] == "checked":
+            for q in re.findall(r'"([0-9][0-9.]* SR [^"]+)"', r["check"]):
+                if q not in gate:
+                    errors.append(f"{r['clause']} SR {r['sr']} {r['item']}: checked, but {q!r} is not in verify::GATE_ONLY")
     return rows, errors
 
 UNPROBED = []

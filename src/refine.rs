@@ -1547,7 +1547,17 @@ impl Rule for UnionNullability {
     fn down(&self, node: &Node, inh: &State, pos: usize, _left: &[State], out: &mut State) {
         let child = owner_of(&node.items[pos]);
         let opens = node.def == "component type" && child == Some("value type");
-        let within = inh.has(IN_COMPONENT) && child.is_some() && child != Some("value type");
+        // Not into a nested type's own specifications: their <not null>s are not the
+        // component's (and the copies would multiply).
+        const STOPS: [&str; 6] = [
+            "value type",
+            "nested graph type specification",
+            "node type specification",
+            "edge type specification",
+            "field types specification",
+            "property types specification",
+        ];
+        let within = inh.has(IN_COMPONENT) && child.is_some_and(|c| !STOPS.contains(&c));
         if opens || within {
             out.set(IN_COMPONENT, true);
         }
@@ -1556,7 +1566,8 @@ impl Rule for UnionNullability {
     fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
         let owner = node.def.split('/').next().unwrap_or(node.def);
         if inh.has(IN_COMPONENT) {
-            if node.def == "not null" {
+            // SR 4 a, b: a <not null>, or NOTHING (the empty type), is known not nullable.
+            if node.def == "not null" || node.def == "empty type" {
                 return Some(s.with(RAW_NOT_NULL));
             }
             if node.def == "value type" && !node.group {

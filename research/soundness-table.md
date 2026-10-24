@@ -1,0 +1,381 @@
+# the soundness table
+
+> for agents: generated from `research/audit/audit.jsonl` by the snippet in `research/soundness-2026-10-23.md`; do not edit by hand. people start at the [readme](../README.md)
+
+one row per constraining sentence of a syntax rule (constraint, type and environment rows). status: `generated` the generator keeps it as written and the checker reports it; `reading` kept by a stricter reading, the checker reports it; `checked` the checker reports it and the gate keeps it out (no generator rule, `verify::GATE_ONLY` or withheld trees); `grammar` no derivation breaks it; `hypothesis` holds under H1. the claim and its argument: `soundness-claim.md`
+
+| kind | generated | reading | checked | grammar | hypothesis | open |
+|---|---|---|---|---|---|---|
+| constraint | 112 | 49 | 23 | 15 | 0 | 0 |
+| type | 48 | 37 | 6 | 0 | 1 | 0 |
+| environment | 0 | 0 | 0 | 0 | 76 | 0 |
+
+| rule | kind | status | in our words | checker |
+|---|---|---|---|---|
+| 6 SR 4 | constraint | reading | no two identifiers in the program may be visually confusable with each other (a syntax error is raised) | src/verify.rs:confusables "6 SR 4" (H2: ASCII skeletons) |
+| 7.1 SR 6 c i 3 A I | type | reading | with a declared graph reference value type on a graph parameter, the initializer's graph type is assignable to it | src/verify/types.rs "7.1 SR 6" |
+| 7.1 SR 6 c ii 3 A I | type | reading | with a declared binding table reference value type on a table parameter, the initializer's table type is assignable to it | src/verify/types.rs "7.1 SR 6" |
+| 7.1 SR 6 c iii 3 A I | type | generated | with a declared value type on a value parameter, the initializer's value type is assignable to it | src/verify/types.rs "7.1 SR 6" |
+| 7.1 SR 6 d i | environment | hypothesis | when the parameter is already defined in the session, the new value type is assignable to the parameter's value type |  |
+| 7.1 SR 6 d ii 1 B | type | checked | when an earlier session set command in the program set the same (undefined) parameter name, the new value type is assignable to that command's declared type | src/verify/types.rs "7.1 SR 6" (reading: every later SET of a name matches the first type) |
+| 8.2 SR 2 | constraint | generated | the characteristics hold exactly one transaction access mode | src/verify.rs:syntax_rules "transaction characteristics" arm, reports "8.2 SR 2" |
+| 9.1 SR 5 | constraint | generated | every statement simply contained in a catalog-modifying procedure specification is a linear catalog-modifying statement | src/verify.rs:syntax_rules "9.1 SR 5" |
+| 9.1 SR 6 sentence 1 | constraint | generated | every statement simply contained in a data-modifying procedure specification is a linear data-modifying statement or a composite query statement | src/verify.rs:syntax_rules "9.1 SR 6" |
+| 9.1 SR 6 sentence 2 | constraint | generated | at least one statement simply contained in a data-modifying procedure specification is a linear data-modifying statement | src/verify.rs:syntax_rules "linear data-modifying statement" arm with modifies(), reports  |
+| 9.1 SR 7 | constraint | generated | every statement simply contained in a query specification is a composite query statement | src/verify.rs:syntax_rules "9.1 SR 7" |
+| 9.2 SR 4 | constraint | generated | a statement block that directly contains a linear catalog-modifying statement directly contains at most one statement | src/verify.rs:syntax_rules "9.2 SR 4" |
+| 9.2 SR 5 | constraint | generated | a statement block that directly contains a focused linear query or data-modifying statement directly contains no ambient linear query or data-modifying statement | src/verify.rs:syntax_rules "9.2 SR 5" |
+| 9.2 SR 6 | constraint | generated | if one linear query statement directly contained in the block is a select statement, every linear query statement directly contained in it is | src/verify.rs:syntax_rules "9.2 SR 6" |
+| 9.2 SR 7 | constraint | checked | if one linear query statement directly contained in the block contains a primitive result statement, every linear query statement directly contained in it does | src/verify.rs:syntax_rules "9.2 SR 7" (contains reaches into nested bodies; the gate withh |
+| 9.2 SR 12 c | constraint | generated | the incoming table's record type and the incoming record of each later statement share no field name | src/verify/scope.rs:block, reports "9.2 SR 12" |
+| 10.1 SR 7 | constraint | generated | the incoming record has no field named like the defined variable | src/verify/scope.rs:body, reports "10.1 SR 7" |
+| 10.1 SR 8 b i 1 | type | reading | with a declared graph reference value type (no initializer between), the initializer's graph type is assignable to it | src/verify/types.rs "10.1 SR 8"; src/verify.rs "10.1 SR 8" |
+| 10.2 SR 7 | constraint | generated | the incoming record has no field named like the defined variable | src/verify/scope.rs:body, reports "10.2 SR 7" |
+| 10.2 SR 8 b i 1 | type | reading | with a declared binding table reference value type (no initializer between), the initializer's table type is assignable to it | src/verify/types.rs "10.2 SR 8"; src/verify.rs "10.2 SR 8" |
+| 10.3 SR 7 | constraint | generated | the incoming record has no field named like the defined variable | src/verify/scope.rs:body, reports "10.3 SR 7"; also src/verify/scope.rs:let_statement for  |
+| 10.3 SR 8 b i 1 | type | generated | with a declared value type, the initializer's value type is assignable to it | src/verify/types.rs:value_definition, reports "10.3 SR 8" |
+| 11.1 SR 3 a ii | type | reading | when the expression is (explicitly or after rewriting) VARIABLE over a value expression primary, that primary's declared type is a material graph reference value type | src/verify/types.rs:ty "graph expression" arm, reports "11.1 SR 3" (a bare name bound in t |
+| 11.1 SR 3 c i | environment | hypothesis | for CURRENT_GRAPH or CURRENT_PROPERTY_GRAPH the current working graph site is not omitted |  |
+| 11.2 SR 2 | type | generated | a nested binding table query specification's declared type is a binding table type or a binding table reference value type | src/verify/scope.rs:expr "nested binding table query specification" arm with emits_finish, |
+| 11.2 SR 4 b ii | type | reading | when the expression is (explicitly or after rewriting) VARIABLE over a value expression primary, that primary's declared type is a material binding table reference value type | src/verify/types.rs:ty "binding table expression" arm, reports "11.2 SR 4" |
+| 12.2 SR 2 | environment | hypothesis | the absolute directory path of a create schema statement identifies a GQL-directory |  |
+| 12.2 SR 5 | environment | hypothesis | without IF NOT EXISTS the schema name does not already name a schema in the parent |  |
+| 12.3 SR 3 | environment | hypothesis | the absolute directory path of a drop schema statement identifies a GQL-directory |  |
+| 12.3 SR 6 | environment | hypothesis | without IF EXISTS the schema name names an existing schema in the parent |  |
+| 12.3 SR 7 a | environment | hypothesis | the schema dropped is not the statement's current working schema |  |
+| 12.3 SR 7 b | environment | hypothesis | the schema dropped holds no catalog object |  |
+| 12.4 SR 3 | environment | hypothesis | the explicit or implicit catalog object parent reference identifies a GQL-schema |  |
+| 12.4 SR 6 | environment | hypothesis | without IF NOT EXISTS or OR REPLACE the parent-and-name does not name an existing graph |  |
+| 12.5 SR 2 | environment | hypothesis | the explicit or implicit parent reference identifies a GQL-schema |  |
+| 12.5 SR 5 | environment | hypothesis | without IF EXISTS the parent-and-name names an existing graph |  |
+| 12.6 SR 2 | environment | hypothesis | the explicit or implicit parent reference identifies a GQL-schema |  |
+| 12.6 SR 5 | environment | hypothesis | without IF NOT EXISTS or OR REPLACE the parent-and-name does not name an existing graph type |  |
+| 12.6 SR 7 b iv | environment | hypothesis | the LIKE graph expression's declared type has a constraining object type (the graph is closed-typed) |  |
+| 12.7 SR 2 | environment | hypothesis | the explicit or implicit parent reference identifies a GQL-schema |  |
+| 12.7 SR 5 | environment | hypothesis | without IF EXISTS the parent-and-name names an existing graph type |  |
+| 12.7 SR 6 | environment | hypothesis | an existing graph type dropped is referenced by no graph in the catalog |  |
+| 12.8 SR 2 | constraint | generated | an inline procedure call under a catalog-modifying call statement holds a catalog-modifying procedure specification | src/verify.rs:syntax_rules "12.8 SR 2" |
+| 12.8 SR 3 | environment | hypothesis | a named procedure called under a catalog-modifying call statement has the catalog procedure indication |  |
+| 13.1 SR 5 | constraint | reading | the statement sequence holds at least one simple data-modifying statement | src/verify.rs:syntax_rules "13.1 SR 5" (via modifies) |
+| 13.2 SR 5 | environment | hypothesis | the insert's current working graph site is not omitted |  |
+| 13.3 SR 3 a iii | type | generated | a set property item's variable is a graph element reference | src/verify/scope.rs:modify "13.3 SR 3" |
+| 13.3 SR 3 a iv | type | checked | a set property item's value has a supported property value type | src/verify/types.rs "13.3 SR 3" (reading H2: a predefined material type) |
+| 13.3 SR 3 b ii | type | generated | a set all properties item's variable is a graph element reference | src/verify/scope.rs:modify "13.3 SR 3" |
+| 13.3 SR 3 b iii 2 | type | checked | each value in a set all properties item has a supported property value type | src/verify/types.rs "13.3 SR 3" (reading H2: a predefined material type) |
+| 13.3 SR 3 c | type | generated | a set label item's variable is a graph element reference | src/verify/scope.rs:modify "13.3 SR 3" |
+| 13.3 SR 4 | constraint | reading | no two set property items name the same variable and property | src/verify/scope.rs:modify "13.3 SR 4" |
+| 13.3 SR 5 | constraint | reading | a set all properties item's variable is the variable of no other set all properties or set property item | src/verify/scope.rs:modify "13.3 SR 5" |
+| 13.4 SR 3 | type | generated | each remove item's variable is a graph element reference | src/verify/scope.rs:modify "13.4 SR 3" |
+| 13.5 SR 3 | environment | hypothesis | the delete's current working graph site is not omitted |  |
+| 13.5 SR 5 | type | reading | every top-level value expression of the delete item list has a graph element reference type | src/verify/types.rs:walk_except "13.5 SR 5" |
+| 13.6 SR 2 | constraint | generated | an inline data-modifying call's nested procedure is a data-modifying procedure specification | src/verify.rs:syntax_rules "13.6 SR 2" |
+| 13.6 SR 3 | environment | hypothesis | a named data-modifying call's procedure is a data procedure |  |
+| 14.2 SR 3 | constraint | generated | every query conjunction directly in one composite expression is the same conjunction | src/verify.rs:syntax_rules "14.2 SR 3" |
+| 14.2 SR 4 | constraint | generated | a composite expression does not directly contain both focused and ambient linear query statements | src/verify.rs:syntax_rules "14.2 SR 4" |
+| 14.2 SR 5 | constraint | reading | a composite expression directly containing FINISH has one primary | src/verify/scope.rs:composite "14.2 SR 5" (via finishes) |
+| 14.2 SR 10 a v | type | checked | the two operands' columns are name-equal and combinable | src/verify/types.rs "14.2 SR 10" (columns comparable and combinable) |
+| 14.2 SR 10 a vii 1 | type | checked | under UNION DISTINCT, EXCEPT or INTERSECT, no result column has a dynamic union type with two non-comparable components | src/verify/types.rs "14.2 SR 10" (no dynamic column under a distinct set operation) |
+| 14.5 SR 2 | constraint | generated | an inline query call's nested procedure is a query specification | src/verify.rs:syntax_rules "14.5 SR 2" |
+| 14.5 SR 3 | environment | hypothesis | a named query call's procedure is a query procedure |  |
+| 14.8 SR 10 c i 2 | constraint | generated | the ordinality or offset variable's name differs from the alias's | src/verify/scope.rs:for_statement "14.8 SR 10" |
+| 14.8 SR 11 | constraint | reading | the incoming record's field names and the new fields are disjoint | src/verify/scope.rs:for_statement "14.8 SR 11" |
+| 14.10 SR 4 c i 2 A I | constraint | reading | no sort key of an ORDER BY after RETURN contains a nested query specification | src/verify/scope.rs:result "14.10 SR 4" (a sort key contains a nested query) |
+| 14.10 SR 4 c i 2 A IV | constraint | reading | every variable reference in a sort key, outside an aggregate, is one ORDER BY may see: the return aliases, plus the incoming names when the return neither groups, aggregates nor removes duplicates, or the GROUP BY references when it groups | src/verify/scope.rs:result "14.10 SR 4" (unbound in the ORDER BY env) |
+| 14.10 SR 4 c i 2 A V | constraint | reading | when the return neither groups nor directly holds an aggregating item, no sort key contains an aggregate | src/verify/scope.rs:result "14.10 SR 4" (an aggregate in ORDER BY without grouping or aggr |
+| 14.11 SR 6 a | constraint | reading | RETURN * needs an incoming table that is not the unit table | src/verify/scope.rs:result "14.11 SR 6" (RETURN * against a unit working table) |
+| 14.11 SR 6 b | constraint | reading | RETURN * has no GROUP BY | src/verify/scope.rs:result "14.11 SR 6" (RETURN * with GROUP BY) |
+| 14.11 SR 8 b | constraint | generated | a return item that is not a bare variable reference has an alias | src/verify/scope.rs:result "14.11 SR 8" |
+| 14.11 SR 10 a ii | constraint | checked | (cor 1) with GROUP BY, no return item is both grouping and aggregating | src/verify/types.rs "14.11 SR 10" |
+| 14.11 SR 10 a iii | constraint | generated | with GROUP BY, every return item is grouping or aggregating | src/verify/scope.rs:result "14.11 SR 10" |
+| 14.12 SR 7 a | constraint | generated | SELECT * needs a FROM body. | src/verify/scope.rs:select, reports "14.12 SR 7" (SELECT * without FROM) |
+| 14.12 SR 7 b | constraint | generated | SELECT * must not carry a GROUP BY. | src/verify/scope.rs:select "14.12 SR 7" |
+| 14.12 SR 8 b | constraint | reading | Every other explicit select item must have an alias. | src/verify/scope.rs:select, reports "14.12 SR 8" (a select item that is not a binding vari |
+| 14.12 SR 15 a ii 2 | constraint | reading | Every aggregating select item must have an alias. | src/verify/scope.rs:select, reports "14.12 SR 8": an aggregate is not a bare reference, so |
+| 14.12 SR 19 a | constraint | reading | In a SELECT that aggregates or groups by a non-empty list, a sort key that is a bare reference must name a select item alias or a grouping element. | src/verify/scope.rs:select "14.12 SR 19" |
+| 14.12 SR 19 b | constraint | reading | In such a SELECT, every reference directly inside a non-bare sort key must name a grouping element. | src/verify/scope.rs:select "14.12 SR 19" |
+| 14.12 SR 26 b ii 1 | constraint | generated | A FROM with a graph expression before its nested query: the nested query must directly hold an ambient linear query statement (no USE of its own). | src/verify.rs:syntax_rules "14.12 SR 26" |
+| 14.12 SR 26 b ii 2 | constraint | generated | A FROM with a bare nested query: the nested query must directly hold a focused linear query statement (one that starts with USE). | src/verify.rs:syntax_rules "14.12 SR 26" |
+| 15.1 SR 9 | constraint | generated | The call's result columns must be name-disjoint from the incoming record fields and table columns together. | src/verify/scope.rs:call, reports "15.1 SR 9" (the call returns n, which is already bound) |
+| 15.2 SR 6 a ii | constraint | generated | An explicit scope clause must not list the same name twice. | src/verify/scope.rs:call, reports "15.2 SR 6" (n is listed twice) |
+| 15.3 SR 1 | environment | hypothesis | The procedure reference must identify a procedure. |  |
+| 15.3 SR 2 | environment | hypothesis | The procedure has a named procedure descriptor. |  |
+| 15.3 SR 3 | environment | hypothesis | The descriptor gives the parameter list and the least and most arguments allowed. |  |
+| 15.3 SR 5 | environment | hypothesis | At least the required number of arguments must be given. |  |
+| 15.3 SR 6 | environment | hypothesis | At most the allowed number of arguments must be given. |  |
+| 15.3 SR 7 c | environment | hypothesis | Each argument must be store-assignable (22.10) to the matching parameter's type. | src/verify/types.rs:call types the arguments (walk over the argument list) but has no para |
+| 15.3 SR 8 | environment | hypothesis | A YIELD after a named call needs a procedure whose result is a binding table. |  |
+| 16.1 SR 2 | environment | hypothesis | The schema reference must identify a schema (17.1's rules resolve a relative reference or a parameter). |  |
+| 16.3 SR 4 | constraint | generated | Each element or path variable name of the pattern identifies exactly one pattern variable at its depth of matching. | src/verify/scope.rs:names, reports "16.3 SR 4" (a subpath and an element share a name; a p |
+| 16.3 SR 7 | constraint | generated | No incoming record field may bear a subpath variable's name. | src/verify/scope.rs:pattern_match, reports "16.3 SR 7" (subpath variable n is a field of t |
+| 16.3 SR 9 | constraint | generated | No incoming table column may bear a subpath variable's name. | src/verify/scope.rs:pattern_match, reports "16.3 SR 9" (subpath variable n is a column of  |
+| 16.3 SR 12 a i | constraint | generated | An explicit YIELD must not list a name twice. | src/verify/scope.rs:pattern_match, reports "16.3 SR 12" (n is yielded twice) |
+| 16.3 SR 12 a ii | constraint | generated | Every name an explicit YIELD lists must be a global of the pattern. | src/verify/scope.rs:pattern_match, reports "16.3 SR 12" (n is not a variable of the graph  |
+| 16.3 SR 15 | constraint | generated | Each yielded reference's binding graph pattern (20.12 SR 10) must be this pattern. | src/verify/scope.rs:pattern_match reports the only way to break it under "16.3 SR 12" (n i |
+| 16.3 SR 16 a i | type | reading | A yielded name that is also an incoming field: if the reference has group degree the field must too. | src/verify/scope.rs:pattern_match, reports "16.3 SR 16" (n joins a group with a singleton) |
+| 16.3 SR 16 a ii | type | reading | A yielded name that is also an incoming field: if the reference is a singleton the field must not have group degree. | src/verify/scope.rs:pattern_match, reports "16.3 SR 16" |
+| 16.3 SR 20 | type | reading | The incoming rows and the pattern's rows are joined by equality on the shared names, so 22.13's rules on comparable types apply. | src/verify/scope.rs:pattern_match, reports "16.3 SR 20" (n joins a kind with another) thro |
+| 16.3 SR 23 | environment | hypothesis | A current working graph site must exist where the pattern is evaluated. |  |
+| 16.4 SR 3 | constraint | reading | an element variable exposed by two path patterns of one list is exposed as an unconditional singleton by both | src/verify/scope.rs:Checker::graph_pattern ("16.4 SR 3") |
+| 16.4 SR 4 | constraint | reading | two path patterns do not expose the same subpath variable | src/verify/scope.rs:Checker::graph_pattern ("16.4 SR 4") |
+| 16.4 SR 5 | constraint | generated | a name is not both a node variable and an edge variable at one depth of graph pattern matching | src/verify/scope.rs:Checker::names ("16.4 SR 5") |
+| 16.4 SR 6 b i | constraint | reading | when a graph pattern has a KEEP clause, none of its path patterns contains a path search prefix | src/verify.rs:syntax_rules ("16.4 SR 6") |
+| 16.4 SR 12 | constraint | generated | under DIFFERENT EDGES (written or by default), a list holding a selective path pattern holds no other path pattern | src/verify.rs:syntax_rules "16.4 SR 12" (KEEP prefix read) |
+| 16.4 SR 14 | constraint | reading | after the rewrites every quantified path primary is bounded, inside a restrictive parenthesized expression, inside a selective path pattern, or under DIFFERENT EDGES | src/verify.rs:syntax_rules ("16.4 SR 14") |
+| 16.5 SR 9 | constraint | reading | a property list in a bound insert element pattern does not name one property twice | src/verify/scope.rs:Checker::insert ("16.5 SR 10": a bound pattern with labels or properti |
+| 16.5 SR 10 a i | constraint | generated | a bound insert element pattern is a node pattern | src/verify/scope.rs:Checker::insert ("16.5 SR 10": bound and not a node) |
+| 16.5 SR 10 a ii | type | generated | a bound insert element pattern's declared type is a node reference type | src/verify/scope.rs:Checker::insert ("16.5 SR 10": bound and not a node) |
+| 16.5 SR 10 a iii | constraint | generated | a bound insert element pattern has no label and property set specification | src/verify/scope.rs:Checker::insert ("16.5 SR 10": bound has labels or properties) |
+| 16.5 SR 10 b | constraint | reading | an insert pattern declaring a name again after its defining pattern has no label and property set specification | src/verify/scope.rs:Checker::insert ("16.5 SR 10": labels or properties outside its defini |
+| 16.5 SR 11 | constraint | reading | a name an insert edge pattern declares is declared by no other insert pattern | src/verify/scope.rs:Checker::insert ("16.5 SR 11") |
+| 16.6 SR 2 b ii type | type | hypothesis | a written number of paths or groups has an exact numeric type of scale 0 |  |
+| 16.6 SR 2 b ii value | constraint | generated | a number of paths or groups written as an integer is positive | src/verify.rs:syntax_rules "16.6 SR 2" |
+| 16.6 SR 7 | constraint | checked | a strict interior variable of a selective path pattern is not an exterior variable nor an interior variable of another selective path pattern | src/verify/scope.rs:Checker::selective_rules ("16.6 SR 7") |
+| 16.6 SR 8 | constraint | reading | a selective path pattern references no graph pattern variable it does not declare | src/verify/scope.rs:Checker::verdict ("16.6 SR 8") |
+| 16.7 SR 4 | constraint | generated | a path pattern expression has a separator between a token ending in minus and a following token starting with minus | src/verify.rs:Verifier::verify ("21.3 SR 13, 14": the text is the tree's tokens joined by  |
+| 16.7 SR 8 | constraint | generated | the primary of a quantified or questioned primary has a positive minimum path length | src/verify.rs:syntax_rules ("16.7 SR 8") |
+| 16.7 SR 9 | constraint | generated | the primary of a quantified primary contains no quantified primary at the same depth | src/verify.rs:syntax_rules ("16.7 SR 9") |
+| 16.7 SR 10 c | constraint | reading | subpath variables declared in the operands of one multiset alternation are distinct | src/verify/scope.rs:Checker::expose ("16.7 SR 10") |
+| 16.7 SR 11 | constraint | reading | a union operand references no element variable declared only in another operand | src/verify/scope.rs:Checker::verdict ("16.7 SR 11") |
+| 16.7 SR 16 | constraint | generated | a path pattern's expression has a positive minimum node count | src/verify.rs:syntax_rules ("16.7 SR 16") |
+| 16.7 SR 20 | constraint | generated | a parenthesized expression with a subpath variable has a positive minimum node count | src/verify.rs:syntax_rules ("16.7 SR 20") |
+| 16.7 SR 21 | constraint | generated | an element pattern with an element WHERE declares a variable | src/verify/scope.rs:Checker::expose ("16.7 SR 21") |
+| 16.7 SR 22 b | constraint | reading | a parenthesized expression declaring a subpath variable contains no other parenthesized expression declaring it | src/verify/scope.rs:Checker::expose ("16.7 SR 22": declared inside its own declaration) |
+| 16.7 SR 22 c i | constraint | reading | a variable joined across a concatenation is not a subpath variable | src/verify/scope.rs:Checker::expose ("16.7 SR 22": subpath variable joined in a concatenat |
+| 16.7 SR 22 c ii | constraint | reading | a variable not exposed as an unconditional singleton by both operands of a concatenation is exposed by only one | src/verify/scope.rs:Checker::expose ("16.7 SR 22": not an unconditional singleton in both) |
+| 16.7 SR 24 | constraint | reading | a parenthesized WHERE references no path variable | src/verify/scope.rs:Checker::verdict ("16.7 SR 24") |
+| 16.8 SR 2 | environment | hypothesis | a label expression has a current working graph site |  |
+| 16.8 SR 4 a ii 1 | environment | hypothesis | in a node pattern over a working graph of closed type, every label name is a node type label of that graph type |  |
+| 16.8 SR 4 a ii 2 | environment | hypothesis | in an edge pattern over a working graph of closed type, every label name is an edge type label of that graph type |  |
+| 16.8 SR 4 b ii | type | checked | in a labeled predicate whose variable has a closed element reference type, every label name is in that type's label set | src/verify/types.rs "16.8 SR 4" |
+| 16.9 SR 2 | constraint | generated | a path variable reference has unconditional singleton degree of reference | src/verify/scope.rs:pattern_match "16.9 SR 2" |
+| 16.9 SR 3 | type | generated | a path variable reference has a path type | src/verify/scope.rs:pattern_match "16.9 SR 3" |
+| 16.10 SR 3 a | type | generated | a singleton element variable reference has a node or edge reference type | src/verify/types.rs:Checker::element ("16.10 SR 3") |
+| 16.10 SR 3 b | type | reading | a group element variable reference has a group list type of node or edge references | src/verify/types.rs:Checker::element ("16.10 SR 3") |
+| 16.11 SR 3 a i | constraint | generated | an upper bound, written or implied by a fixed quantifier, is above 0 | src/verify.rs:syntax_rules ("16.11 SR 3") |
+| 16.11 SR 3 a ii | constraint | generated | a lower bound is at most the upper bound | src/verify.rs:syntax_rules ("16.11 SR 3 a ii") |
+| 16.12 SR 1 | constraint | reading | a simplified negation holds no concatenation, quantifier, ? or multiset alternation | src/verify.rs:syntax_rules ("16.12 SR 1") |
+| 16.12 SR 2 | constraint | generated | a simplified direction override holds no other override | src/verify.rs:syntax_rules ("16.12 SR 2") |
+| 16.12 SR 3 | constraint | generated | a simplified direction override holds no concatenation, quantifier, ? or multiset alternation | src/verify.rs:syntax_rules ("16.12 SR 3") |
+| 16.12 SR 4 | constraint | reading | a simplified conjunction holds no concatenation, quantifier, ? or multiset alternation | src/verify.rs:syntax_rules ("16.12 SR 4") |
+| 16.14 SR 4 b i | constraint | generated | an unaliased yield item name is a binding variable | src/verify/scope.rs:Checker::yield_clause ("16.14 SR 4") |
+| 16.14 SR 6 | constraint | generated | no two yield aliases are equivalent | src/verify/scope.rs:Checker::yield_clause ("16.14 SR 6") |
+| 16.14 SR 7 b iii | type | generated | every yield item name is a column of the incoming table | src/verify/scope.rs:Checker::yield_clause ("16.14 SR 7", NEXT only) |
+| 17.1 SR 2 a i | environment | hypothesis | a schema reference that is just a solidus needs the catalog root to be a schema |  |
+| 17.1 SR 2 b iii | environment | hypothesis | the directory named by the absolute path must hold a schema with the given name |  |
+| 17.1 SR 2 b iv | environment | hypothesis | no directory or schema in that parent may have a name visually confusable with the schema name |  |
+| 17.1 SR 3 b ii | environment | hypothesis | the schema name of a relative schema reference must name a schema in the directory its relative path reaches |  |
+| 17.1 SR 4 a i | environment | hypothesis | HOME_SCHEMA needs a current home schema |  |
+| 17.1 SR 4 b i | environment | hypothesis | CURRENT_SCHEMA or a bare period needs a current working schema |  |
+| 17.1 SR 5 a | environment | hypothesis | an absolute directory path needs the catalog root to be a directory |  |
+| 17.1 SR 6 b | environment | hypothesis | a relative directory path needs a current working schema |  |
+| 17.1 SR 6 d i | environment | hypothesis | no double-period step may start from the catalog root |  |
+| 17.2 SR 1 a i | environment | hypothesis | a home graph reference needs a current home graph |  |
+| 17.2 SR 2 d i 1 | environment | hypothesis | the object the parent holds under the graph name must be a graph |  |
+| 17.2 SR 2 d i 2 | environment | hypothesis | no primary object in the parent may have a name visually confusable with the graph name |  |
+| 17.3 SR 1 | environment | hypothesis | the parent-and-name of a graph type reference must identify a graph type |  |
+| 17.3 SR 2 d i 1 | environment | hypothesis | the object the parent holds under the graph type name must be a graph type |  |
+| 17.3 SR 2 d i 2 | environment | hypothesis | no primary object in the parent may have a name visually confusable with the graph type name |  |
+| 17.4 SR 2 d i 1 | environment | hypothesis | the object the parent holds under the binding table name must be a binding table |  |
+| 17.4 SR 2 d i 2 | environment | hypothesis | no primary object in the parent may have a name visually confusable with the binding table name |  |
+| 17.5 SR 3 b ii | environment | hypothesis | the parent must hold a procedure with the given name |  |
+| 17.5 SR 3 b iii | environment | hypothesis | no primary object in the parent may have a name visually confusable with the procedure name |  |
+| 17.6 SR 1 a | constraint | generated | when the schema reference inside a parent reference is a bare solidus, the parent reference holds no second solidus | src/verify.rs:syntax_rules "17.6 SR 1" |
+| 17.6 SR 1 b | constraint | reading | otherwise a parent reference with a schema reference holds a solidus right after it | src/verify.rs:syntax_rules "17.6 SR 1" |
+| 17.6 SR 2 b i | environment | hypothesis | a parent reference without a schema reference needs a current working schema |  |
+| 17.6 SR 5 b i | environment | hypothesis | the schema must hold a catalog object with the first object name |  |
+| 17.6 SR 5 b iii 1 | environment | hypothesis | each further object name must be held by the object the previous name reached |  |
+| 17.7 SR 4 a i | environment | hypothesis | inside a schema reference the parameter's value must parse as an absolute or relative catalog schema reference |  |
+| 17.7 SR 4 b i | environment | hypothesis | inside a graph reference the value must parse as a graph parent-and-name or a home graph |  |
+| 17.7 SR 4 c | environment | hypothesis | inside a graph type reference the value must parse as a graph type parent-and-name |  |
+| 17.7 SR 4 d i | environment | hypothesis | inside a binding table reference the value must parse as a binding table parent-and-name |  |
+| 17.7 SR 4 e | environment | hypothesis | inside a procedure reference the value must parse as a procedure parent-and-name |  |
+| 17.8 SR 2 | constraint | generated | the external reference is a URI with a scheme (RFC 3986) or a WHATWG absolute URL with fragment | src/verify.rs:token_rule, reports "17.8 SR 2, 3" |
+| 17.8 SR 3 | constraint | generated | the external reference holds a colon | src/verify.rs:token_rule, reports "17.8 SR 2, 3" |
+| 17.8 SR 5 | environment | hypothesis | the external reference must identify a GQL-object |  |
+| 18.1 SR 8 | constraint | checked | no two node type specifications in a body have the same present effective key label set | src/verify/graph_type.rs "18.1 SR 8" (the gate keeps it; readings in the module doc) |
+| 18.1 SR 9 | constraint | checked | a node type specification that implies another is structurally consistent with it | src/verify/graph_type.rs "18.1 SR 9" (the gate keeps it; readings in the module doc) |
+| 18.1 SR 10 | constraint | checked | no two node type specifications in a body have the same local node type alias | src/verify/graph_type.rs "18.1 SR 10" (the gate keeps it; readings in the module doc) |
+| 18.1 SR 11 a | constraint | checked | for every edge type specification in a body, the body holds a node type specification specifying its source node type | src/verify/graph_type.rs "18.1 SR 11" (the gate keeps it; readings in the module doc) |
+| 18.1 SR 11 b | constraint | checked | for every edge type specification in a body, the body holds a node type specification specifying its destination node type | src/verify/graph_type.rs "18.1 SR 11" (the gate keeps it; readings in the module doc) |
+| 18.1 SR 14 | constraint | checked | two edge type specifications in a body with the same present effective key label set agree on direction, label set and property type set | src/verify/graph_type.rs "18.1 SR 14" (the gate keeps it; readings in the module doc) |
+| 18.1 SR 16 a | constraint | checked | an edge type specification that implies another is structurally consistent with it | src/verify/graph_type.rs "18.1 SR 16" (the gate keeps it; readings in the module doc) |
+| 18.1 SR 16 b | constraint | checked | an edge type specification that implies another is structurally endpoint-consistent with it | src/verify/graph_type.rs "18.1 SR 16" (the gate keeps it; readings in the module doc) |
+| 18.2 SR 2 | constraint | generated | a node type specification directly under a closed node reference value type holds no local alias, no key label set and no node type name | src/verify.rs:syntax_rules, reports "18.2 SR 2" (a <...> in a closed node reference value  |
+| 18.2 SR 3 a | constraint | generated | a named node type specification holds no key label set | src/verify.rs:syntax_rules, reports "18.2 SR 3" |
+| 18.2 SR 3 b | constraint | generated | a named node type specification holds no local alias | src/verify.rs:syntax_rules, reports "18.2 SR 3" |
+| 18.2 SR 7 | constraint | checked | when the key label set is present it is disjoint from the implied label set | src/verify/graph_type.rs "18.2 SR 7" (the gate keeps it; readings in the module doc) |
+| 18.3 SR 2 a | constraint | generated | an edge type specification directly under a closed edge reference value type holds no edge key label set and no edge type name | src/verify.rs:syntax_rules, reports "18.3 SR 2" (a <...> in a closed edge reference value  |
+| 18.3 SR 2 b | constraint | generated | an edge type specification directly under a closed edge reference value type holds no source or destination node type alias | src/verify.rs:syntax_rules, reports "18.3 SR 2" |
+| 18.3 SR 2 c | constraint | generated | an edge type specification directly under a closed edge reference value type holds no source node type reference with a node type key label set | src/verify.rs:syntax_rules, reports "18.3 SR 2" |
+| 18.3 SR 2 d | constraint | generated | an edge type specification directly under a closed edge reference value type holds no destination node type reference with a node type key label set | src/verify.rs:syntax_rules, reports "18.3 SR 2" |
+| 18.3 SR 3 | constraint | generated | a named edge type specification holds no edge key label set | src/verify.rs:syntax_rules, reports "18.3 SR 3" |
+| 18.3 SR 4 a | constraint | generated | an edge type specification saying DIRECTED holds a directed endpoint pair or a directed edge type pattern | src/verify.rs:syntax_rules, reports "18.3 SR 4" (DIRECTED with an undirected shape) |
+| 18.3 SR 4 b | constraint | reading | an edge type specification saying UNDIRECTED holds an undirected endpoint pair or an undirected edge type pattern | src/verify.rs:syntax_rules, reports "18.3 SR 4" (UNDIRECTED with a directed shape) |
+| 18.3 SR 8 | constraint | checked | when the edge key label set is present it is disjoint from the implied label set | src/verify/graph_type.rs "18.3 SR 8" (the gate keeps it; readings in the module doc) |
+| 18.3 SR 17 a ii | constraint | checked | when the source endpoint is an alias, the enclosing body holds a node type specification with that local alias | src/verify/graph_type.rs "18.3 SR 17" (the gate keeps it; readings in the module doc) |
+| 18.3 SR 17 b ii | constraint | checked | when the source endpoint carries a node type key label set, the body holds a node type specification with that key label set | src/verify/graph_type.rs "18.3 SR 17" (the gate keeps it; readings in the module doc) |
+| 18.3 SR 17 b v | constraint | checked | that node type and the node type of the endpoint's filler have the same normal form | src/verify/graph_type.rs "18.3 SR 17" (the gate keeps it; readings in the module doc) |
+| 18.3 SR 18 a ii | constraint | checked | when the destination endpoint is an alias, the enclosing body holds a node type specification with that local alias | src/verify/graph_type.rs "18.3 SR 18" (the gate keeps it; readings in the module doc) |
+| 18.3 SR 18 b ii | constraint | checked | when the destination endpoint carries a node type key label set, the body holds a node type specification with that key label set | src/verify/graph_type.rs "18.3 SR 18" (the gate keeps it; readings in the module doc) |
+| 18.3 SR 18 b v | constraint | checked | that node type and the node type of the destination filler have the same normal form | src/verify/graph_type.rs "18.3 SR 18" (the gate keeps it; readings in the module doc) |
+| 18.5 SR 1 | constraint | generated | the property types in one property types specification have distinct names | src/verify/graph_type.rs "18.5 SR 1" (the gate keeps it; readings in the module doc) |
+| 18.6 SR 4 | type | reading | the value type of a property type is a supported property value type | src/verify/types.rs "18.6 SR 4" |
+| 18.7 SR 4 | type | reading | the property value type is a supported property value type | src/verify/types.rs "18.7 SR 4"; src/verify.rs "18.7 SR 4" |
+| 18.9 SR 7 | constraint | generated | a max length is at least 1 | src/verify.rs:syntax_rules: "18.9 SR 7" (a max length of 0) |
+| 18.9 SR 8 | constraint | grammar | a min length is at least 0 |  |
+| 18.9 SR 10 | constraint | generated | a fixed length is at least 1 | src/verify.rs:syntax_rules: "18.9 SR 10" (a fixed length of 0) |
+| 18.9 SR 13 | constraint | generated | in a character string type the min length, given or implicit, is at most the max length | src/verify.rs:syntax_rules: "18.9 SR 13" (the min length is above the max length) |
+| 18.9 SR 21 | constraint | generated | in a byte string type the min length, given or implicit, is at most the max length | src/verify.rs:syntax_rules: "18.9 SR 21" (the min length is above the max length) |
+| 18.9 SR 28 | constraint | generated | a byte string type's minimum length is at most its maximum length | src/verify.rs:syntax_rules: "18.9 SR 21" |
+| 18.9 SR 29 | constraint | generated | a precision is at least 1 | src/verify.rs:syntax_rules: "18.9 SR 29" (a precision of 0) |
+| 18.9 SR 37 | constraint | grammar | a scale is at least 0 |  |
+| 18.9 SR 38 | constraint | generated | an exact numeric type's scale is at most its precision | src/verify.rs:syntax_rules: "18.9 SR 38" (the scale is above the precision) |
+| 18.9 SR 40 | constraint | generated | an approximate numeric type's precision is at least 2 | src/verify.rs:syntax_rules: "18.9 SR 40" (an approximate numeric type of precision 1) |
+| 18.9 SR 68 | constraint | checked | a list type named with GROUP has a node or edge reference type as its element type | src/verify/types.rs "18.9 SR 68" |
+| 18.9 SR 69 | type | generated | an immaterial value type is the null or empty type its child specifies | src/verify/types.rs:value_type; src/verify/types.rs:Checker::cast "20.8 SR 4" |
+| 18.9 SR 88 | type | generated | the components of a union are either all possibly nullable or all known not nullable | src/verify/types.rs "18.9 SR 88"; src/verify.rs "18.9 SR 88" |
+| 18.10 SR 2 | constraint | generated | no two field types simply contained in one field type list have equivalent field names | src/verify.rs:syntax_rules "18.10 SR 2" |
+| 19.4 SR 5 | type | generated | the nested query's declared type is a binding table type, not the empty type | src/verify/scope.rs:Checker::exists: "19.4 SR 5" (the body's result statement is FINISH),  |
+| 19.8 SR 2 | constraint | reading | the element variable reference has singleton degree of reference | src/verify/scope.rs:Checker::expr via singleton: "19.8 SR 2" (has group degree of referenc |
+| 19.8 SR 3 | type | generated | the element variable reference is an edge | src/verify/types.rs:Checker::ty and when_operand: "19.8 SR 3" |
+| 19.9 SR 2 | constraint | reading | the element variable reference has singleton degree of reference | src/verify/scope.rs:Checker::expr via singleton: "19.9 SR 2" |
+| 19.10 SR 2 s2 | constraint | reading | the node reference has singleton degree of reference | src/verify/scope.rs:Checker::expr via singleton: "19.10 SR 2-3" |
+| 19.10 SR 2 s3 | type | generated | the node reference is a node | src/verify/types.rs:Checker::ty and when_operand: "19.10 SR 2" |
+| 19.10 SR 3 s2 | constraint | reading | the edge reference has singleton degree of reference | src/verify/scope.rs:Checker::expr via singleton: "19.10 SR 2-3" |
+| 19.10 SR 3 s3 | type | generated | the edge reference is an edge | src/verify/types.rs:Checker::ty and when_operand: "19.10 SR 3" |
+| 19.11 SR 2 | constraint | reading | every element variable reference in it has singleton degree of reference | src/verify/scope.rs:Checker::expr via singleton: "19.11 SR 2" |
+| 19.12 SR 2 | constraint | reading | every element variable reference in it has singleton degree of reference | src/verify/scope.rs:Checker::expr via singleton: "19.12 SR 2" |
+| 19.13 SR 2 | constraint | reading | the element variable reference has singleton degree of reference | src/verify/scope.rs:Checker::expr via singleton: "19.13 SR 2" |
+| 20.1 SR 1 | type | generated | a value expression that is not a return item does not have the empty type | src/verify: "20.8 SR 4" (a cast to the empty type), "20.6 SR 8" (a VALUE body of FINISH) |
+| 20.1 SR 2 | type | reading | a graph reference value expression has a graph reference value type | src/verify/types.rs "20.1 SR 2" |
+| 20.1 SR 3 | type | reading | a binding table reference value expression has a binding table reference value type | src/verify/types.rs:ty (cardinality expression arm, "20.1 SR 3, 6, 20.13 SR 2, 20.15 SR 1" |
+| 20.1 SR 4 | type | generated | a node reference value expression has a node reference value type | src/verify/types.rs:ty (path value constructor by enumeration arm, "20.1 SR 4"); src/verif |
+| 20.1 SR 5 | type | generated | an edge reference value expression has an edge reference value type | src/verify/types.rs:ty (path value constructor by enumeration arm, "20.1 SR 5"); src/verif |
+| 20.1 SR 6 | type | generated | a record expression has a record type | src/verify: "20.1 SR 4-6" |
+| 20.1 SR 7 a | constraint | reading | a horizontal aggregate (one in a value expression not immediately inside an aggregating value expression) references exactly one variable of a material group list type in its argument | src/verify/scope.rs:expr (aggregate function arm, "20.1 SR 7": not vertical and the refere |
+| 20.1 SR 7 b | constraint | reading | every group-list-typed binding variable reference simply contained in a horizontal aggregate names the same variable | src/verify/scope.rs:expr (aggregate function arm, "20.1 SR 7": the set of group names must |
+| 20.4 SR 3 | environment | hypothesis | a dynamic parameter specification has the parameter value type the request supplies | src/verify/types.rs:ty (dynamic parameter specification arm: unknown type) |
+| 20.5 SR 3 b | constraint | generated | a name a LET .. IN defines is not a field of its incoming working record | src/verify/scope.rs:let_value ("20.5 SR 3") |
+| 20.5 SR 4 | constraint | generated | the names one LET .. IN defines are pairwise distinct | src/verify/scope.rs:let_value ("20.5 SR 4") |
+| 20.6 SR 3 | type | generated | the nested query's declared type is a binding table type with one column | src/verify/types.rs:value_query ("20.6 SR 3"); src/verify/scope.rs:expr ("20.6 SR 8" for a |
+| 20.6 SR 5 a | constraint | generated | the immediately emitting statement is a linear query statement | src/verify.rs:syntax_rules "9.1 SR 7" |
+| 20.6 SR 6 | constraint | generated | the emitting result statement of the nested query is not omitted | src/verify/scope.rs:expr "20.6 SR 6" |
+| 20.6 SR 8 | constraint | generated | the emitting result statement holds a return statement, implicitly or explicitly | src/verify/scope.rs:expr ("20.6 SR 8": the body emits FINISH, emits_finish) |
+| 20.6 SR 10 | constraint | reading | the result has at most one row: either PRS ends in LIMIT 1 (a) or it has no GROUP BY and RI directly holds an aggregate (b) | src/verify/scope.rs:returns_one_row via expr ("20.6 SR 10") |
+| 20.7 SR 3 | constraint | reading | a case specification has at least one result that is a result expression, not NULL | src/verify/types.rs "20.7 SR 3" |
+| 20.8 SR 4 | type | generated | the cast target is not an immaterial value type | src/verify/types.rs:cast ("20.8 SR 4") |
+| 20.8 SR 5 | type | reading | a NULL operand needs a nullable target (and a non-NULL one a material target, as SR 4) | src/verify/types.rs:cast ("20.8 SR 5", also for an operand of the null type) |
+| 20.8 SR 8 | type | reading | the source and target are not an N pair of Table 4 | src/verify/types.rs:castable via cast ("20.8 SR 8") |
+| 20.8 SR 9 | type | reading | a cast to a dynamic union type has a source that is a subtype of it | src/verify/types.rs "20.8 SR 9" |
+| 20.8 SR 10 | type | reading | a cast from a dynamic union source to a static target has some component of the source castable to the target | src/verify/types.rs "20.8 SR 10" |
+| 20.8 SR 11 a | type | reading | a regular list source casts only to a regular list target | src/verify: "20.8 SR 8" |
+| 20.8 SR 11 d | type | reading | the source element type casts to the target element type | src/verify: "20.8 SR 8" |
+| 20.8 SR 12 b | type | reading | between closed record types, the source has every field name of the target | src/verify: "20.8 SR 8" |
+| 20.8 SR 12 c iii | type | reading | between closed record types, each shared field's source type casts to the target field's | src/verify: "20.8 SR 8" |
+| 20.9 SR 3 | constraint | reading | an aggregate function contains no procedure body | src/verify/scope.rs:expr (aggregate function arm, "20.9 SR 3": procedure body or exists pr |
+| 20.9 SR 4 | constraint | generated | an aggregate function simply contains no other aggregate function | src/verify: "20.9 SR 4" |
+| 20.9 SR 7 a | constraint | generated | COUNT(*) is directly contained in an aggregating value expression | src/verify: "20.9 SR 7" |
+| 20.9 SR 8 d i | type | generated | SUM and AVG take a numeric argument | src/verify/types.rs:aggregate ("20.9 SR 8") |
+| 20.9 SR 8 e | type | generated | STDDEV_POP and STDDEV_SAMP take a numeric argument | src/verify/types.rs:aggregate ("20.9 SR 8") |
+| 20.10 SR 2 | constraint | reading | ELEMENT_ID has singleton degree of reference | src/verify/scope.rs:expr (element_id function arm, singleton, "20.10 SR 2") |
+| 20.11 SR 2 a | type | reading | a property of a closed record type names one of its fields | src/verify/types.rs:property ("20.11 SR 2") |
+| 20.11 SR 3 a | type | reading | a property of a closed node or edge reference type names a property type of its constraining type | src/verify/types.rs "20.11 SR 3" |
+| 20.12 SR 8 | constraint | reading | a reference names a field of its incoming working record | src/verify/scope.rs:reference ("20.12 SR 8") |
+| 20.12 SR 11 a ii 2 | constraint | reading | a reference in a parenthesized path pattern WHERE clause to an element variable declared by an enclosing pattern has singleton degree there | src/verify/scope.rs:verdict ("20.12 SR 11", a non-local reference of group degree) |
+| 20.12 SR 12 | constraint | reading | a non-singleton reference is an effectively bounded group of a group list type | src/verify/scope.rs:verdict ("20.12 SR 12") |
+| 20.13 SR 2 | type | generated | a path value primary has a path value type | src/verify/types.rs:ty ("20.13 SR 2" at PATH_LENGTH, ELEMENTS, CARDINALITY), src/verify/ty |
+| 20.15 SR 1 | type | generated | a list primary has a list type | src/verify/types.rs:ty ("20.15 SR 1" at SIZE, TRIM, CARDINALITY), src/verify/types.rs:conc |
+| 20.16 SR 1 a | type | reading | the count of a TRIM of a list is an exact number of scale 0 | src/verify.rs:syntax_rules "20.16 SR 1"; src/verify/types.rs "20.16 SR 1" |
+| 20.19 SR 2 | constraint | generated | the field names of one field list are distinct | src/verify/types.rs:ty (record constructor arm, "20.19 SR 2") |
+| 20.20 SR 3 | type | generated | a boolean predicand that is a non-parenthesized primary has a boolean type | src/verify/types.rs:ty and condition ("20.20 SR 3") |
+| 20.21 SR 3 | type | generated | a numeric primary is numeric | src/verify/types.rs:ty, arithmetic, aggregate ("20.21 SR 3") |
+| 20.21 SR 4 | constraint | generated | a dyadic minus followed by a negative factor has a separator between the two minus signs | src/verify.rs:verify "21.3 SR 13, 14" (rendering is the tokens joined by one space) |
+| 20.23 SR 2 | type | generated | a character string primary has a character string type | src/verify/types.rs:ty, argument, trim ("20.23 SR 2") |
+| 20.23 SR 4 | type | generated | a byte string primary has a byte string type | src/verify/types.rs:ty, argument ("20.23 SR 4") |
+| 20.24 SR 3 b i 1 | constraint | generated | a single-character TRIM with FROM has a trim specification or a trim string | src/verify.rs:syntax_rules (trim operands arm, "20.24 SR 3") |
+| 20.24 SR 3 b i 2 | type | generated | a single-character TRIM's trim string and source are comparable | src/verify/types.rs:trim ("20.24 SR 3") |
+| 20.24 SR 4 b i | type | generated | a BTRIM, LTRIM or RTRIM trim string is comparable with its source | src/verify/types.rs:trim (reported as "20.24 SR 3", not SR 4) |
+| 20.28 SR 1 a | type | generated | the operands of a duration addition or subtraction are of one duration unit group | src/verify/types.rs:arithmetic ("20.28 SR 1") |
+| 20.28 SR 3 b | type | reading | the two instants of DURATION_BETWEEN are essentially comparable | src/verify/types.rs:duration_between ("20.28 SR 3", also "20.26 GR 1" for a non-instant) |
+| 20.28 SR 3 d | type | generated | DURATION_BETWEEN of two times is DAY TO SECOND | src/verify/types.rs:duration_between ("20.28 SR 3", times subtracted as YEAR TO MONTH) |
+| 20.28 SR 3 e | type | generated | DURATION_BETWEEN's type is the day-time duration for DAY TO SECOND, else year-month | src/verify: "20.28 SR 3" |
+| 21.2 SR 1 | constraint | grammar | No separator between the radix prefix (0x, 0o, 0b) and the first digit or underscore of a hex, octal or binary integer. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
+| 21.2 SR 11 | constraint | grammar | No separator before the approximate number suffix. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
+| 21.2 SR 17 | constraint | grammar | No separator before the exact number suffix. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
+| 21.2 SR 18 b | constraint | checked | Some exact numeric type must represent the literal's value exactly. | src/verify.rs:syntax_rules "21.2 SR 18" (H2: 18 digits) |
+| 21.2 SR 20 | constraint | checked | An approximate literal's value lies within the range of its declared type. | src/verify.rs:syntax_rules "21.2 SR 20" (H2: 32 bit float range) |
+| 21.2 SR 29 | constraint | grammar | No separator between the no-escape marker @ and the quoted sequence after it. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
+| 21.2 SR 31 a | constraint | generated | With escaping enabled, a quote-delimited character representation is no bare quote or reverse solidus outside an escape. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
+| 21.2 SR 31 b | constraint | generated | With escaping disabled, a quote-delimited character representation is no bare quote. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
+| 21.2 SR 32 a | constraint | generated | With escaping enabled, a double quote-delimited character representation is no bare double quote or reverse solidus outside an escape. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
+| 21.2 SR 32 b | constraint | generated | With escaping disabled, a double quote-delimited character representation is no bare double quote. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
+| 21.2 SR 33 a | constraint | generated | With escaping enabled, a grave accent-delimited character representation is no bare grave accent or reverse solidus outside an escape. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
+| 21.2 SR 33 b | constraint | generated | With escaping disabled, a grave accent-delimited character representation is no bare grave accent. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
+| 21.2 SR 37 | constraint | grammar | No separator between the two quotes of a doubled quote. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
+| 21.2 SR 38 | constraint | grammar | No separator between the two double quotes of a doubled double quote. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
+| 21.2 SR 39 | constraint | grammar | No separator between the two grave accents of a doubled grave accent. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
+| 21.2 SR 40 | constraint | generated | A character representation is a string literal character or, with escaping enabled, an escape; with escaping disabled only a string literal character. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
+| 21.2 SR 41 b i | constraint | generated | Every string literal character is in the source text repertoire. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
+| 21.2 SR 41 b ii | constraint | generated | A string literal character that is not whitespace is not in general category Cc. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" (refuses char::is_control, which is Cc) |
+| 21.2 SR 41 b iv | constraint | generated | A string literal character is not an unassigned code point (Cn). | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" (no Cn) |
+| 21.2 SR 42 | constraint | grammar | No separator after the leading reverse solidus of an escape. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" (refuses a reverse solidus) |
+| 21.2 SR 57 | constraint | generated | A separator inside a byte string literal contains a newline. | src/verify.rs:Verifier::token_rule "21.2 SR 57" |
+| 21.2 SR 59 | constraint | generated | A date string holds an ISO 8601 date. | src/verify.rs:Verifier::token_rule "21.2 SR 59" |
+| 21.2 SR 61 | constraint | generated | A time zone string holds an ISO 8601 time shift. | src/verify.rs:Verifier::token_rule "21.2 SR 61" |
+| 21.2 SR 62 | constraint | generated | A time string holds an ISO 8601 time of day. | src/verify.rs:Verifier::token_rule "21.2 SR 62" |
+| 21.2 SR 64 | constraint | generated | A datetime string holds an ISO 8601 date and time of day. | src/verify.rs:Verifier::token_rule "21.2 SR 64" |
+| 21.2 SR 67 a | type | reading | A NULL whose context fixes a nullable type stands for a CAST of NULL to that type. | src/verify/types.rs:Checker::property "20.1 SR 4-6" (NULL fixes no node, edge or record ty |
+| 21.2 SR 68 | constraint | generated | A duration string holds the years-and-months or days-and-time format without separators, or an ISO 8601 duration. | src/verify.rs:Verifier::token_rule "21.2 SR 68" |
+| 21.2 SR 69 | constraint | generated | An SQL datetime literal follows the datetime literal of ISO/IEC 9075-2:2023. | src/verify.rs:leaf_rule "21.2 SR 69" |
+| 21.2 SR 70 | constraint | generated | An SQL interval literal follows the interval literal of ISO/IEC 9075-2:2023. | src/verify.rs:leaf_rule "21.2 SR 70" |
+| 21.2 SR 73 | constraint | grammar | Every value expression in a list literal's elements conforms to the Format and Syntax Rules of a literal. | src/verify/types.rs module header (the reading: SR 73 removes a derivation, never a senten |
+| 21.2 SR 75 | constraint | grammar | Every value expression in a record literal's fields conforms to the Format and Syntax Rules of a literal. | src/verify/types.rs module header (same reading as SR 73) |
+| 21.3 SR 1 | constraint | generated | An identifier start is underscore or an XID_Start character, possibly profiled (IE003). | src/verify.rs:leaf_rule "21.3 SR 1" |
+| 21.3 SR 2 | constraint | generated | An identifier extend is an XID_Continue character, possibly profiled (IE003). | src/verify.rs:leaf_rule "21.3 SR 2" |
+| 21.3 SR 3 | constraint | grammar | A non-delimited identifier is not empty. |  |
+| 21.3 SR 4 | constraint | generated | A delimited identifier is not empty. | src/verify.rs:syntax_rules "21.3 SR 4" |
+| 21.3 SR 5 b | constraint | checked | An identifier's representative form has at most 16383 characters. | src/verify.rs:syntax_rules "21.3 SR 5" |
+| 21.3 SR 5 c | constraint | generated | An identifier's representative form holds no character of category Cc, Cf, Cn, Cs, Zl or Zp. | src/verify.rs:leaf_rule "21.3 SR 1", "21.3 SR 2" (XID excludes them), "21.2 SR 31-33, 41"  |
+| 21.3 SR 5 d | constraint | generated | An identifier's representative form holds no space separator other than the space itself. | src/verify.rs:syntax_rules "21.3 SR 5" |
+| 21.3 SR 6 | constraint | generated | Whitespace is a run of White_Space characters. | src/verify.rs:leaf_rule "21.3 SR 6" |
+| 21.3 SR 8 | constraint | grammar | A bidirectional control character is one of nine named Cf characters. | src/verify.rs:leaf_rule "21.3 SR 8" |
+| 21.3 SR 9 | constraint | generated | A simple comment character is any repertoire character other than a newline. | src/verify.rs:leaf_rule "21.3 SR 9" |
+| 21.3 SR 10 | constraint | generated | Bracketed comment contents never contain the terminator */. | src/verify.rs:leaf_rule "21.3 SR 10" |
+| 21.3 SR 13 | constraint | generated | No token other than a byte string literal contains a separator. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
+| 21.3 SR 14 | constraint | generated | A non-delimiter token is followed by a delimiter token or a separator. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
+| 21.3 SR 18 | constraint | generated | The case-normal form of a non-delimited identifier is no reserved word. | src/verify.rs:Verifier::token_rule "21.3 SR 18" (regular and extended identifiers) |
+| 21.4 SR 1 | constraint | grammar | An other language character is any Unicode character outside the GQL language characters. | src/verify.rs:leaf_rule "21.4 SR 1" |
+| 21.4 SR 2 | constraint | generated | An other digit is a Unicode Nd character outside 0-9. | src/verify.rs:leaf_rule "21.4 SR 2" |
+| 22.1 SR 3 b | environment | hypothesis | A substituted parameter reference ($$name) names a dynamic parameter the request supplies. |  |
+| 22.1 SR 3 d | environment | hypothesis | The value of that dynamic parameter is GQL source text, which becomes the reference's parameter substitution. |  |
+| 22.1 SR 5 d ii 1 | environment | hypothesis | A dynamic parameter reference that no earlier session set command declared names a dynamic parameter the request supplies. |  |
+| 22.1 SR 5 d ii 3 | environment | hypothesis | When the session also has a parameter of that name, the dynamic parameter's type is a subtype of the session parameter's. |  |
+| 22.9 SR 4 a | environment | hypothesis | Each step's directory contains a directory with the next name. |  |
+| 22.9 SR 4 b | environment | hypothesis | No sibling directory's name is visually confusable with the step's, else a syntax error is raised. |  |
+| 22.10 SR 4 | environment | hypothesis | The value's declared type is assignable to the target's. |  |
+| 22.10 SR 5 c | environment | hypothesis | With a dynamic union on either side, every source component is store-assignable to some target component. |  |
+| 22.10 SR 6 a i | environment | hypothesis | A reference target and its source name the same object base type. |  |
+| 22.10 SR 6 a ii | environment | hypothesis | A closed reference target's constraining object type is a supertype of the source's. |  |
+| 22.10 SR 7 a | environment | hypothesis | A list target takes only a list source, element types store-assignable in turn. |  |
+| 22.10 SR 8 a | environment | hypothesis | An open record target takes only a record source; a closed one a closed record of the same field names, fields store-assignable in turn. |  |
+| 22.18 SR 2 | type | reading | Without GV65 the general combination is the static combination of 22.19. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" (always static, the module  |
+| 22.19 SR 2 | type | reading | Every input of the static combination is a static value type. | src/verify/types.rs "22.19 SR 2" |
+| 22.19 SR 4 b i | type | generated | If one input is a character string, all are. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 b ii | type | reading | Some supported character string type is a supertype of every input. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 c i | type | generated | If one input is a byte string, all are. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 c ii | type | reading | Some supported byte string type is a supertype of every input. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 d i | type | generated | If one input is numeric, all are. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 e i | type | generated | If one input is a datetime type, all are. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 f i | type | generated | If one input is a time type, all are. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 g | type | generated | If one input is a date, all are. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 h | type | generated | If one input is a year-month duration, all are. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 i | type | generated | If one input is a day-time duration, all are. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 j | type | generated | If one input is Boolean, all are. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 k i | type | reading | If one input is a list, all are, and their element types combine. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 l | type | generated | If one input is a path, all are. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 m i | type | reading | If one input is a record, all are closed records. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 m ii | type | reading | All record inputs have the same set of field names. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 n i | type | generated | Otherwise some input is a reference value type. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 n ii | type | generated | All inputs have the same primary base type. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 4 n iv | type | reading | Some supported reference type of that base type is a supertype of every input. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
+| 22.19 SR 5 | type | reading | The result is the material variant when every input is material, else nullable. | src/verify/types.rs "22.19 SR 2" (every computed type read as its nullable variant, so no  |

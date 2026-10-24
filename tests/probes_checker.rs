@@ -187,3 +187,10 @@ fn result_statements_agree_in_a_block() {
         "9.2 SR 7",
     );
 }
+
+#[test]
+fn nothing_is_known_not_nullable() {
+    // 18.9 SR 4 b, SR 88: NOTHING beside a possibly nullable component.
+    bad("FILTER SESSION_USER IS TYPED NOTHING | PATH FINISH", "18.9 SR 88");
+    fine("FILTER SESSION_USER IS TYPED NOTHING | PATH NOT NULL FINISH", "18.9 SR 88");
+}

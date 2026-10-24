@@ -29,6 +29,15 @@ use unicode_general_category::{GeneralCategory, get_general_category};
 /// 18.1-18.5 (every alias, label and name is spelled `a`, so a body's consistency is a matter of
 /// which specifications sit together, not followed).
 pub const GATE_ONLY: &[&str] = &[
+    // The audit's `checked` rows (tools/inventory/audit.py requires each listed here).
+    "7.1 SR 6",
+    "9.2 SR 7",
+    "13.3 SR 3",
+    "14.2 SR 10",
+    "14.11 SR 10",
+    "16.6 SR 7",
+    "16.8 SR 4",
+    "18.9 SR 68",
     "21.2 SR 18",
     "21.2 SR 20",
     "21.3 SR 5",
@@ -1300,9 +1309,11 @@ fn syntax_rules<'t>(
             "component type list" => {
                 let mut types = Vec::new();
                 find_simply(node, "value type", "value type", &mut types);
+                // SR 4 a, b: a <not null> without an intervening value type, or NOTHING.
                 let nn = |vt: &Plain| {
                     let mut nots = Vec::new();
                     find_simply(vt, "not null", "value type", &mut nots);
+                    find_simply(vt, "empty type", "value type", &mut nots);
                     !nots.is_empty()
                 };
                 let known: Vec<bool> = types.iter().map(|t| nn(t)).collect();
