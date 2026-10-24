@@ -239,7 +239,12 @@ fn every_claim_keeps_the_devices_out() {
         lexical: false,
     };
     for tree in trees(&refined.cfg, refined.start, 3, criteria) {
-        let violations = verifier.verify(&tree, &verifier.render(&tree));
+        // What the gate alone keeps out is not the refinement's to keep.
+        let violations: Vec<_> = verifier
+            .verify(&tree, &verifier.render(&tree))
+            .into_iter()
+            .filter(|v| !gql_proof::verify::GATE_ONLY.contains(&v.rule))
+            .collect();
         assert!(violations.is_empty(), "{violations:?}");
     }
 }
@@ -439,7 +444,11 @@ fn engine_claims_generate_verified_trees() {
             .with_conformance(forbidden);
         for t in &outcome.trees {
             let tree = t.root.export(&refined.cfg);
-            let violations = verifier.verify(&tree, &verifier.render(&tree));
+            let violations: Vec<_> = verifier
+                .verify(&tree, &verifier.render(&tree))
+                .into_iter()
+                .filter(|v| !gql_proof::verify::GATE_ONLY.contains(&v.rule))
+                .collect();
             assert!(
                 violations.is_empty(),
                 "{file}: {violations:?} in {}",

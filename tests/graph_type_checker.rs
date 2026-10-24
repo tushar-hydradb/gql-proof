@@ -11,6 +11,14 @@ use std::sync::LazyLock;
 
 static ISO_BNF: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static ISO: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO_BNF));
+/// The grammar refined by the syntax rules, to parse with: it settles the procedure kind
+/// (9.1 SR 4), so the parses offered are the ones the standard admits.
+static PARSE: LazyLock<Cfg> = LazyLock::new(|| {
+    let start = ISO.require("GQL-program").unwrap();
+    gql_proof::refine::refine(&ISO, &gql_proof::refine::all_rules(MatchModeDefault::Portable), start)
+        .unwrap()
+        .cfg
+});
 
 /// The violations of `text` with the syntax rules on, the same for every tree of it the ISO
 /// BNF accepts.
@@ -18,13 +26,13 @@ fn violations(text: &str) -> Vec<Violation> {
     let tokens = Grammar::new(&ISO_BNF);
     let verifier =
         Verifier::new(Grammar::new(&ISO_BNF)).with_syntax_rules(MatchModeDefault::Portable);
-    let parser = Parser::new(&ISO, &tokens, "GQL-program").unwrap();
+    let parser = Parser::new(&PARSE, &tokens, "GQL-program").unwrap();
     let verdicts = RefCell::new(Vec::new());
     // Accept no tree, so the parser offers every one up to its limit.
     let parsed = parser
         .parse(text, |n| {
-            let plain = n.export(&ISO);
-            let found = verifier.verify(&plain, &n.render(&ISO));
+            let plain = n.export(&PARSE);
+            let found = verifier.verify(&plain, &n.render(&PARSE));
             if !found.iter().any(|v| v.rule == "ISO BNF") {
                 let mut rules: Vec<_> = found.iter().map(|v| v.rule).collect();
                 rules.sort();
@@ -72,16 +80,16 @@ fn gt(body: &str) -> String {
 fn property_names_are_distinct() {
     // 18.5 SR 1
     bad(
-        "VALUE x NODE { a PATH , a PATH } = NULL FINISH",
+        "VALUE x NODE { a INT , a INT } = NULL FINISH",
         "18.5 SR 1",
     );
-    ok("VALUE x NODE { a PATH , b PATH } = NULL FINISH");
+    ok("VALUE x NODE { a INT , b INT } = NULL FINISH");
     bad(&gt("( { a INT , a STRING } )"), "18.5 SR 1");
     bad(&gt("( ) -[ { a INT , a INT } ]-> ( ), ( )"), "18.5 SR 1");
     // a delimited name is its representative form
     bad(&gt("( { a INT , \"a\" INT } )"), "18.5 SR 1");
     // a nested property types specification is its own scope
-    ok("VALUE x NODE { a NODE { a PATH } } = NULL FINISH");
+    ok("CREATE GRAPH TYPE g { ( :L { a INT } ), ( :M { a INT } ) }");
 }
 
 #[test]

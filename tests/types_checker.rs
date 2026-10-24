@@ -30,7 +30,30 @@ const PER_TREE: &[&str] = &["20.1 SR 2", "20.1 SR 3"];
 
 /// The typing violations of every tree of `text` the verifier accepts.
 fn verdicts(text: &str, verifier: &Verifier) -> Vec<Vec<Violation>> {
-    verdicts_in(&PARSE, text, verifier)
+    // The refined grammar settles what the syntax rules disambiguate; a sentence it does not
+    // derive (one a generator reading keeps out, a probe of a rule only the checker keeps) is
+    // read with the ISO grammar.
+    match try_verdicts_in(&PARSE, text, verifier) {
+        Some(v) => v,
+        None => verdicts_in(&ISO, text, verifier),
+    }
+}
+
+fn try_verdicts_in(grammar: &Cfg, text: &str, verifier: &Verifier) -> Option<Vec<Vec<Violation>>> {
+    let tokens = Grammar::new(&ISO_BNF);
+    let parser = Parser::new(grammar, &tokens, "GQL-program").unwrap();
+    let verdicts = RefCell::new(Vec::new());
+    parser
+        .parse(text, |n| {
+            let plain = n.export(grammar);
+            if verifier.verify(&plain, &n.render(grammar)).is_empty() {
+                verdicts.borrow_mut().push(types::check(&plain));
+            }
+            false
+        })
+        .ok()?;
+    let verdicts = verdicts.into_inner();
+    (!verdicts.is_empty()).then_some(verdicts)
 }
 
 fn verifier() -> Verifier<'static> {

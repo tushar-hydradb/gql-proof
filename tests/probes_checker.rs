@@ -80,6 +80,14 @@ fn leaves() {
 }
 
 #[test]
+fn identifier_characters() {
+    // 21.3 SR 5 c, d: no format character, no space separator but the space.
+    red(token("regular identifier", "a\u{2003}b"), "21.3 SR 5");
+    red(token("regular identifier", "a\u{200B}b"), "21.3 SR 5");
+    green(token("regular identifier", "ab"), "21.3 SR 5");
+}
+
+#[test]
 fn temporal_tokens() {
     red(token("time zone string", "'+25:00'"), "21.2 SR 61");
     green(token("time zone string", "'+01:00'"), "21.2 SR 61");

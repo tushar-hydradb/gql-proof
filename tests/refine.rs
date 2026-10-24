@@ -656,13 +656,12 @@ proptest! {
         }
         // The value-size limits (21.2 SR 18, 20, 21.3 SR 5 b under H2) are the gate's alone:
         // no automaton counts digits, and a random deep tree spells long numbers.
-        const GATE_ONLY: [&str; 3] = ["21.2 SR 18", "21.2 SR 20", "21.3 SR 5"];
         for tree in generate(&refined.cfg, refined.start, seed, max_depth) {
             let rendered = verifier.render(&tree);
             let violations: Vec<_> = verifier
                 .verify(&tree, &rendered)
                 .into_iter()
-                .filter(|v| !GATE_ONLY.contains(&v.rule))
+                .filter(|v| !gql_proof::verify::GATE_ONLY.contains(&v.rule))
                 .collect();
             prop_assert!(violations.is_empty(), "{:?}", violations);
         }

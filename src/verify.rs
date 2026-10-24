@@ -23,6 +23,28 @@ use std::collections::HashSet;
 use std::fmt;
 use unicode_general_category::{GeneralCategory, get_general_category};
 
+/// The rules the checker reports and no generator rule keeps: the gate alone keeps them out of
+/// what is printed (a flagged tree is withheld), so a generated tree may break them. The
+/// value-size limits under H2 (no automaton counts digits) and the graph type bodies of
+/// 18.1-18.5 (every alias, label and name is spelled `a`, so a body's consistency is a matter of
+/// which specifications sit together, not followed).
+pub const GATE_ONLY: &[&str] = &[
+    "21.2 SR 18",
+    "21.2 SR 20",
+    "21.3 SR 5",
+    "18.1 SR 8",
+    "18.1 SR 9",
+    "18.1 SR 10",
+    "18.1 SR 11",
+    "18.1 SR 14",
+    "18.1 SR 16",
+    "18.2 SR 7",
+    "18.3 SR 8",
+    "18.3 SR 17",
+    "18.3 SR 18",
+    "18.5 SR 1",
+];
+
 /// A tree as names and text, the only view of a tree the checker trusts.
 #[derive(Debug, Clone)]
 pub enum Plain {

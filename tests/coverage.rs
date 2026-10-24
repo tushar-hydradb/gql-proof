@@ -262,7 +262,7 @@ proptest! {
             let violations: Vec<_> = verifier
                 .verify(&plain, &t.root.render(&refined.cfg))
                 .into_iter()
-                .filter(|v| !["21.2 SR 18", "21.2 SR 20", "21.3 SR 5"].contains(&v.rule))
+                .filter(|v| !gql_proof::verify::GATE_ONLY.contains(&v.rule))
                 .collect();
             prop_assert!(violations.is_empty(), "{:?}", violations);
             // A settled tree grew after the search, by the digits the bound repair added.

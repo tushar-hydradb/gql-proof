@@ -829,19 +829,33 @@ fn purdom(args: PurdomArgs) -> Result<()> {
         }
     }
 
-    // Nothing is printed unless every tree passes the independent checker.
+    // Fail closed: a tree the checker flags is withheld, never printed. A flag on a rule the
+    // generator keeps is a generator bug and stops the run; one on a rule only the gate keeps
+    // (`verify::GATE_ONLY`) is lost coverage, reported.
     let mut failed = 0;
+    let mut withheld = vec![false; outcome.trees.len()];
     for (i, generated) in outcome.trees.iter().enumerate() {
         let root = &generated.root;
         let violations = verifier.verify(&root.export(&cfg), &root.render(&cfg));
-        if !violations.is_empty() {
-            failed += 1;
-            eprintln!("# tree {} fails verification", i + 1);
-            for v in &violations {
-                eprintln!("  {v}");
-            }
-            eprintln!("  sentence: {}", root.render(&cfg));
+        if violations.is_empty() {
+            continue;
         }
+        withheld[i] = true;
+        let kept = violations
+            .iter()
+            .any(|v| !gql_proof::verify::GATE_ONLY.contains(&v.rule));
+        if kept {
+            failed += 1;
+        }
+        eprintln!(
+            "# tree {} {}",
+            i + 1,
+            if kept { "fails verification" } else { "withheld by the gate" }
+        );
+        for v in &violations {
+            eprintln!("  {v}");
+        }
+        eprintln!("  sentence: {}", root.render(&cfg));
     }
     if failed > 0 {
         bail!(
@@ -849,12 +863,16 @@ fn purdom(args: PurdomArgs) -> Result<()> {
             outcome.trees.len()
         );
     }
+    let gated = withheld.iter().filter(|w| **w).count();
+    if gated > 0 {
+        eprintln!("withheld {gated} trees the gate refuses (not printed)");
+    }
 
     let mut out = std::io::stdout().lock();
 
     for (i, generated) in outcome.trees.iter().enumerate() {
         let n = i + 1;
-        if args.format == Format::Summary || args.tree.is_some_and(|t| t != n) {
+        if withheld[i] || args.format == Format::Summary || args.tree.is_some_and(|t| t != n) {
             continue;
         }
         let root = &generated.root;
