@@ -227,3 +227,15 @@ fn nothing_is_known_not_nullable() {
     bad("FILTER SESSION_USER IS TYPED NOTHING | PATH FINISH", "18.9 SR 88");
     fine("FILTER SESSION_USER IS TYPED NOTHING | PATH NOT NULL FINISH", "18.9 SR 88");
 }
+
+#[test]
+fn red_team_findings() {
+    // 4.17.4.2 (reading): nothing but NOTHING is known not nullable, so a NOT NULL site takes
+    // no computed value.
+    bad("RETURN CURRENT_DATE AS x NEXT LET VALUE y NODE NOT NULL = LET z = x IN CAST ( NULL AS NODE ) END FINISH", "10.3 SR 8");
+    // 16.5 SR 6 c: an inserted property of the null type.
+    bad("INSERT ( { a : NULL } )", "16.5 SR 6");
+    fine("INSERT ( { a : 1 } )", "16.5 SR 6");
+    // 6 SR 4: a delimited identifier's representative form is compared too.
+    bad("MATCH (m) RETURN m.`rn` AS x", "6 SR 4");
+}

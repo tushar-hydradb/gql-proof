@@ -7,11 +7,13 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 | kind | generated | reading | checked | grammar | hypothesis | open |
 |---|---|---|---|---|---|---|
 | constraint | 116 | 49 | 23 | 11 | 0 | 0 |
-| type | 48 | 37 | 6 | 0 | 1 | 0 |
+| type | 48 | 38 | 7 | 0 | 2 | 0 |
 | environment | 0 | 0 | 0 | 0 | 76 | 0 |
 
 | rule | kind | status | in our words | checker |
 |---|---|---|---|---|
+| 4.14 SR 4 | type | hypothesis | an implementation may execute a cured variant of a program whose operand has a dynamic or open type where a static type is required |  |
+| 4.17 SR 4 2 | type | reading | a value assigned to a site has a nullability aligned with the site's: a known not nullable site takes a known not nullable value | src/verify/types.rs:assignable "10.3 SR 8" (nothing but NOTHING to a NOT NULL site) |
 | 6 SR 4 | constraint | reading | no two identifiers in the program may be visually confusable with each other (a syntax error is raised) | src/verify.rs:confusables "6 SR 4" (H2: ASCII skeletons) |
 | 7.1 SR 6 c i 3 A I | type | reading | with a declared graph reference value type on a graph parameter, the initializer's graph type is assignable to it | src/verify/types.rs "7.1 SR 6" |
 | 7.1 SR 6 c ii 3 A I | type | reading | with a declared binding table reference value type on a table parameter, the initializer's table type is assignable to it | src/verify/types.rs "7.1 SR 6" |
@@ -121,6 +123,7 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 | 16.4 SR 6 b i | constraint | reading | when a graph pattern has a KEEP clause, none of its path patterns contains a path search prefix | src/verify.rs:syntax_rules ("16.4 SR 6") |
 | 16.4 SR 12 | constraint | generated | under DIFFERENT EDGES (written or by default), a list holding a selective path pattern holds no other path pattern | src/verify.rs:syntax_rules "16.4 SR 12" (KEEP prefix read) |
 | 16.4 SR 14 | constraint | reading | after the rewrites every quantified path primary is bounded, inside a restrictive parenthesized expression, inside a selective path pattern, or under DIFFERENT EDGES | src/verify.rs:syntax_rules ("16.4 SR 14") |
+| 16.5 SR 6 c | type | checked | a property value in an insert pattern has a supported property value type | src/verify/types.rs:insert "16.5 SR 6" (H2: predefined scalars, dynamic under the cure) |
 | 16.5 SR 9 | constraint | reading | a property list in a bound insert element pattern does not name one property twice | src/verify/scope.rs:Checker::insert ("16.5 SR 10": a bound pattern with labels or properti |
 | 16.5 SR 10 a i | constraint | generated | a bound insert element pattern is a node pattern | src/verify/scope.rs:Checker::insert ("16.5 SR 10": bound and not a node) |
 | 16.5 SR 10 a ii | type | generated | a bound insert element pattern's declared type is a node reference type | src/verify/scope.rs:Checker::insert ("16.5 SR 10": bound and not a node) |

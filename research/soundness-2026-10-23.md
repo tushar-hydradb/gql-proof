@@ -163,3 +163,24 @@ the runs at the end (the gate in force; numbers in `sentences/README.md`):
 the withheld trees break graph type body rules (an edge type whose endpoints
 name no node type of the body) and 9.2 SR 7; both gate-only. that is the
 remaining cost: coverage of CREATE GRAPH TYPE bodies, not soundness
+
+## 2026-10-24: the independent review
+
+a fresh agent, briefed with the claim and the materials only, tried to break it.
+it found four classes, all fixed or stated:
+
+- purdom and the scope-only sets never ran the types checker, while the theorem
+  named them: the theorem now covers `context --rule types` output; the others
+  claim the syntax and scope rows and say so on stderr
+- a possibly null value into a NOT NULL site (4.17.4.2 alignment): the checker
+  and the engine take the strict reading, no computed value to a NOT NULL site
+- the 4.14.4 cure let dynamic operands meet every requirement under the name of
+  a reading, though it lets more in than the text: it is now hypothesis H2'
+  (an implementation's permission), with ID086 and the default collation named
+  too
+- 16.5 SR 6 c (an inserted property's type) was filed as implementation and
+  never checked: now checked like 13.3 SR 3; 6 SR 4 reads delimited identifiers;
+  4.17.4.2 and 4.14.4 have audit rows
+
+it also named an H3 case (a union type whose two trees disagree), now stated in
+the claim

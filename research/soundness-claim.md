@@ -4,10 +4,17 @@
 
 ## the statement
 
-**theorem.** let S be a sentence `gql-proof` prints (`purdom`, or `context --phase
-cover --sentences`). then S, read by the derivation tree it was printed from,
-satisfies every syntax rule of iso/iec 39075:2024 with cor 1 whose kind is
-constraint or type, under the readings listed below, given hypothesis H.
+**theorem.** let S be a sentence `gql-proof context --rule types --rules all
+--phase cover --sentences` prints. then S, read by the derivation tree it was
+printed from, satisfies every syntax rule of iso/iec 39075:2024 with cor 1 whose
+kind is constraint or type, under the readings listed below, given hypothesis H.
+
+`purdom` and `context` without `--rule types` check the syntax and scope rules
+only: their sentences satisfy every row the syntax and scope checkers report
+(the rows whose check names `src/verify.rs`, `src/verify/scope.rs` or
+`src/verify/graph_type.rs`), not the type rows. both commands say so on
+stderr. (found by an independent review on 2026-10-24: the theorem had named
+purdom while purdom never ran the types checker)
 
 no part of the argument depends on which witness extraction picked: it is a
 property of every printed sentence, by the gate in step 1
@@ -25,11 +32,27 @@ property of every printed sentence, by the gate in step 1
   form are never generated, `tokens::EXCLUDED`), so the list is the
   implementation limits (IL0xx: label counts, lengths, precisions) the engine
   sets at least as large as S needs
+- **H2', the 4.14.4 cure.** where an operand's type is dynamic (a property,
+  `CAST ( .. AS ANY )`, a parameter) or open and a static type is required,
+  the implementation executes the cured variant 4.14.4 permits ("may"). the
+  checker lets such an operand meet the requirement on that assumption; rows
+  resting on it: 20.1 SR 2-6, 11.1 SR 3, 20.20 SR 3, 20.21 SR 3, 20.23 SR 2, 4,
+  and the dynamic element of a path or list constructor (`PATH [ x . a ]`).
+  the generator could avoid every dynamic operand at a large cost in coverage;
+  this is the hypothesis that it need not. without the cure these sentences
+  are invalid
+- **H2'', ID086.** the sets are printed for an implementation whose default
+  match mode is the one passed as `--match-mode-default` (the turbolay and
+  whole grammar sets: DIFFERENT EDGES); 16.4 SR 14 d and 16.4 SR 12 read it
 - **H3, the reading of an ambiguous grammar.** the bnf is ambiguous; S is
   valid when the tree it was generated from satisfies the rules (the standard
   states rules over a derivation, not over text). the engine is free to pick
   another tree; if that tree breaks a rule, that is the engine's
-  disambiguation, not S's validity
+  disambiguation, not S's validity. a case the review found:
+  `CAST ( NULL AS GRAPH NOT NULL | NOTHING LIST )` is valid as
+  `LIST < GRAPH NOT NULL | NOTHING >` and breaks 18.9 SR 88 as the union of
+  `GRAPH NOT NULL` and `NOTHING LIST`; the text has no rule choosing. a
+  stronger claim (every tree of S valid) needs every tree checked, not built
 
 ## the trusted base (what the argument assumes correct, and how it is tested)
 
@@ -95,7 +118,8 @@ checker and the table
 ## the readings
 
 stricter or narrower than the text, each keeping out more than iso does, so a
-sentence valid under the reading is valid under the text: the audit's
+sentence valid under the reading is valid under the text (the one reading that
+lets more in, the 4.14.4 cure, is not a reading but H2' above): the audit's
 `reading` rows, with their notes (`python3 -I tools/inventory/audit.py --md`)
 
 ## hypothesis H2, the implementation choices named
@@ -110,6 +134,11 @@ sentence valid under the reading is valid under the text: the audit's
   checker reports two such names in one sentence)
 - IA014: a NULL whose context fixes no type does not raise a syntax error (21.2
   SR 67 b); S holds many (`NULL + NULL`)
+- ID022, the default collation: two names compare equal only when their
+  representative forms are equal strings (18.1 SR 10, 18.5 SR 1 and the graph
+  type rules)
+- nothing about IW022 (nullability inference): a NOT NULL site takes no
+  computed value (4.17.4.2, the checker's reading), so none is needed
 - IA023: the line feed ends a line (comments, byte string separators)
 - IV023: truncating whitespace is the space
 - the supported property value types include the predefined scalar types S

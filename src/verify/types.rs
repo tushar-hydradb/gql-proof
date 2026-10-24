@@ -468,6 +468,13 @@ fn combine(types: &[Ty]) -> Result<Ty, Apart> {
 
 /// Assignability of a value of `src` to a site of `tgt` (3.9.6, 4.14-4.16, 4.17.3).
 fn assignable(src: &Ty, tgt: &Declared) -> bool {
+    // 4.17.4.2: the nullabilities are assignment-aligned, so a known not nullable site takes a
+    // known not nullable value. The checker infers no value known not nullable (every computed
+    // type is its nullable variant, and IW022 inference is not assumed), so only NOTHING goes
+    // to a NOT NULL site (reading).
+    if !tgt.nullable && !matches!(src, Ty::Nothing) {
+        return false;
+    }
     match (src, &tgt.ty) {
         // a dynamic source: 4.14.4 lets the implementation test the value at run time
         (Ty::Any | Ty::Dyn(_) | Ty::Nothing, _) | (_, Ty::Any) => true,
@@ -1590,6 +1597,26 @@ impl<'t> Checker<'t> {
     fn insert(&mut self, is: &'t Plain, mut scope: Scope) -> Scope {
         let incoming = scope.merged();
         self.walk(is, &Env::new(incoming.clone()));
+        // 16.5 SR 6 c: an inserted property's value has a supported property value type; as
+        // for SET (13.3 SR 3), the predefined scalars (H2), a dynamic one under the 4.14.4 cure.
+        let mut kvs = Vec::new();
+        find(is, "property key value pair", &mut kvs);
+        for kv in kvs {
+            if let Some(ve) = own(kv, "value expression") {
+                let t = if null_literal(ve) {
+                    Ty::Null
+                } else {
+                    self.ty(ve, &Env::new(incoming.clone()))
+                };
+                if !(t.scalar() || matches!(t, Ty::Any | Ty::Dyn(_))) {
+                    self.report(
+                        ve,
+                        "16.5 SR 6",
+                        format!("(reading) an inserted property of {t}, not a supported property value type"),
+                    );
+                }
+            }
+        }
         let mut patterns = Vec::new();
         find_any(
             is,

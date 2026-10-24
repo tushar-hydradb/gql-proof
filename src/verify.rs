@@ -36,6 +36,7 @@ pub const GATE_ONLY: &[&str] = &[
     "14.2 SR 10",
     "14.11 SR 10",
     "16.6 SR 7",
+    "16.5 SR 6",
     "16.8 SR 4",
     "18.9 SR 68",
     "21.2 SR 18",
@@ -2049,11 +2050,19 @@ fn confusables(tree: &Plain, out: &mut Vec<Violation>) {
         }
         s
     }
+    // Regular and delimited identifiers alike: the representative form is what is compared.
     let mut ids = Vec::new();
     find(tree, "regular identifier", &mut ids);
+    find(tree, "delimited identifier", &mut ids);
     let mut seen: std::collections::BTreeMap<String, String> = Default::default();
     for id in ids {
-        let text = id.text();
+        let raw = id.text();
+        let text = if def_name(id) == Some("delimited identifier") && raw.len() >= 2 {
+            let q = raw.chars().next().unwrap();
+            raw[q.len_utf8()..raw.len() - q.len_utf8()].replace(&format!("{q}{q}"), &q.to_string())
+        } else {
+            raw
+        };
         let sk = skeleton(&text);
         match seen.get(&sk) {
             Some(other) if other.to_lowercase() != text.to_lowercase() => out.push(Violation {

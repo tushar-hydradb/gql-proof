@@ -810,10 +810,12 @@ fn value_types() {
         "SESSION SET VALUE $b INT | STRING NOT NULL = 1",
         "18.9 SR 88",
     );
-    ok("SESSION SET VALUE $b ANY<INT NOT NULL | STRING NOT NULL> = 1");
+    // (a type test: no value goes to the type, which assignment and cast would ask of a
+    // known not nullable one)
+    ok("FILTER 1 IS TYPED ANY<INT NOT NULL | STRING NOT NULL> FINISH");
     ok("SESSION SET VALUE $b ANY<INT | STRING> = 1");
     // a nested union is known not nullable when its components are (SR 85, 86)
-    ok("SESSION SET VALUE $b ANY<INT NOT NULL | ANY<STRING NOT NULL | BOOL NOT NULL>> = 1");
+    ok("FILTER 1 IS TYPED ANY<INT NOT NULL | ANY<STRING NOT NULL | BOOL NOT NULL>> FINISH");
     bad(
         "SESSION SET VALUE $b ANY<INT NOT NULL | ANY<STRING | BOOL>> = 1",
         "18.9 SR 88",

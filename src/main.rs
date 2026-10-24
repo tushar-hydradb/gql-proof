@@ -468,6 +468,11 @@ fn context_run<C: gql_proof::context::Context>(
     if args.sentences && verifier.is_none() {
         bail!("--sentences needs --rules all or --rules syntax: nothing would check the syntax rules");
     }
+    if args.sentences && args.rule != ContextRule::Types {
+        eprintln!(
+            "note: without --rule types the type rules are not checked; these sentences are outside the soundness claim for type rules (research/soundness-claim.md)"
+        );
+    }
     if args.phase == ContextPhase::Cover {
         let began = std::time::Instant::now();
         let names: Vec<String> = ["x", "y", "z", "w"].iter().map(|s| s.to_string()).collect();
@@ -880,6 +885,9 @@ fn purdom(args: PurdomArgs) -> Result<()> {
             outcome.trees.len()
         );
     }
+    eprintln!(
+        "note: purdom checks the syntax and scope rules only, not the type rules; its sentences are outside the soundness claim for type rules (research/soundness-claim.md)"
+    );
     let gated = withheld.iter().filter(|w| **w).count();
     if gated > 0 {
         eprintln!("withheld {gated} trees the gate refuses (not printed)");

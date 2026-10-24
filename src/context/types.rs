@@ -1134,7 +1134,8 @@ impl Types {
             "opt typed value initializer" => {
                 // 10.3 SR 8 (reading): no closed union declared, its assignability is not
                 // followed.
-                if has(fact::IMMATERIAL) || has(fact::CLOSED_UNION) {
+                // 4.17.4.2 (reading): no NOT NULL declared type, no value is known not nullable.
+                if has(fact::IMMATERIAL) || has(fact::CLOSED_UNION) || has(fact::NOT_NULL) {
                     return None;
                 }
                 let value = kids.last().copied().flatten();
