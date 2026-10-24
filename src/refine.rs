@@ -164,6 +164,9 @@ pub fn all_rules(id086: MatchModeDefault) -> Vec<Box<dyn Rule>> {
         Box::new(IntegerCount),
         Box::new(StatementKinds),
         Box::new(ParentSolidus),
+        Box::new(PropertyValueTypes),
+        Box::new(ClosedInitializerTypes),
+        Box::new(UnionNullability),
     ]
 }
 
@@ -1383,6 +1386,200 @@ impl Rule for ParentSolidus {
             }
             _ => s.without(BARE_SCHEMA).without(OWN_SOLIDUS),
         })
+    }
+}
+
+/// 18.6 SR 4, 18.7 SR 4: a property's value type is a supported property value type.
+///
+/// Reading under hypothesis H2: the supported ones are the predefined types that are neither
+/// reference value types nor immaterial (4.3.4: every supported property value type is
+/// material). Inherited from a <property value type> to its <value type> and on to its
+/// <predefined type>, where the other alternatives are refused.
+pub struct PropertyValueTypes;
+
+const IN_PROPERTY_TYPE: Fact = 72;
+
+impl Rule for PropertyValueTypes {
+    fn name(&self) -> &str {
+        "supported property value types"
+    }
+
+    fn cite(&self) -> &str {
+        "18.6 SR 4, 18.7 SR 4: a property value type is supported: a predefined, material, non-reference type (H2)"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(IN_PROPERTY_TYPE, "in-property-type")])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn down(&self, node: &Node, inh: &State, pos: usize, _left: &[State], out: &mut State) {
+        let child = owner_of(&node.items[pos]);
+        let opens = node.def == "property value type" && child == Some("value type");
+        let within = inh.has(IN_PROPERTY_TYPE)
+            && node.def == "value type"
+            && child == Some("predefined type");
+        if opens || within {
+            out.set(IN_PROPERTY_TYPE, true);
+        }
+    }
+
+    fn rejects(&self, node: &Node, inh: &State) -> bool {
+        if !inh.has(IN_PROPERTY_TYPE) || node.group {
+            return false;
+        }
+        match node.def {
+            "value type" => node.items != [Item::Def("predefined type")],
+            "predefined type" => matches!(
+                node.items,
+                [Item::Def("reference value type" | "immaterial value type")]
+            ),
+            _ => false,
+        }
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if self.rejects(node, inh) {
+            return None;
+        }
+        Some(s)
+    }
+}
+
+/// 7.1 SR 6 c i-ii, 10.1 SR 8, 10.2 SR 8: an initializer's graph or binding table type is
+/// assignable to the declared one.
+///
+/// Reading: graphs and tables are not typed (the types engine), so a closed declared type
+/// (`GRAPH { .. }`, and every binding table type, which is always `TABLE { .. }`) cannot be
+/// shown to hold and is refused; an open graph type (`ANY GRAPH`) holds whatever graph it
+/// gets. Inherited from the initializer to its declared type, refused there.
+pub struct ClosedInitializerTypes;
+
+const IN_TABLE_INIT: Fact = 73;
+const IN_GRAPH_INIT: Fact = 74;
+
+impl Rule for ClosedInitializerTypes {
+    fn name(&self) -> &str {
+        "no closed declared graph or table type"
+    }
+
+    fn cite(&self) -> &str {
+        "7.1 SR 6 c, 10.1 SR 8, 10.2 SR 8: a declared closed graph or binding table type is refused (reading: graph and table types are not followed)"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(IN_TABLE_INIT, "in-table-init"), (IN_GRAPH_INIT, "in-graph-init")])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn down(&self, node: &Node, inh: &State, pos: usize, _left: &[State], out: &mut State) {
+        let owner = node.def.split('/').next().unwrap_or(node.def);
+        let child = owner_of(&node.items[pos]);
+        let to_type = |c: Option<&str>, t: &str| c == Some(t) || matches!(node.items[pos], Item::Group(_));
+        if owner == "opt typed binding table initializer"
+            && to_type(child, "binding table reference value type")
+        {
+            out.set(IN_TABLE_INIT, true);
+        }
+        if (owner == "opt typed graph initializer" && to_type(child, "graph reference value type"))
+            || (inh.has(IN_GRAPH_INIT) && node.def == "graph reference value type")
+        {
+            out.set(IN_GRAPH_INIT, true);
+        }
+    }
+
+    fn rejects(&self, node: &Node, inh: &State) -> bool {
+        (inh.has(IN_TABLE_INIT) && node.def == "binding table reference value type")
+            || (inh.has(IN_GRAPH_INIT) && node.def == "closed graph reference value type")
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if self.rejects(node, inh) {
+            return None;
+        }
+        Some(s)
+    }
+}
+
+/// 18.9 SR 88: the components of a union are all possibly nullable or all known not nullable.
+///
+/// A component's nullability (SR 4: a <not null> without an intervening <value type>) is read
+/// under an inherited context that starts at each <component type> and stops at the next
+/// <value type> below its own, so only a union's components are copied: their <not null>
+/// rises to the component's value type, which says nullable or not, and the <component type
+/// list> judges them.
+pub struct UnionNullability;
+
+/// Inherited: within a component's own value type.
+const IN_COMPONENT: Fact = 75;
+const COMP_NOT_NULL: Fact = 76;
+const COMP_NULLABLE: Fact = 77;
+const RAW_NOT_NULL: Fact = 78;
+
+impl Rule for UnionNullability {
+    fn name(&self) -> &str {
+        "union components agree on nullability"
+    }
+
+    fn cite(&self) -> &str {
+        "18.9 SR 88: a union's components are all possibly nullable or all known not nullable"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[
+            (IN_COMPONENT, "in-component"),
+            (COMP_NOT_NULL, "comp-not-null"),
+            (COMP_NULLABLE, "comp-nullable"),
+            (RAW_NOT_NULL, "raw-not-null"),
+        ])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn down(&self, node: &Node, inh: &State, pos: usize, _left: &[State], out: &mut State) {
+        let child = owner_of(&node.items[pos]);
+        let opens = node.def == "component type" && child == Some("value type");
+        let within = inh.has(IN_COMPONENT) && child.is_some() && child != Some("value type");
+        if opens || within {
+            out.set(IN_COMPONENT, true);
+        }
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        let owner = node.def.split('/').next().unwrap_or(node.def);
+        if inh.has(IN_COMPONENT) {
+            if node.def == "not null" {
+                return Some(s.with(RAW_NOT_NULL));
+            }
+            if node.def == "value type" && !node.group {
+                let nn = s.has(RAW_NOT_NULL);
+                let s = s.without(RAW_NOT_NULL);
+                return Some(s.with(if nn { COMP_NOT_NULL } else { COMP_NULLABLE }));
+            }
+            return Some(s);
+        }
+        match owner {
+            "component type" => Some(s),
+            "component type list" => {
+                if s.has(COMP_NOT_NULL) && s.has(COMP_NULLABLE) {
+                    return None;
+                }
+                Some(if node.group {
+                    s
+                } else {
+                    s.without(COMP_NOT_NULL).without(COMP_NULLABLE)
+                })
+            }
+            _ => Some(s.without(COMP_NOT_NULL).without(COMP_NULLABLE).without(RAW_NOT_NULL)),
+        }
     }
 }
 

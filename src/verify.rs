@@ -1232,43 +1232,62 @@ fn syntax_rules<'t>(
                     }
                 }
             }
-            // 20.9 SR 4: an aggregate simply contains no aggregate. SR 7 a: COUNT(*) is directly
-            // contained (no procedure body between) in an aggregating value expression.
-            "aggregate function" => {
-                let mut nested = Vec::new();
-                if let Plain::Def { children, .. } = node {
-                    for c in children {
-                        if def_name(c) == Some("aggregate function") {
-                            nested.push(c);
-                        } else {
-                            find_simply(c, "aggregate function", "aggregate function", &mut nested);
-                        }
-                    }
+            // 18.7 SR 4 by the reading in `refine::PropertyValueTypes` (H2): a property value
+            // type is a predefined type, neither a reference nor an immaterial one. The types
+            // checker reports the same on the type itself.
+            "property value type" => {
+                let ok = own(node, "value type")
+                    .and_then(|vt| inner(vt))
+                    .filter(|p| def_name(p) == Some("predefined type"))
+                    .and_then(inner)
+                    .and_then(def_name)
+                    .is_some_and(|d| !matches!(d, "reference value type" | "immaterial value type"));
+                if !ok {
+                    out.push(violation(
+                        &path,
+                        "18.7 SR 4",
+                        "not a predefined material non-reference type (reading, H2)".into(),
+                    ));
                 }
-                if !nested.is_empty() {
-                    out.push(violation(&path, "20.9 SR 4", "an aggregate inside an aggregate".into()));
-                }
-                let star = flat(children).iter().any(|c| matches!(c, Plain::Kw(k) if k.eq_ignore_ascii_case("COUNT")))
-                    && flat(children).iter().any(|c| def_name(c) == Some("asterisk"));
-                if star {
-                    let mut direct = false;
-                    for a in ancestors.iter().rev() {
-                        match def_name(a) {
-                            Some("aggregating value expression") => {
-                                direct = true;
-                                break;
-                            }
-                            Some("procedure body") => break,
-                            _ => {}
-                        }
-                    }
-                    if !direct {
-                        out.push(violation(
-                            &path,
-                            "20.9 SR 7",
-                            "COUNT(*) not directly in an aggregating value expression".into(),
-                        ));
-                    }
+            }
+            // 10.1 SR 8, 10.2 SR 8 by the reading in `refine::ClosedInitializerTypes`: no
+            // closed declared graph type, no declared binding table type (always closed).
+            "opt typed binding table initializer"
+                if own(node, "binding table reference value type").is_some() =>
+            {
+                out.push(violation(
+                    &path,
+                    "10.2 SR 8",
+                    "a declared binding table type, closed (reading)".into(),
+                ));
+            }
+            "opt typed graph initializer"
+                if own(node, "graph reference value type")
+                    .is_some_and(|g| own(g, "closed graph reference value type").is_some()) =>
+            {
+                out.push(violation(
+                    &path,
+                    "10.1 SR 8",
+                    "a declared closed graph type (reading)".into(),
+                ));
+            }
+            // 18.9 SR 88: a union's components agree on nullability (SR 4: a <not null>
+            // without an intervening <value type>).
+            "component type list" => {
+                let mut types = Vec::new();
+                find_simply(node, "value type", "value type", &mut types);
+                let nn = |vt: &Plain| {
+                    let mut nots = Vec::new();
+                    find_simply(vt, "not null", "value type", &mut nots);
+                    !nots.is_empty()
+                };
+                let known: Vec<bool> = types.iter().map(|t| nn(t)).collect();
+                if known.iter().any(|b| *b) && known.iter().any(|b| !*b) {
+                    out.push(violation(
+                        &path,
+                        "18.9 SR 88",
+                        "components both known not nullable and possibly nullable".into(),
+                    ));
                 }
             }
             // 8.2 SR 2: exactly one access mode.

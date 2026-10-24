@@ -234,6 +234,10 @@ mod fact {
     /// An element operand of ALL_DIFFERENT or SAME is a node, an edge.
     pub const SAW_NODE: u16 = 1 << 11;
     pub const SAW_EDGE: u16 = 1 << 12;
+    /// A `<value type>` is a closed dynamic union (`ANY < .. >`, `PATH | PATH`).
+    pub const CLOSED_UNION: u16 = 1 << 13;
+    /// A `<value type>` is a closed node or edge reference type (`NODE { .. }`).
+    pub const CLOSED_ELEMENT: u16 = 1 << 14;
 }
 
 /// What a subtree says: its class, per variable of scope's label an entry, and what only the
@@ -378,7 +382,8 @@ fn combine(classes: &[Class]) -> Option<Class> {
         out = Some(match (out, c) {
             (None, c) => c,
             (Some(Opaque), _) | (_, Opaque) => return None,
-            (Some(Dynamic), _) | (_, Dynamic) => Dynamic,
+            // 22.19 SR 2 (reading, as without GV65): no dynamic operand in a combination.
+            (Some(Dynamic), _) | (_, Dynamic) => return None,
             // Two lists or two records combine only if their elements do, which is not
             // followed (the reading above): never here.
             (Some(a), b) if a == b && !matches!(a, Record | List) => a,
@@ -397,8 +402,13 @@ fn castable(from: Class, to: Class) -> bool {
     if to == Opaque || from == Opaque {
         return false;
     }
-    if to == Dynamic || matches!(from, Null | Dynamic) {
+    if to == Dynamic || from == Null {
         return true;
+    }
+    // 20.8 SR 10 under H2: the supported property value types are the predefined scalars, so
+    // a dynamic value casts to a scalar class only.
+    if from == Dynamic {
+        return to.scalar();
     }
     let datetime = |c: Class| matches!(c, LocalDatetime | ZonedDatetime);
     let time = |c: Class| matches!(c, LocalTime | ZonedTime);
@@ -432,9 +442,9 @@ fn assignable(from: Class, to: Class) -> bool {
 /// 20.21 SR 1: the type of numeric operators' results. Null operands take the type from
 /// their context (21.2 SR 67 a): the result is still a number.
 fn arithmetic(classes: &[Class]) -> Class {
-    if classes.contains(&Dynamic) {
-        Dynamic
-    } else if classes.contains(&Approx) {
+    // A dynamic operand still makes a number (20.21 SR 1), of a scale nobody knows: read as
+    // approximate, which claims no exactness (20.16 SR 1) and is no graph or table (11.1 SR 3).
+    if classes.contains(&Dynamic) || classes.contains(&Approx) {
         Approx
     } else {
         Exact
@@ -839,6 +849,8 @@ impl Types {
             // node, edge or record type to take from this context (21.2 SR 67, 20.1 SR 4-6).
             // A record's fields are not followed, so no record source can be shown to have
             // the field (20.11 SR 2 a): refused until they are, rather than `{ } . a`.
+            // 20.11 SR 3 (reading): a closed element type's property types are not followed.
+            "property reference" if has(fact::CLOSED_ELEMENT) => None,
             "property reference" => match at("property source") {
                 Some(Null | Record) => None,
                 Some(Node | Edge | Dynamic) => Some(Some(Dynamic)),
@@ -869,6 +881,15 @@ impl Types {
                 (Some(Dynamic), _) | (Some(Null), Some(Dynamic)) => Some(Some(Exact)),
                 (Some(Null), d) | (d, _) => Some(d),
             },
+            // 20.22 SR 4, 15: ABS, FLOOR, CEIL keep their argument's numeric type; of a
+            // dynamic one, a number of unknown scale, read as approximate.
+            "absolute value expression" | "floor function" | "ceiling function" => {
+                let arg = at("numeric value expression");
+                check(
+                    fits(arg, Class::numeric) && arg != Some(Null),
+                    if arg == Some(Dynamic) { Some(Approx) } else { arg },
+                )
+            }
             "trigonometric function"
             | "general logarithm function"
             | "common logarithm"
@@ -942,7 +963,8 @@ impl Types {
             // 20.23, 20.15, 20.13: concatenation.
             "character string concatenation" => check(typed, Some(Str)),
             "byte string concatenation" => check(typed, Some(Bytes)),
-            "list concatenation" => check(typed, Some(List)),
+            // 22.19 SR 2 (reading): a dynamic operand is no list to combine.
+            "list concatenation" => check(typed && !classed.contains(&Dynamic), Some(List)),
             "path value concatenation" => check(typed, Some(Path)),
             // 20.26 SR 1, read as written: an instant moved by a duration is a zoned datetime if
             // the instant is a zoned datetime, a local datetime otherwise, a zoned time included
@@ -1023,13 +1045,19 @@ impl Types {
             {
                 None
             }
+            // 20.7 SR 1 b, SR 3: NULLIF(V1, V2) is a CASE with results NULL and V1, so V1 is
+            // no bare NULL.
             "case abbreviation" if token("NULLIF") => {
                 let (a, b) = (kids[2], kids[4]);
                 check(
-                    matches!((a, b), (Some(x), Some(y)) if comparable(x, y, false)),
+                    a != Some(Null)
+                        && matches!((a, b), (Some(x), Some(y)) if comparable(x, y, false)),
                     a,
                 )
             }
+            // 20.7 SR 1 c, SR 3 (reading): COALESCE takes no bare NULL, whose last two would
+            // make a CASE of NULL results.
+            "case abbreviation" if classed.contains(&Null) => None,
             "case abbreviation" => {
                 let mut all: Vec<Class> = acc.result.into_iter().collect();
                 all.extend(classed.iter().copied());
@@ -1047,7 +1075,12 @@ impl Types {
             "searched case" => acc.result.filter(|c| *c != Null).map(Some),
             // 20.8: CAST to a material target the operand converts to (SR 4).
             "cast specification" => {
-                if has(fact::IMMATERIAL) {
+                // 20.8 SR 9 (reading): a closed union, or a dynamic union NOT NULL, as a
+                // target is refused: the subtyping is not followed.
+                if has(fact::IMMATERIAL)
+                    || has(fact::CLOSED_UNION)
+                    || (has(fact::ANY_TYPE) && has(fact::NOT_NULL))
+                {
                     return None;
                 }
                 let to = if has(fact::ANY_TYPE) {
@@ -1058,6 +1091,11 @@ impl Types {
                 // 20.8 SR 5: no null to a type NOT NULL (reading: NOT NULL anywhere in it).
                 match (at("cast operand"), to) {
                     (Some(Null), _) if has(fact::NOT_NULL) => None,
+                    // 20.11 SR 3, 16.8 SR 4 b ii (reading): a closed element type is not
+                    // followed, so the value is opaque: no property, no label test.
+                    (Some(from), Some(to)) if castable(from, to) && has(fact::CLOSED_ELEMENT) => {
+                        Some(Some(Opaque))
+                    }
                     (Some(from), Some(to)) if castable(from, to) => Some(Some(to)),
                     _ => None,
                 }
@@ -1094,7 +1132,9 @@ impl Types {
             // 10.3 SR 8: a typed initializer's value is assignable to the type; the variable
             // has the type, or the value's class.
             "opt typed value initializer" => {
-                if has(fact::IMMATERIAL) {
+                // 10.3 SR 8 (reading): no closed union declared, its assignability is not
+                // followed.
+                if has(fact::IMMATERIAL) || has(fact::CLOSED_UNION) {
                     return None;
                 }
                 let value = kids.last().copied().flatten();
@@ -1109,6 +1149,7 @@ impl Types {
                     {
                         None
                     }
+                    (Some(_), _) if has(fact::CLOSED_ELEMENT) => Some(Some(Opaque)),
                     (Some(to), _) => Some(Some(to)),
                     (None, v) => Some(v),
                 }
@@ -1159,13 +1200,23 @@ impl Types {
             "path value type" => out.target = Some(Path),
             "list value type" => out.target = Some(List),
             "record type" => out.target = Some(Record),
-            "node reference value type" => out.target = Some(Node),
-            "edge reference value type" => out.target = Some(Edge),
+            "node reference value type" => {
+                out.target = Some(Node);
+                out.facts |= acc.facts & fact::CLOSED_ELEMENT;
+            }
+            "edge reference value type" => {
+                out.target = Some(Edge);
+                out.facts |= acc.facts & fact::CLOSED_ELEMENT;
+            }
             "graph reference value type" | "binding table reference value type" => {
                 out.target = Some(Opaque)
             }
             "immaterial value type" => out.facts |= fact::IMMATERIAL,
-            "dynamic union type" => out.facts |= fact::ANY_TYPE,
+            "dynamic union type" => out.facts |= fact::ANY_TYPE | (acc.facts & fact::CLOSED_UNION),
+            "closed dynamic union type" => out.facts |= fact::CLOSED_UNION,
+            "closed node reference value type" | "closed edge reference value type" => {
+                out.facts |= fact::CLOSED_ELEMENT
+            }
             "value type"
             | "predefined type"
             | "numeric type"
@@ -1175,7 +1226,8 @@ impl Types {
             | "constructed value type"
             | "cast target" => {
                 out.target = acc.target;
-                out.facts |= acc.facts & (fact::IMMATERIAL | fact::ANY_TYPE);
+                out.facts |= acc.facts
+                    & (fact::IMMATERIAL | fact::ANY_TYPE | fact::CLOSED_UNION | fact::CLOSED_ELEMENT);
             }
             "not null" => out.facts |= fact::NOT_NULL,
             "temporal duration qualifier" => {
@@ -1270,6 +1322,9 @@ impl Types {
             // combine (22.18). COALESCE's later arguments are results too (20.7 SR 1 c).
             let mut folded = acc.result;
             if own == "case abbreviation" && node.group {
+                if kids.iter().flatten().any(|c| *c == Null) {
+                    return false;
+                }
                 for c in kids.iter().flatten() {
                     match merge_results(folded, Some(*c)) {
                         Some(r) => folded = r,
@@ -1300,7 +1355,29 @@ impl Types {
         }
         if matches!(own, "cast specification" | "opt typed value initializer") {
             out.target = out.target.or(acc.target);
-            out.facts |= acc.facts & (fact::IMMATERIAL | fact::ANY_TYPE | fact::NOT_NULL);
+            out.facts |= acc.facts
+                & (fact::IMMATERIAL
+                    | fact::ANY_TYPE
+                    | fact::NOT_NULL
+                    | fact::CLOSED_UNION
+                    | fact::CLOSED_ELEMENT);
+        }
+        // A closed element cast rises to the property source that reads it (20.11 SR 3).
+        if matches!(
+            own,
+            "property reference"
+                | "property source"
+                | "node reference value expression"
+                | "edge reference value expression"
+                | "record expression"
+                | "value expression primary"
+                | "parenthesized value expression"
+                | "value expression"
+                | "common value expression"
+                | "non-parenthesized value expression primary"
+                | "non-parenthesized value expression primary special case"
+        ) {
+            out.facts |= acc.facts & fact::CLOSED_ELEMENT;
         }
         // NOT NULL rises through the type that holds it, up to the CAST or initializer.
         if own.ends_with(" type") || own == "cast target" {

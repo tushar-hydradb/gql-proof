@@ -121,6 +121,7 @@ pub fn check(tree: &Plain) -> Vec<Violation> {
     };
     checker.parents(tree);
     checker.root(tree);
+    checker.aggregates(tree);
     checker.out
 }
 
@@ -148,6 +149,53 @@ impl<'t> Checker<'t> {
             at = self.parent.get(&(n as *const Plain)).copied();
         }
         false
+    }
+
+    /// 20.9 SR 4: an aggregate simply contains no aggregate (none between, a subquery no
+    /// obstacle). SR 7 a: COUNT(*) is directly contained (no procedure body between) in an
+    /// aggregating value expression.
+    fn aggregates(&mut self, tree: &'t Plain) {
+        fn simply<'t>(node: &'t Plain, out: &mut Vec<&'t Plain>) {
+            for k in kids(node) {
+                if name(k) == Some("aggregate function") {
+                    out.push(k);
+                } else {
+                    simply(k, out);
+                }
+            }
+        }
+        let mut all = Vec::new();
+        find(tree, "aggregate function", &mut all);
+        for af in all {
+            let mut nested = Vec::new();
+            simply(af, &mut nested);
+            if !nested.is_empty() {
+                self.report(af, "20.9 SR 4", "an aggregate inside an aggregate".into());
+            }
+            let kw = kids(af).iter().any(|k| matches!(k, Plain::Kw(t) if t.eq_ignore_ascii_case("COUNT")));
+            if kw && own(af, "asterisk").is_some() {
+                let mut at = self.parent.get(&(af as *const Plain)).copied();
+                let mut direct = false;
+                while let Some(n) = at {
+                    match name(n) {
+                        Some("aggregating value expression") => {
+                            direct = true;
+                            break;
+                        }
+                        Some("procedure body") => break,
+                        _ => {}
+                    }
+                    at = self.parent.get(&(n as *const Plain)).copied();
+                }
+                if !direct {
+                    self.report(
+                        af,
+                        "20.9 SR 7",
+                        "COUNT(*) not directly in an aggregating value expression".into(),
+                    );
+                }
+            }
+        }
     }
 
     fn report(&mut self, at: &Plain, rule: &'static str, detail: String) {

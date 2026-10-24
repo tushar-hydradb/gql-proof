@@ -15,7 +15,11 @@ use std::sync::LazyLock;
 static ISO: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static BASE: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO));
 
-const RULES: [&str; 37] = [
+const RULES: [&str; 41] = [
+    "18.9 SR 88",
+    "10.1 SR 8",
+    "10.2 SR 8",
+    "18.7 SR 4",
     "17.6 SR 1",
     "16.4 SR 12",
     "9.1 SR 5",
@@ -596,6 +600,9 @@ fn refinement_loses_no_iso_production() {
         let ruled_out = |p: usize| {
             let d = gql_proof::describe(&BASE, p as u32);
             d.starts_with("<catalog object parent reference> ::= <catalog object parent reference/rep")
+                // A reading, not the text: every declared binding table type is closed and
+                // tables are not typed (refine::ClosedInitializerTypes).
+                || d.starts_with("<opt typed binding table initializer/opt1> ::=")
         };
         let missing: Vec<String> = (0..copies.len())
             .filter(|&p| !copies[p] && !ruled_out(p))
@@ -626,7 +633,15 @@ proptest! {
         let start = BASE.require("GQL-program").unwrap();
         for tree in generate(&BASE, start, seed, max_depth) {
             let (automaton, broken) = verdicts(&tree, id086);
-            prop_assert_eq!(automaton, broken.is_empty(), "{:?}", broken);
+            let why = accepts(&all_rules(id086), &tree).err();
+            prop_assert_eq!(
+                automaton,
+                broken.is_empty(),
+                "{:?} automaton: {:?} in {}",
+                broken,
+                why,
+                Verifier::new(Grammar::new(&ISO)).render(&tree)
+            );
         }
     }
 
