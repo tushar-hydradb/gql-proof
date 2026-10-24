@@ -560,10 +560,11 @@ fn context_run<C: gql_proof::context::Context>(
                 let params: Vec<serde_json::Value> = refs
                     .iter()
                     .map(|p| {
-                        serde_json::json!({
-                            "name": p,
-                            "classes": gql_proof::context::parameter_classes(ctx, &plain, p),
-                        })
+                        let classes = gql_proof::context::parameter_classes(ctx, &plain, p);
+                        if classes.is_empty() && std::env::var_os("GQL_DEBUG_PARAMS").is_some() {
+                            eprintln!("no class for {p} in {sentence}\n{plain:#?}");
+                        }
+                        serde_json::json!({ "name": p, "classes": classes })
                     })
                     .collect();
                 let record = serde_json::json!({
