@@ -10,6 +10,7 @@
 //!   lexical definitions, which `tokens::Grammar::check` proves are single tokens
 
 mod conformance;
+pub mod graph_type;
 pub mod scope;
 pub mod types;
 
@@ -135,6 +136,7 @@ impl<'b> Verifier<'b> {
         self.walk(tree, &mut Vec::new(), &mut out);
         if let Some(id086) = self.syntax_rules {
             syntax_rules(tree, id086, &mut Vec::new(), &mut out);
+            out.extend(graph_type::check(tree));
         }
         if self.scope {
             out.extend(scope::check(tree));
