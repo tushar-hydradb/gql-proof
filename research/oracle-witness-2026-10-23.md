@@ -371,7 +371,32 @@ dynamic value as the initializer of a `NOT NULL` typed `VALUE`, and no literal
 sentences exist only because a parameter stands anywhere, and no class is
 known for them: a reading in `types.rs` for the soundness track to look at,
 and until then they stay out of the core. `examples/params_debug.rs` prints
-the admitted classes of one sentence with the rules' trace (`GQL_TRACE=trace`)
+the admitted classes of one sentence with the rules' trace (`GQL_TRACE=trace`;
+`GQL_REFINE_CLAIM=claims/turbolay.claim` for the refined grammar;
+`GQL_PARSE_FIRST=<def>:<child>` to pick a derivation of an ambiguous sentence)
+
+two rows of the 2-variable set, read closely:
+
+- `ORDER BY $b * + NULL FINISH` (target: a `<duration factor>` in a `<duration
+  term>`) admits no class. the text is ambiguous: the parser's first reading
+  makes `$b` the duration and `+ NULL` the number, and under it the rules
+  admit `yearmonth` and `daytime`; the generator's tree is the other reading,
+  `$b` the number and `+ NULL` the duration factor, and under it every
+  concrete class is refused at `<duration term>`, as `ORDER BY 8 * + NULL` is
+  refused outright. so `types.rs` accepts a dynamic operand times a null
+  duration but no exact one times it: either `NULL` is a valid duration
+  factor and the literal form should pass, or the dynamic acceptance is too
+  loose and the sentence should not be generated. a soundness-track reading;
+  the export's empty set is the honest answer meanwhile. it also shows the
+  record must be read against the generator's tree, not a re-parse
+- the parameter named by four backticks (target: `<double grave accent>`
+  inside an accent quoted name) is a parameter whose name is one backtick,
+  spelled by doubling the delimiter: the shortest place the generator found
+  for that production is a parameter name in `LIMIT`. `LIMIT`'s site is not
+  typed by the rules, so every class is admitted and the parameter goes under
+  the key "`" with value 1; turbolay took it (no data, 00001), as it took the
+  four-double-quote one, while the separated forms with `@` before a delimited
+  name are turbolay parse errors: a parameter name gap for its bucket list
 
 ## what is built on this branch
 
