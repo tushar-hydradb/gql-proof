@@ -907,11 +907,124 @@ impl<'t> Checker<'t> {
                     }
                 }
             }
-            Some("session activity" | "session set command" | "session set parameter clause") => {
+            Some("session activity") => {
+                kids(node).into_iter().for_each(|k| self.root(k));
+                self.session_parameters(node);
+            }
+            Some("session set command" | "session set parameter clause") => {
                 kids(node).into_iter().for_each(|k| self.root(k))
             }
             Some(n) if n.starts_with("session") => {}
             _ => kids(node).into_iter().for_each(|k| self.root(k)),
+        }
+    }
+
+    /// 7.1 SR 6 d ii 1 B: a session parameter an earlier <session set command> of the program
+    /// set takes, in a later one, a value type assignable to the declared type the earlier one
+    /// gave it; by SR 6 d ii 1 C that is the first command's, whatever came between. Readings:
+    /// the rule is applied whether or not the session already defines the parameter (SR 6 b, d i
+    /// leave a defined one to the environment, H1); nullability is not inferred, so a type not
+    /// declared NOT NULL does not go to a NOT NULL one; a closed graph or binding table type is
+    /// matched only by the same written type.
+    fn session_parameters(&mut self, activity: &'t Plain) {
+        let mut clauses = Vec::new();
+        find_any(
+            activity,
+            &[
+                "session set graph parameter clause",
+                "session set binding table parameter clause",
+                "session set value parameter clause",
+            ],
+            &mut clauses,
+        );
+        // the declared type of each parameter, with the written type when closed
+        let mut declared: HashMap<String, (Declared, Option<String>)> = HashMap::new();
+        for clause in clauses {
+            let Some(sps) = first(clause, "session parameter specification") else {
+                continue;
+            };
+            let pn = first(sps, "parameter name").map_or_else(|| sps.text(), ident);
+            let (pvt, closed) = self.parameter_value_type(clause);
+            match declared.get(&pn) {
+                None => {
+                    declared.insert(pn, (pvt, closed));
+                }
+                Some((dt, dt_closed)) => {
+                    let fine = match dt_closed {
+                        Some(written) => closed.as_deref() == Some(written.as_str()),
+                        None => {
+                            assignable(&pvt.ty, dt)
+                                && (dt.nullable || !pvt.nullable || matches!(pvt.ty, Ty::Nothing))
+                        }
+                    };
+                    if !fine {
+                        self.report(
+                            clause,
+                            "7.1 SR 6",
+                            format!(
+                                "(reading) ${pn} set as {pvt} is not known to be assignable to {dt}, its type from an earlier SESSION SET"
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// 7.1 SR 6 c: the value type PVT a session set parameter clause gives its parameter, and
+    /// the written type when it is a closed graph or binding table type. An undeclared one is
+    /// the initializer's type, nullable (4.17.4.3).
+    fn parameter_value_type(&mut self, clause: &'t Plain) -> (Declared, Option<String>) {
+        let env = Env::default();
+        let unknown = |ty| Declared { ty, nullable: true };
+        match name(clause) {
+            Some("session set graph parameter clause") => {
+                match first(clause, "graph reference value type") {
+                    Some(grvt) => (
+                        Declared {
+                            ty: Ty::Graph,
+                            nullable: !not_null(grvt),
+                        },
+                        contains(grvt, "closed graph reference value type").then(|| grvt.text()),
+                    ),
+                    None => (unknown(Ty::Graph), None),
+                }
+            }
+            Some("session set binding table parameter clause") => {
+                match first(clause, "binding table reference value type") {
+                    Some(btrvt) => (
+                        Declared {
+                            ty: Ty::Table,
+                            nullable: !not_null(btrvt),
+                        },
+                        Some(btrvt.text()),
+                    ),
+                    None => (unknown(Ty::Table), None),
+                }
+            }
+            _ => {
+                let Some(otvi) = own(clause, "opt typed value initializer") else {
+                    return (unknown(Ty::Any), None);
+                };
+                if let Some(vt) = own(otvi, "value type") {
+                    return (value_type(vt), None);
+                }
+                let t = own(otvi, "value initializer")
+                    .and_then(|vi| own(vi, "value expression"))
+                    .map_or(Ty::Any, |ve| {
+                        if null_literal(ve) {
+                            Ty::Null
+                        } else {
+                            // typed again here only for its type: the clause was checked once
+                            let mut quiet = Checker {
+                                parent: HashMap::new(),
+                                out: Vec::new(),
+                            };
+                            quiet.ty(ve, &env)
+                        }
+                    });
+                (unknown(t), None)
+            }
         }
     }
 
@@ -2068,6 +2181,23 @@ impl<'t> Checker<'t> {
                 self.walk(node, env);
                 Ty::Table
             }
+            // 20.1 SR 2, 3 on this tree's derivation: a <value expression primary> that derives
+            // as a graph (binding table) reference value expression has a graph (binding table)
+            // type; an unknown, dynamic or null one passes (4.14.4), as everywhere
+            "graph reference value expression" | "binding table reference value expression" => {
+                let Some(primary) = own(node, "value expression primary") else {
+                    return Ty::Any;
+                };
+                let t = self.ty(primary, env);
+                let (class, rule) = if n == "graph reference value expression" {
+                    (Class::Graph, "20.1 SR 2")
+                } else {
+                    (Class::Table, "20.1 SR 3")
+                };
+                self.expect(primary, &t, &[class], rule);
+                t
+            }
+
             // 11.1 SR 3 a ii, 11.2 SR 4 b ii
             "graph expression" | "binding table expression" => {
                 let (want, rule, ty) = if n == "graph expression" {
