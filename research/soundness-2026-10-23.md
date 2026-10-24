@@ -107,3 +107,59 @@ validity); it is listed as such in the audit, and the claim leaves it out
 `research/audit/README.md` defines the rows; `research/audit/part-*.jsonl`
 hold them, one part per group of clauses, written by agents reading the text.
 the findings and the merged table follow in this note
+
+## 2026-10-24: the audit closed, the claim
+
+the audit (8 agents, one part per group of clauses, `research/audit/part-*.jsonl`)
+found 60 open constraint and type rows, 38 reachable in a cached set. all are
+closed; `research/soundness-table.md` is the per-rule table, generated from
+`audit.jsonl` by `python3 -I tools/inventory/audit.py --table
+research/soundness-table.md`
+
+how they closed, by group:
+
+- **statement kinds** (9.1 SR 5-7, 9.2 SR 4-6, 12.8, 13.6, 14.5 SR 2, 14.2 SR
+  3-4, 14.12 SR 26): `refine::StatementKinds`, synthesized facts judged at each
+  composite query expression, block and procedure kind. first version carried
+  every subset of the seven conjunctions up a composite query (765 copies,
+  22,059 productions); judged at each expression it is 5,968. 9.2 SR 7 is the
+  checker's alone ("contains" reaches into nested bodies)
+- **graph type bodies** (18.1 SR 8-16, 18.2 SR 7, 18.3 SR 8, 17, 18): the
+  checker (`verify/graph_type.rs`) and the gate. the generator spells every
+  alias, label and name `a`, so a body's consistency is a matter of which
+  specifications sit together; not followed. the whole grammar run withholds
+  the edge types whose endpoints name no node type: lost coverage of CREATE
+  GRAPH TYPE bodies, the next lever there
+- **types** (closed element types, unions, dynamic casts, combinations,
+  composite columns, typed initializers, NULLIF and COALESCE): the types
+  checker models them; the engine follows with readings (no dynamic operand in
+  a combination, a dynamic value casts to scalars, no closed union target,
+  closed element types opaque to properties, no bare NULL in COALESCE), and
+  three automata (`PropertyValueTypes`, `ClosedInitializerTypes`,
+  `UnionNullability`)
+- **the rest**: `ParentSolidus` (17.6 SR 1, literal), `IntegerCount` (20.16 SR
+  1), the KEEP prefix in `SelectiveAlone` (16.4 SR 12), distinct names at
+  spelling time (18.5 SR 1, 18.10 SR 2), lexical limits under H2
+
+holes the checker had, found by the audit's demand that every row name a check
+and every check have a probe: a SELECT with FROM was never checked (scope or
+types); SET and REMOVE took a value variable as target; a nested aggregate
+slipped through when its variable was a group; field names were compared across
+nested records; extended identifiers were not checked for reserved words
+
+what makes it not luck: the gate (a flagged tree is never printed), the two
+scripts (`shall_coverage.py`: every shall has a row; `audit.py`: no open row,
+every row's rule string reported by the checker and probed, every `checked` row
+gate-only), and `cargo test`. `soundness-claim.md` has the argument
+
+the runs at the end (the gate in force; numbers in `sentences/README.md`):
+
+| run | printed | withheld | of them generator bugs | productions never | cdrc never |
+|---|---|---|---|---|---|
+| 2 vars, turbolay claim | 3,966 | 0 | 0 | 156 | 335 |
+| 2 vars, whole grammar | 3,928 | 135 | 0 | 30 | 79 |
+| purdom cdrc, whole grammar | 569 | 21 | 0 | | |
+
+the withheld trees break graph type body rules (an edge type whose endpoints
+name no node type of the body) and 9.2 SR 7; both gate-only. that is the
+remaining cost: coverage of CREATE GRAPH TYPE bodies, not soundness

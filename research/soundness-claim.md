@@ -40,12 +40,21 @@ property of every printed sentence, by the gate in step 1
   red on a violating tree, green on a valid one), and against the generator's
   automata over random unrefined trees (`automaton_and_verifier_agree`)
 
+## also in the trusted base
+
+- the audit's `grammar` rows (15): the auditors' argument that no derivation can
+  break the rule (each row says why). a mechanical check of these would be a
+  parse of the rule's construct over the refined grammar; not built
+- `tools/inventory/shall_coverage.py`'s extraction of the rules from the text
+  (it finds the 1,025 rules the inventory has, a check on itself)
+
 ## the argument
 
-1. **the gate.** every printed tree passed the checker: purdom refuses to print
-   anything when one tree fails (`main.rs`, "Nothing is printed unless every
-   tree passes"); `context` cover withholds a flagged tree (`withheld` on
-   stderr) and refuses `--sentences` with no syntax-rule checker. so S's tree t
+1. **the gate.** every printed tree passed the checker: purdom and `context`
+   cover withhold a flagged tree (`withheld` on stderr), and stop the run when
+   the flag is on a rule the generator should keep (one not in
+   `verify::GATE_ONLY`, a generator bug); `context` refuses `--sentences` with
+   no syntax-rule checker. so S's tree t
    has no violation the checker reports. this step needs nothing from the
    generator: whatever extraction picks, nothing flagged goes out
 2. **the table is complete.** `tools/inventory/shall_coverage.py` reads every

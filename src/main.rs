@@ -493,6 +493,8 @@ fn context_run<C: gql_proof::context::Context>(
         );
         let (mut failed, mut untyped) = (0, 0);
         let mut withheld: Vec<String> = Vec::new();
+        // Withheld trees flagged on a rule the generator should keep: generator bugs.
+        let mut bugs: Vec<String> = Vec::new();
         for (root, covers) in &covered.trees {
             let plain = root.export(base);
             let sentence = root.render(base);
@@ -544,6 +546,14 @@ fn context_run<C: gql_proof::context::Context>(
             // sentence that goes out has passed every checker whatever extraction picked. Its
             // target counts as covered in the tally above but is reported here.
             if !violations.is_empty() {
+                let kept: Vec<&str> = violations
+                    .iter()
+                    .map(|v| v.rule)
+                    .filter(|r| !gql_proof::verify::GATE_ONLY.contains(r))
+                    .collect();
+                if !kept.is_empty() {
+                    bugs.push(format!("{sentence}\n    {kept:?}"));
+                }
                 withheld.push(covers.to_string());
                 continue;
             }
@@ -591,6 +601,13 @@ fn context_run<C: gql_proof::context::Context>(
         );
         for w in withheld.iter().take(args.top) {
             eprintln!("  withheld: {w}");
+        }
+        eprintln!(
+            "{} of them on a rule the generator keeps (a generator bug), the rest gate-only",
+            bugs.len()
+        );
+        for b in bugs.iter().take(args.top) {
+            eprintln!("  bug: {b}");
         }
         if args.cdrc {
             eprintln!(

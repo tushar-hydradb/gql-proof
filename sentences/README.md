@@ -53,18 +53,14 @@ and `tools/inventory/violations.py` read them as they are
   the record in `research/static-semantics-inventory-2026-10-22.md`: it holds
   the 17 use after delete sentences the later list lost by witness choice. its
   successor (1,310 sentences, after 258437a) was not kept
-- `typed-2vars-turbolay-claim-soundness.jsonl`: the turbolay command (with
-  `--match-mode-default different-edges`) on `tushar/soundness` (2026-10-23)
-  after the first soundness families: type values settled at spelling time
-  (18.9 SR 7, 10, 13, 21, 28, 29, 38, 40), the node and edge type shapes
-  (18.2 SR 2, 3; 18.3 SR 2, 3, 4), no subquery in an aggregate (20.9 SR 3).
-  3,796 rows, 3,762 distinct, 524 s; 4,342 of 4,502 productions and 6,531 of
-  6,874 cdrc pairs covered, 159 and 341 never (6 and 8 more than before: the
-  general set function copies whose argument holds an EXISTS, unreachable by
-  20.9 SR 3); 0 syntax or scope checker failures, the same 4 trees flagged by
-  the types checker only (`x + NULL` as a TRIM count). `violations.py` reports
-  one false positive (`STRING ( 0b0 , 8 )`: a zero minimum length is allowed
-  by 18.9 SR 8)
+- `typed-2vars-turbolay-claim-soundness.jsonl`, `typed-2vars-whole-grammar-soundness.jsonl`:
+  the typed command (`--match-mode-default different-edges`) on `tushar/soundness`
+  (2026-10-24), the claim's gate in force (`research/soundness-claim.md`): every
+  printed tree passed the syntax, scope and types checkers. turbolay claim: 3,966
+  rows, 213 s, 4,737 of 4,893 productions and 6,964 of 7,301 cdrc pairs, 156 and 335
+  never, 0 withheld. whole grammar: 3,928 rows, 248 s, 5,601 of 5,641 productions and
+  7,835 of 7,919 pairs, 30 and 79 never, 135 withheld, all on gate-only rules (graph
+  type bodies, 9.2 SR 7), 0 on a rule the generator keeps
 - `typed-2vars-whole-grammar-51d059a.jsonl`: the typed command with no `--claim`
   (every feature) and `--deadline 3600`, on main at 51d059a (2026-10-23, before
   the soundness work): 3,508 rows, 3,443 distinct, 437 s; 4,442 of 4,473
@@ -76,8 +72,8 @@ and `tools/inventory/violations.py` read them as they are
   aggregates over a subquery)
 - `scope-turbolay-claim.jsonl`, `scope-neo4j-claim.jsonl`: scope only, `purdom
   --short --claim claims/<engine>.claim --format jsonl`, 3 variables,
-  regenerated on main at 51d059a (2026-10-23): turbolay 785 sentences in 112 s,
-  neo4j 463 in 218 s. the earlier copies (2026-10-21, main around 3e12b6c: 790
+  regenerated on `tushar/soundness` (2026-10-24): turbolay 778, neo4j 448 (on
+  main at 51d059a: 785 and 463). the earlier copies (2026-10-21, main around 3e12b6c: 790
   and 481 sentences, turbolay accepting 295, neo4j 92) predated the exists,
   path and last ten work
 

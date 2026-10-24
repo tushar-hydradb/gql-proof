@@ -1,463 +1,448 @@
-{"height":31,"length":109,"new":38432,"sentence":"INSERT ( x ) <-[ y ]- ( z ) REMOVE x IS a , z IS a , y . a","tree":1}
-{"height":31,"length":106,"new":327,"sentence":"INSERT ( x ) <-[ y ]- ( z ) SET x = { } , z = { } , y = { }","tree":2}
-{"height":32,"length":106,"new":41020,"sentence":"INSERT ( x ) <-[ y ]- ( z ) CALL ( y , z , x ) { FINISH }","tree":3}
-{"height":52,"length":106,"new":10863,"sentence":"DELETE SESSION_USER IS TYPED VERTEX { a BOOLEAN , a CHAR , a CHAR , a BOOLEAN }","tree":4}
-{"height":30,"length":105,"new":40813,"sentence":"RETURN CURRENT_TIMESTAMP AS x , LOCAL_TIME AS y , LOCAL_TIME AS z NEXT YIELD x , y , z FINISH","tree":5}
-{"height":37,"length":99,"new":1937,"sentence":"INSERT ( { a : LOCAL_TIME , a : CURRENT_TIMESTAMP , a : LOCAL_TIMESTAMP , a : CURRENT_DATE } )","tree":6}
+{"height":31,"length":109,"new":25142,"sentence":"INSERT ( x ) <-[ y ]- ( z ) REMOVE x IS a , z IS a , y . a","tree":1}
+{"height":31,"length":106,"new":165,"sentence":"INSERT ( x ) <-[ y ]- ( z ) SET x = { } , z = { } , y = { }","tree":2}
+{"height":32,"length":106,"new":72722,"sentence":"INSERT ( x ) <-[ y ]- ( z ) CALL ( y , z , x ) { FINISH }","tree":3}
+{"height":55,"length":118,"new":11663,"sentence":"DELETE SESSION_USER IS TYPED VERTEX { a BOOLEAN , ab CHAR , abb CHAR , abbb BOOLEAN }","tree":4}
+{"height":30,"length":105,"new":54296,"sentence":"RETURN CURRENT_TIMESTAMP AS x , LOCAL_TIME AS y , LOCAL_TIME AS z NEXT YIELD x , y , z FINISH","tree":5}
+{"height":37,"length":99,"new":1661,"sentence":"INSERT ( { a : LOCAL_TIME , a : CURRENT_TIMESTAMP , a : LOCAL_TIMESTAMP , a : CURRENT_DATE } )","tree":6}
 {"height":53,"length":96,"new":18,"sentence":"DELETE ZONED_DATETIME ( '2024-01-01T12:00:00' )","tree":7}
 {"height":53,"length":96,"new":5,"sentence":"DELETE LOCAL_DATETIME ( '2024-01-01T12:00:00' )","tree":8}
 {"height":45,"length":93,"new":85646,"sentence":"MATCH TRAIL ( ( ) -[ ]-> ( ) ) { , } ( ) FINISH","tree":9}
-{"height":49,"length":92,"new":5423,"sentence":"USE DATETIME '2024-01-01T12:00:00' FINISH","tree":10}
+{"height":49,"length":92,"new":5649,"sentence":"USE DATETIME '2024-01-01T12:00:00' FINISH","tree":10}
 {"height":49,"length":92,"new":1,"sentence":"USE TIMESTAMP '2024-01-01T12:00:00' FINISH","tree":11}
-{"height":30,"length":91,"new":569,"sentence":"INSERT ( x ) , ( y ) SET x = { } , y . a = CURRENT_TIME","tree":12}
-{"height":29,"length":91,"new":31160,"sentence":"USE HOME_PROPERTY_GRAPH LIMIT 0o7 USE HOME_PROPERTY_GRAPH LIMIT 0o4 USE HOME_GRAPH LIMIT 8 USE HOME_PROPERTY_GRAPH LIMIT 0xA FINISH","tree":13}
+{"height":30,"length":91,"new":287,"sentence":"INSERT ( x ) , ( y ) SET x = { } , y . a = CURRENT_TIME","tree":12}
+{"height":29,"length":91,"new":31125,"sentence":"USE HOME_PROPERTY_GRAPH LIMIT 0o7 USE HOME_PROPERTY_GRAPH LIMIT 0o4 USE HOME_GRAPH LIMIT 8 USE HOME_PROPERTY_GRAPH LIMIT 0xA FINISH","tree":13}
 {"height":43,"length":93,"new":1513,"sentence":"MATCH ( ( ) ~[ ]~ ( ) ) { 0xE , 0x8c } FINISH","tree":14}
 {"height":43,"length":90,"new":170,"sentence":"MATCH ( ( ) -[ ]- ( ) ) { ٣ , 9 } FINISH","tree":15}
 {"height":43,"length":96,"new":183,"sentence":"MATCH ( ( ) <-[ ]- ( ) ) { 0xf , 0o116 } FINISH","tree":16}
 {"height":32,"length":89,"new":0,"sentence":"INSERT ( x ) , ( y ) CALL ( y , x ) { FINISH }","tree":17}
-{"height":44,"length":88,"new":15339,"sentence":"MATCH ACYCLIC ( ) ( ( ) ~[ ]~> ( ) ) * FINISH","tree":18}
+{"height":44,"length":88,"new":15340,"sentence":"MATCH ACYCLIC ( ) ( ( ) ~[ ]~> ( ) ) * FINISH","tree":18}
 {"height":43,"length":88,"new":2,"sentence":"MATCH TRAIL ( ( ) ~[ ]~> ( ) ) { 0o5 , } FINISH","tree":19}
-{"height":28,"length":87,"new":22481,"sentence":"RETURN CURRENT_DATE AS x UNION RETURN LOCAL_TIMESTAMP AS x UNION RETURN CURRENT_TIME AS x","tree":20}
-{"height":46,"length":87,"new":12042,"sentence":"DELETE EXISTS { MATCH ( ) MATCH ( ) MATCH ( ) }","tree":21}
-{"height":29,"length":84,"new":2219,"sentence":"INSERT ( x ) RETURN x GROUP BY x , x , x , x","tree":22}
+{"height":28,"length":87,"new":181078,"sentence":"RETURN CURRENT_DATE AS x UNION RETURN LOCAL_TIMESTAMP AS x UNION RETURN CURRENT_TIME AS x","tree":20}
+{"height":46,"length":87,"new":12882,"sentence":"DELETE EXISTS { MATCH ( ) MATCH ( ) MATCH ( ) }","tree":21}
+{"height":29,"length":84,"new":2255,"sentence":"INSERT ( x ) RETURN x GROUP BY x , x , x , x","tree":22}
 {"height":30,"length":83,"new":0,"sentence":"INSERT ( x ) , ( y ) REMOVE x IS a , y . a","tree":23}
-{"height":30,"length":82,"new":5,"sentence":"INSERT ( x ) , ( y ) SET x = { } , y IS a","tree":24}
+{"height":30,"length":82,"new":3,"sentence":"INSERT ( x ) , ( y ) SET x = { } , y IS a","tree":24}
 {"height":43,"length":81,"new":2,"sentence":"MATCH ( ( ) <-[ ]- ( ) ) { 0o4 } FINISH","tree":25}
 {"height":43,"length":81,"new":0,"sentence":"MATCH ( ( ) <-[ ]- ( ) ) { 8 } FINISH","tree":26}
 {"height":43,"length":81,"new":166,"sentence":"MATCH ( ( ) <-[ ]-> ( ) ) { 0xa } FINISH","tree":27}
-{"height":50,"length":80,"new":52,"sentence":"DELETE SESSION_USER IS TYPED NODE { a PATH , a VARCHAR }","tree":28}
-{"height":36,"length":80,"new":28092,"sentence":"USE CASE WHEN SESSION_USER THEN NULL WHEN SESSION_USER THEN NULL WHEN SESSION_USER THEN NULL END FINISH","tree":29}
+{"height":51,"length":82,"new":4,"sentence":"DELETE SESSION_USER IS TYPED NODE { a BOOL , ab CHAR }","tree":28}
+{"height":36,"length":80,"new":31668,"sentence":"USE CASE WHEN SESSION_USER THEN NULL WHEN SESSION_USER THEN NULL WHEN SESSION_USER THEN NULL END FINISH","tree":29}
 {"height":36,"length":78,"new":3086,"sentence":"MATCH ( ) , ( ) , ( ) , ( ) FINISH","tree":30}
-{"height":43,"length":77,"new":2,"sentence":"MATCH ACYCLIC ( ( ) <-[ ]- ( ) ) + FINISH","tree":31}
-{"height":42,"length":77,"new":173,"sentence":"DELETE SESSION_USER IS TYPED DIRECTED RELATIONSHIP TYPE { } CONNECTING ( a TO a )","tree":32}
-{"height":47,"length":77,"new":135,"sentence":"DELETE SESSION_USER IS TYPED ( ) -[ LABEL a { } ]-> ( )","tree":33}
-{"height":45,"length":77,"new":12,"sentence":"DELETE SESSION_USER IS TYPED ( { } ) -[ { } ]-> ( )","tree":34}
-{"height":45,"length":77,"new":12,"sentence":"DELETE SESSION_USER IS TYPED ( ) -[ { } ]-> ( { } )","tree":35}
-{"height":42,"length":77,"new":3,"sentence":"DELETE SESSION_USER IS TYPED DIRECTED RELATIONSHIP { } CONNECTING ( a -> a )","tree":36}
-{"height":42,"length":76,"new":6,"sentence":"DELETE SESSION_USER IS TYPED DIRECTED EDGE { } CONNECTING ( a <- a )","tree":37}
-{"height":26,"length":74,"new":2,"sentence":"RETURN CURRENT_DATE AS x NEXT YIELD x AS y , x AS z FINISH","tree":38}
-{"height":48,"length":73,"new":12,"sentence":"DELETE SESSION_USER IS TYPED ( ) -[ IS a ]-> ( )","tree":39}
-{"height":44,"length":73,"new":8,"sentence":"DELETE SESSION_USER IS TYPED ( a ) -[ { } ]-> ( )","tree":40}
-{"height":44,"length":73,"new":8,"sentence":"DELETE SESSION_USER IS TYPED ( ) -[ { } ]-> ( a )","tree":41}
-{"height":44,"length":73,"new":32,"sentence":"DELETE SESSION_USER IS TYPED ( a ) <-[ { } ]- ( )","tree":42}
-{"height":44,"length":73,"new":0,"sentence":"DELETE SESSION_USER IS TYPED ( ) <-[ { } ]- ( a )","tree":43}
-{"height":48,"length":72,"new":1,"sentence":"DELETE SESSION_USER IS TYPED ( ) -[ LABELS a ]-> ( )","tree":44}
-{"height":40,"length":71,"new":25711,"sentence":"INSERT ( x ) FILTER CASE SESSION_USER WHEN x THEN NULL END","tree":45}
-{"height":48,"length":70,"new":59,"sentence":"DELETE SESSION_USER IS TYPED VERTEX { a :: ANY }","tree":46}
-{"height":34,"length":69,"new":652,"sentence":"ORDER BY LOCAL_TIME , CURRENT_TIMESTAMP , CURRENT_DATE , CURRENT_TIMESTAMP FINISH","tree":47}
-{"height":48,"length":69,"new":0,"sentence":"DELETE SESSION_USER IS TYPED NODE { a TYPED BOOLEAN }","tree":48}
-{"height":37,"length":69,"new":60,"sentence":"INSERT ( x ) FILTER CASE x WHEN IS NULL THEN NULL END","tree":49}
-{"height":37,"length":69,"new":34,"sentence":"INSERT ( x ) FILTER CASE x WHEN IS NORMALIZED THEN NULL END","tree":50}
-{"height":44,"length":69,"new":7,"sentence":"DELETE DATE ( '2024-01-01' )","tree":51}
-{"height":29,"length":68,"new":1060,"sentence":"INSERT ( x ) RETURN x GROUP BY x , x","tree":52}
-{"height":38,"length":68,"new":11673,"sentence":"DELETE MOD ( SESSION_USER + SESSION_USER , SESSION_USER )","tree":53}
-{"height":38,"length":68,"new":3037,"sentence":"DELETE MOD ( SESSION_USER - SESSION_USER , SESSION_USER )","tree":54}
-{"height":38,"length":68,"new":0,"sentence":"DELETE MOD ( SESSION_USER , SESSION_USER + SESSION_USER )","tree":55}
-{"height":38,"length":68,"new":0,"sentence":"DELETE MOD ( SESSION_USER , SESSION_USER - SESSION_USER )","tree":56}
-{"height":38,"length":68,"new":4500,"sentence":"DELETE LOG ( SESSION_USER + SESSION_USER , SESSION_USER )","tree":57}
-{"height":38,"length":68,"new":0,"sentence":"DELETE LOG ( SESSION_USER - SESSION_USER , SESSION_USER )","tree":58}
-{"height":38,"length":68,"new":0,"sentence":"DELETE LOG ( SESSION_USER , SESSION_USER + SESSION_USER )","tree":59}
-{"height":38,"length":68,"new":0,"sentence":"DELETE LOG ( SESSION_USER , SESSION_USER - SESSION_USER )","tree":60}
-{"height":38,"length":68,"new":4500,"sentence":"DELETE POWER ( SESSION_USER + SESSION_USER , SESSION_USER )","tree":61}
-{"height":38,"length":68,"new":0,"sentence":"DELETE POWER ( SESSION_USER - SESSION_USER , SESSION_USER )","tree":62}
-{"height":38,"length":68,"new":0,"sentence":"DELETE POWER ( SESSION_USER , SESSION_USER + SESSION_USER )","tree":63}
-{"height":38,"length":68,"new":0,"sentence":"DELETE POWER ( SESSION_USER , SESSION_USER - SESSION_USER )","tree":64}
-{"height":30,"length":67,"new":52,"sentence":"INSERT ( x ) SET x = { a : CURRENT_TIME }","tree":65}
-{"height":30,"length":67,"new":381,"sentence":"LET x = CURRENT_DATE , y = CURRENT_TIMESTAMP , z = CURRENT_DATE FINISH","tree":66}
-{"height":32,"length":67,"new":1,"sentence":"INSERT ( x ) CALL ( x ) { FINISH }","tree":67}
-{"height":40,"length":67,"new":266,"sentence":"DELETE SESSION_USER IS TYPED PATH | STRING | ANY | ANY","tree":68}
-{"height":32,"length":66,"new":0,"sentence":"INSERT ( x ) SET x . a = SESSION_USER","tree":69}
-{"height":43,"length":66,"new":23,"sentence":"MATCH ( IS % | % | % ) FINISH","tree":70}
-{"height":33,"length":66,"new":18925,"sentence":"USE [ CURRENT_TIME , CURRENT_TIMESTAMP , LOCAL_TIMESTAMP , LOCAL_TIMESTAMP ] FINISH","tree":71}
-{"height":28,"length":65,"new":3896,"sentence":"CALL a ( LOCAL_TIME , LOCAL_TIME , LOCAL_TIME , CURRENT_DATE )","tree":72}
-{"height":35,"length":65,"new":0,"sentence":"INSERT ( { a : CURRENT_DATE , a : LOCAL_TIMESTAMP } )","tree":73}
-{"height":42,"length":65,"new":9,"sentence":"MATCH ( IS % | % & % ) FINISH","tree":74}
-{"height":46,"length":65,"new":5,"sentence":"MATCH ( IS ( % | % ) ) FINISH","tree":75}
-{"height":29,"length":65,"new":3023,"sentence":"USE CASE SESSION_USER WHEN IS NORMALIZED THEN NULL WHEN IS NULL THEN NULL WHEN IS NORMALIZED THEN NULL END FINISH","tree":76}
-{"height":40,"length":65,"new":2,"sentence":"USE DATE '2024-01-01' FINISH","tree":77}
-{"height":43,"length":64,"new":0,"sentence":"MATCH ( IS % & % & % ) FINISH","tree":78}
-{"height":37,"length":64,"new":6544,"sentence":"DELETE RIGHT ( SESSION_USER , SESSION_USER + SESSION_USER )","tree":79}
-{"height":37,"length":64,"new":0,"sentence":"DELETE RIGHT ( SESSION_USER , SESSION_USER - SESSION_USER )","tree":80}
-{"height":44,"length":63,"new":19,"sentence":"DELETE SESSION_USER IS TYPED VERTEX LABEL a { }","tree":81}
-{"height":32,"length":63,"new":30,"sentence":"INSERT ( x ) FILTER PROPERTY_EXISTS ( x , a )","tree":82}
-{"height":52,"length":63,"new":1908,"sentence":"FILTER EXISTS { RETURN CURRENT_TIME AS x } FINISH","tree":83}
-{"height":37,"length":63,"new":9072,"sentence":"DELETE SESSION_USER || LEFT ( SESSION_USER , SESSION_USER )","tree":84}
-{"height":36,"length":63,"new":3590,"sentence":"DELETE RIGHT ( SESSION_USER || SESSION_USER , SESSION_USER )","tree":85}
-{"height":40,"length":63,"new":7565,"sentence":"DELETE TRIM ( SESSION_USER || SESSION_USER FROM SESSION_USER )","tree":86}
-{"height":36,"length":63,"new":1,"sentence":"DELETE RIGHT ( SESSION_USER || SESSION_USER , SESSION_USER )","tree":87}
-{"height":42,"length":63,"new":7,"sentence":"DELETE ZONED_TIME ( '12:00:00' )","tree":88}
-{"height":43,"length":63,"new":5,"sentence":"DELETE LOCAL_TIME ( '12:00:00' )","tree":89}
-{"height":40,"length":63,"new":5143,"sentence":"DELETE CURRENT_DATE + DURATION ( 'P1Y2M' )","tree":90}
-{"height":27,"length":62,"new":4,"sentence":"RETURN LOCAL_TIMESTAMP AS x UNION DISTINCT RETURN CURRENT_DATE AS x","tree":91}
-{"height":28,"length":62,"new":2,"sentence":"RETURN LOCAL_TIME AS x UNION ALL RETURN LOCAL_TIMESTAMP AS x","tree":92}
-{"height":34,"length":62,"new":47,"sentence":"INSERT ( x ) FILTER x : %","tree":93}
-{"height":29,"length":62,"new":12416,"sentence":"USE COALESCE ( LOCAL_TIMESTAMP , CURRENT_DATE , LOCAL_TIMESTAMP , CURRENT_TIMESTAMP ) FINISH","tree":94}
-{"height":35,"length":62,"new":9542,"sentence":"DELETE SESSION_USER || TRIM ( SESSION_USER , SESSION_USER )","tree":95}
-{"height":35,"length":62,"new":0,"sentence":"DELETE TRIM ( SESSION_USER || SESSION_USER , SESSION_USER )","tree":96}
-{"height":35,"length":62,"new":0,"sentence":"DELETE TRIM ( SESSION_USER , SESSION_USER + SESSION_USER )","tree":97}
-{"height":35,"length":62,"new":0,"sentence":"DELETE TRIM ( SESSION_USER , SESSION_USER - SESSION_USER )","tree":98}
-{"height":34,"length":62,"new":4138,"sentence":"DELETE LOCAL_TIME + SESSION_USER * SESSION_USER * SESSION_USER","tree":99}
-{"height":34,"length":62,"new":3079,"sentence":"DELETE LOCAL_TIMESTAMP + SESSION_USER / SESSION_USER * SESSION_USER","tree":100}
-{"height":34,"length":61,"new":40,"sentence":"USE CASE SESSION_USER WHEN : % | % THEN NULL END FINISH","tree":101}
-{"height":31,"length":61,"new":4010,"sentence":"USE CASE SESSION_USER WHEN IS NULL , IS NULL , IS NORMALIZED , IS NORMALIZED THEN NULL END FINISH","tree":102}
-{"height":33,"length":61,"new":3031,"sentence":"DELETE CURRENT_TIME + SESSION_USER * SESSION_USER * SESSION_USER","tree":103}
-{"height":23,"length":60,"new":1201,"sentence":"CALL a ( ) CALL a ( ) CALL a ( )","tree":104}
-{"height":37,"length":60,"new":166,"sentence":"MATCH ( ) <~[ ]~ ( ) FINISH","tree":105}
-{"height":29,"length":60,"new":1,"sentence":"INSERT ( x ) RETURN x GROUP BY x","tree":106}
-{"height":41,"length":60,"new":2,"sentence":"DELETE SESSION_USER IS TYPED NODE { } AS a","tree":107}
-{"height":45,"length":60,"new":13,"sentence":"DELETE SESSION_USER IS TYPED VERTEX : a","tree":108}
-{"height":32,"length":60,"new":3058,"sentence":"DELETE LOCAL_TIME + SESSION_USER * SESSION_USER * SESSION_USER","tree":109}
-{"height":32,"length":60,"new":3045,"sentence":"DELETE CURRENT_DATE + SESSION_USER / SESSION_USER * SESSION_USER","tree":110}
-{"height":42,"length":59,"new":780,"sentence":"MATCH ( ( ) WHERE SESSION_USER ) FINISH","tree":111}
-{"height":38,"length":59,"new":52,"sentence":"DELETE SESSION_USER IS TYPED ANY VALUE < VARCHAR | BOOL >","tree":112}
-{"height":38,"length":59,"new":2,"sentence":"USE TIME '12:00:00' FINISH","tree":113}
-{"height":27,"length":58,"new":1645,"sentence":"INSERT ( ) -[ ]-> ( ) <-[ ]- ( ) <-[ ]- ( )","tree":114}
-{"height":42,"length":58,"new":288,"sentence":"MATCH ( { a : CURRENT_TIME } ) FINISH","tree":115}
-{"height":41,"length":58,"new":7,"sentence":"MATCH ( IS % & ! % ) FINISH","tree":116}
-{"height":45,"length":58,"new":0,"sentence":"MATCH ( IS ! ( % ) ) FINISH","tree":117}
-{"height":45,"length":58,"new":0,"sentence":"DELETE SESSION_USER IS TYPED NODE LABELS a","tree":118}
-{"height":38,"length":58,"new":1,"sentence":"DELETE SESSION_USER IS TYPED ANY < ANY | ANY >","tree":119}
-{"height":34,"length":57,"new":1,"sentence":"INSERT ( : a { a : LOCAL_TIME } )","tree":120}
-{"height":45,"length":57,"new":413,"sentence":"MATCH ( x WHERE SESSION_USER ) FINISH","tree":121}
-{"height":35,"length":57,"new":1584,"sentence":"USE CASE SESSION_USER WHEN IS NORMALIZED , >= LOCAL_TIME THEN NULL END FINISH","tree":122}
-{"height":34,"length":57,"new":3,"sentence":"USE CASE SESSION_USER WHEN IS NULL , IS LABELED % THEN NULL END FINISH","tree":123}
-{"height":29,"length":56,"new":444,"sentence":"DELETE CURRENT_TIMESTAMP , CURRENT_DATE , CURRENT_TIMESTAMP , LOCAL_TIMESTAMP","tree":124}
-{"height":34,"length":56,"new":124,"sentence":"INSERT ( IS a { a : CURRENT_TIMESTAMP } )","tree":125}
-{"height":33,"length":56,"new":0,"sentence":"INSERT ( IS a { a : CURRENT_TIME } )","tree":126}
-{"height":41,"length":56,"new":70,"sentence":"DELETE SESSION_USER IS TYPED ( { } )","tree":127}
-{"height":41,"length":56,"new":1,"sentence":"DELETE SESSION_USER IS TYPED VERTEX TYPE { }","tree":128}
-{"height":33,"length":56,"new":7,"sentence":"INSERT ( IS a & a & a & a )","tree":129}
-{"height":41,"length":56,"new":5925,"sentence":"DELETE SESSION_USER = ( SESSION_USER )","tree":130}
-{"height":32,"length":55,"new":23256,"sentence":"DELETE SESSION_USER OR SESSION_USER OR SESSION_USER","tree":131}
-{"height":32,"length":55,"new":23308,"sentence":"DELETE SESSION_USER XOR SESSION_USER OR SESSION_USER","tree":132}
-{"height":32,"length":55,"new":0,"sentence":"DELETE SESSION_USER OR SESSION_USER XOR SESSION_USER","tree":133}
-{"height":32,"length":55,"new":0,"sentence":"DELETE SESSION_USER XOR SESSION_USER XOR SESSION_USER","tree":134}
-{"height":32,"length":55,"new":0,"sentence":"DELETE SESSION_USER + SESSION_USER + SESSION_USER","tree":135}
-{"height":32,"length":55,"new":0,"sentence":"DELETE SESSION_USER - SESSION_USER + SESSION_USER","tree":136}
-{"height":32,"length":55,"new":0,"sentence":"DELETE SESSION_USER + SESSION_USER - SESSION_USER","tree":137}
-{"height":32,"length":55,"new":0,"sentence":"DELETE SESSION_USER - SESSION_USER - SESSION_USER","tree":138}
-{"height":37,"length":55,"new":957,"sentence":"DELETE ASIN ( SESSION_USER + SESSION_USER )","tree":139}
-{"height":37,"length":55,"new":1,"sentence":"DELETE COSH ( SESSION_USER - SESSION_USER )","tree":140}
-{"height":46,"length":54,"new":3024,"sentence":"DELETE EXISTS { OPTIONAL MATCH ( ) }","tree":141}
-{"height":40,"length":54,"new":207,"sentence":"CALL { CALL ( ) { FINISH } }","tree":142}
-{"height":34,"length":54,"new":36,"sentence":"INSERT ( x { a : CURRENT_DATE } )","tree":143}
-{"height":31,"length":54,"new":3792,"sentence":"USE CASE SESSION_USER WHEN IS NULL THEN NULL ELSE LOCAL_TIMESTAMP END FINISH","tree":144}
-{"height":32,"length":54,"new":40,"sentence":"USE CASE SESSION_USER WHEN IS NULL , IS TYPED PATH THEN NULL END FINISH","tree":145}
-{"height":36,"length":54,"new":0,"sentence":"USE CASE SESSION_USER WHEN IS NULL THEN SESSION_USER END FINISH","tree":146}
-{"height":31,"length":54,"new":14328,"sentence":"DELETE SESSION_USER OR SESSION_USER AND SESSION_USER","tree":147}
-{"height":31,"length":54,"new":0,"sentence":"DELETE SESSION_USER XOR SESSION_USER AND SESSION_USER","tree":148}
-{"height":38,"length":54,"new":0,"sentence":"DELETE ( SESSION_USER OR SESSION_USER )","tree":149}
-{"height":38,"length":54,"new":0,"sentence":"DELETE ( SESSION_USER XOR SESSION_USER )","tree":150}
-{"height":31,"length":54,"new":0,"sentence":"DELETE SESSION_USER + SESSION_USER * SESSION_USER","tree":151}
-{"height":31,"length":54,"new":0,"sentence":"DELETE SESSION_USER + SESSION_USER / SESSION_USER","tree":152}
-{"height":31,"length":54,"new":0,"sentence":"DELETE SESSION_USER - SESSION_USER * SESSION_USER","tree":153}
-{"height":31,"length":54,"new":0,"sentence":"DELETE SESSION_USER - SESSION_USER / SESSION_USER","tree":154}
-{"height":37,"length":54,"new":956,"sentence":"DELETE ABS ( SESSION_USER + SESSION_USER )","tree":155}
-{"height":37,"length":54,"new":0,"sentence":"DELETE ABS ( SESSION_USER - SESSION_USER )","tree":156}
-{"height":37,"length":54,"new":956,"sentence":"DELETE LOG10 ( SESSION_USER + SESSION_USER )","tree":157}
-{"height":37,"length":54,"new":0,"sentence":"DELETE LOG10 ( SESSION_USER - SESSION_USER )","tree":158}
-{"height":37,"length":54,"new":956,"sentence":"DELETE LN ( SESSION_USER + SESSION_USER )","tree":159}
-{"height":37,"length":54,"new":0,"sentence":"DELETE LN ( SESSION_USER - SESSION_USER )","tree":160}
-{"height":37,"length":54,"new":956,"sentence":"DELETE EXP ( SESSION_USER + SESSION_USER )","tree":161}
-{"height":37,"length":54,"new":0,"sentence":"DELETE EXP ( SESSION_USER - SESSION_USER )","tree":162}
-{"height":37,"length":54,"new":956,"sentence":"DELETE SQRT ( SESSION_USER + SESSION_USER )","tree":163}
-{"height":37,"length":54,"new":0,"sentence":"DELETE SQRT ( SESSION_USER - SESSION_USER )","tree":164}
-{"height":37,"length":54,"new":956,"sentence":"DELETE FLOOR ( SESSION_USER + SESSION_USER )","tree":165}
-{"height":37,"length":54,"new":0,"sentence":"DELETE FLOOR ( SESSION_USER - SESSION_USER )","tree":166}
-{"height":37,"length":54,"new":957,"sentence":"DELETE CEILING ( SESSION_USER + SESSION_USER )","tree":167}
-{"height":37,"length":54,"new":1,"sentence":"DELETE CEIL ( SESSION_USER - SESSION_USER )","tree":168}
-{"height":28,"length":53,"new":0,"sentence":"INSERT ( x ) SET x : a","tree":169}
-{"height":28,"length":53,"new":1,"sentence":"INSERT ( x ) REMOVE x : a","tree":170}
-{"height":27,"length":53,"new":0,"sentence":"USE HOME_GRAPH LIMIT 9 USE HOME_PROPERTY_GRAPH LIMIT 8 FINISH","tree":171}
-{"height":39,"length":53,"new":21706,"sentence":"MATCH SHORTEST $b GROUPS ( ) FINISH","tree":172}
-{"height":38,"length":53,"new":0,"sentence":"INSERT ( { a : SESSION_USER } )","tree":173}
-{"height":26,"length":53,"new":1,"sentence":"RETURN LOCAL_TIMESTAMP AS x NEXT YIELD x FINISH","tree":174}
-{"height":40,"length":53,"new":940,"sentence":"RETURN MIN ( SESSION_USER ) AS x","tree":175}
-{"height":34,"length":53,"new":0,"sentence":"DELETE SESSION_USER || SESSION_USER || SESSION_USER","tree":176}
-{"height":32,"length":53,"new":0,"sentence":"DELETE SESSION_USER AND SESSION_USER AND SESSION_USER","tree":177}
-{"height":32,"length":53,"new":0,"sentence":"DELETE SESSION_USER * SESSION_USER * SESSION_USER","tree":178}
-{"height":32,"length":53,"new":0,"sentence":"DELETE SESSION_USER / SESSION_USER * SESSION_USER","tree":179}
-{"height":32,"length":53,"new":0,"sentence":"DELETE SESSION_USER * SESSION_USER / SESSION_USER","tree":180}
-{"height":32,"length":53,"new":0,"sentence":"DELETE SESSION_USER / SESSION_USER / SESSION_USER","tree":181}
-{"height":38,"length":53,"new":1486,"sentence":"DELETE CARDINALITY ( SESSION_USER || SESSION_USER )","tree":182}
-{"height":28,"length":52,"new":0,"sentence":"INSERT ( x ) REMOVE x . a","tree":183}
-{"height":28,"length":52,"new":4,"sentence":"USE HOME_GRAPH LIMIT ٣ RETURN LOCAL_TIME AS x","tree":184}
-{"height":39,"length":52,"new":9,"sentence":"DELETE SESSION_USER IS TYPED ( a )","tree":185}
-{"height":32,"length":52,"new":1,"sentence":"USE CASE SESSION_USER WHEN IS NOT LABELED % THEN NULL END FINISH","tree":186}
-{"height":37,"length":52,"new":1383,"sentence":"DELETE CHAR_LENGTH ( SESSION_USER || SESSION_USER )","tree":187}
-{"height":33,"length":52,"new":0,"sentence":"DELETE SESSION_USER || SESSION_USER || SESSION_USER","tree":188}
-{"height":33,"length":52,"new":0,"sentence":"DELETE SESSION_USER || SESSION_USER || SESSION_USER","tree":189}
-{"height":36,"length":52,"new":1,"sentence":"DELETE LEFT ( SESSION_USER , SESSION_USER )","tree":190}
-{"height":36,"length":52,"new":4526,"sentence":"DELETE RTRIM ( SESSION_USER , SESSION_USER )","tree":191}
-{"height":37,"length":52,"new":29,"sentence":"DELETE BTRIM ( SESSION_USER || SESSION_USER )","tree":192}
-{"height":25,"length":51,"new":19399,"sentence":"USE HOME_PROPERTY_GRAPH INSERT ( ) RETURN CURRENT_TIME AS x","tree":193}
-{"height":29,"length":51,"new":0,"sentence":"LET x = CURRENT_DATE , y = CURRENT_TIMESTAMP FINISH","tree":194}
-{"height":38,"length":51,"new":9,"sentence":"MATCH ANY $b ( ) FINISH","tree":195}
-{"height":42,"length":51,"new":2,"sentence":"MATCH ( IS ! a ) FINISH","tree":196}
-{"height":36,"length":51,"new":65,"sentence":"DELETE SESSION_USER IS TYPED ARRAY < CHAR >","tree":197}
-{"height":36,"length":51,"new":1,"sentence":"DELETE SESSION_USER IS TYPED LIST < PATH >","tree":198}
-{"height":36,"length":51,"new":0,"sentence":"DELETE SESSION_USER IS TYPED ARRAY < ANY >","tree":199}
-{"height":44,"length":51,"new":320,"sentence":"DELETE EXISTS ( MATCH ( ) )","tree":200}
-{"height":33,"length":51,"new":0,"sentence":"USE CASE SESSION_USER WHEN = LOCAL_TIME THEN NULL END FINISH","tree":201}
-{"height":31,"length":51,"new":0,"sentence":"USE CASE SESSION_USER WHEN IS NORMALIZED , SESSION_USER THEN NULL END FINISH","tree":202}
-{"height":28,"length":50,"new":0,"sentence":"RETURN LOCAL_TIMESTAMP AS x , CURRENT_DATE AS y","tree":203}
-{"height":35,"length":50,"new":412,"sentence":"MATCH ( ) WHERE SESSION_USER FINISH","tree":204}
-{"height":34,"length":50,"new":0,"sentence":"MATCH ( ) , ( ) FINISH","tree":205}
-{"height":35,"length":50,"new":8,"sentence":"MATCH SHORTEST 0o3 WALK ( ) FINISH","tree":206}
-{"height":35,"length":50,"new":4,"sentence":"MATCH SHORTEST 9 TRAIL ( ) FINISH","tree":207}
-{"height":35,"length":50,"new":0,"sentence":"MATCH SHORTEST 0o7 ACYCLIC ( ) FINISH","tree":208}
-{"height":29,"length":50,"new":1596,"sentence":"RETURN COUNT ( * ) AS x GROUP BY ( )","tree":209}
-{"height":39,"length":50,"new":2,"sentence":"DELETE SESSION_USER <= SESSION_USER","tree":210}
-{"height":34,"length":50,"new":0,"sentence":"USE CASE WHEN SESSION_USER THEN LOCAL_TIME END FINISH","tree":211}
-{"height":36,"length":50,"new":3,"sentence":"RETURN COUNT ( DISTINCT LOCAL_TIME ) AS x","tree":212}
-{"height":36,"length":50,"new":1,"sentence":"RETURN MAX ( ALL LOCAL_TIME ) AS x","tree":213}
-{"height":31,"length":50,"new":0,"sentence":"INSERT ( x ) FILTER x","tree":214}
-{"height":34,"length":50,"new":957,"sentence":"DELETE SESSION_USER || LOWER ( SESSION_USER )","tree":215}
-{"height":35,"length":50,"new":0,"sentence":"DELETE LOWER ( SESSION_USER || SESSION_USER )","tree":216}
-{"height":35,"length":50,"new":1487,"sentence":"DELETE NORMALIZE ( SESSION_USER || SESSION_USER )","tree":217}
-{"height":31,"length":50,"new":0,"sentence":"DELETE LOCAL_TIME + SESSION_USER + SESSION_USER","tree":218}
-{"height":31,"length":50,"new":2988,"sentence":"DELETE CURRENT_TIMESTAMP - SESSION_USER + SESSION_USER","tree":219}
-{"height":32,"length":50,"new":0,"sentence":"DELETE LOCAL_TIME + SESSION_USER / SESSION_USER","tree":220}
-{"height":31,"length":50,"new":0,"sentence":"DELETE LOCAL_TIMESTAMP + SESSION_USER - SESSION_USER","tree":221}
-{"height":31,"length":50,"new":0,"sentence":"DELETE LOCAL_TIME - SESSION_USER - SESSION_USER","tree":222}
-{"height":32,"length":50,"new":0,"sentence":"DELETE CURRENT_DATE - SESSION_USER * SESSION_USER","tree":223}
-{"height":32,"length":50,"new":0,"sentence":"DELETE LOCAL_TIME - SESSION_USER / SESSION_USER","tree":224}
-{"height":24,"length":49,"new":3814,"sentence":"LIMIT ٣ LIMIT 0xC INSERT ( )","tree":225}
-{"height":27,"length":49,"new":3805,"sentence":"LIMIT 8 LIMIT 0xd LIMIT 0xe FINISH","tree":226}
-{"height":26,"length":49,"new":801,"sentence":"INSERT ( ) , ( ) , ( ) , ( )","tree":227}
-{"height":36,"length":49,"new":0,"sentence":"MATCH SHORTEST 0o3 GROUPS ( ) FINISH","tree":228}
-{"height":38,"length":49,"new":2,"sentence":"DELETE SESSION_USER <> SESSION_USER","tree":229}
-{"height":31,"length":49,"new":15314,"sentence":"USE NULLIF ( SESSION_USER , LOCAL_TIME ) FINISH","tree":230}
-{"height":31,"length":49,"new":0,"sentence":"USE NULLIF ( LOCAL_TIMESTAMP , SESSION_USER ) FINISH","tree":231}
-{"height":31,"length":49,"new":0,"sentence":"USE COALESCE ( SESSION_USER , CURRENT_DATE ) FINISH","tree":232}
-{"height":32,"length":49,"new":0,"sentence":"USE COALESCE ( LOCAL_TIMESTAMP , SESSION_USER ) FINISH","tree":233}
-{"height":34,"length":49,"new":432,"sentence":"USE CASE WHEN SESSION_USER THEN NULL ELSE NULL END FINISH","tree":234}
-{"height":31,"length":49,"new":0,"sentence":"DELETE CURRENT_TIMESTAMP - SESSION_USER * SESSION_USER","tree":235}
-{"height":31,"length":48,"new":146,"sentence":"FOR x IN SESSION_USER || SESSION_USER FINISH","tree":236}
-{"height":27,"length":48,"new":44,"sentence":"RETURN CURRENT_TIMESTAMP AS x ORDER BY LOCAL_TIMESTAMP","tree":237}
-{"height":35,"length":48,"new":3,"sentence":"MATCH SHORTEST 0xD ( ) FINISH","tree":238}
-{"height":41,"length":48,"new":0,"sentence":"MATCH ( IS a ) FINISH","tree":239}
-{"height":37,"length":48,"new":0,"sentence":"DELETE SESSION_USER >= SESSION_USER","tree":240}
-{"height":37,"length":48,"new":0,"sentence":"DELETE LOCAL_TIMESTAMP >= SESSION_USER","tree":241}
-{"height":37,"length":48,"new":0,"sentence":"DELETE SESSION_USER <= SESSION_USER","tree":242}
-{"height":36,"length":48,"new":1456,"sentence":"DELETE ( LOCAL_TIME ) IS TYPED PATH","tree":243}
-{"height":30,"length":48,"new":0,"sentence":"USE CASE SESSION_USER WHEN IS TYPED PATH THEN NULL END FINISH","tree":244}
-{"height":35,"length":48,"new":1,"sentence":"RETURN AVG ( CURRENT_TIMESTAMP ) AS x","tree":245}
-{"height":35,"length":48,"new":1,"sentence":"RETURN SUM ( CURRENT_TIMESTAMP ) AS x","tree":246}
-{"height":39,"length":47,"new":0,"sentence":"MATCH ( : % ) FINISH","tree":247}
-{"height":37,"length":47,"new":32,"sentence":"DELETE SESSION_USER IS TYPED STRING ARRAY","tree":248}
-{"height":37,"length":47,"new":0,"sentence":"DELETE SESSION_USER IS TYPED PATH ARRAY","tree":249}
-{"height":37,"length":47,"new":0,"sentence":"DELETE SESSION_USER IS TYPED ANY LIST","tree":250}
-{"height":32,"length":46,"new":0,"sentence":"INSERT ( ) <-[ IS a ]- ( )","tree":251}
-{"height":32,"length":46,"new":96,"sentence":"INSERT ( ) -[ IS a ]-> ( )","tree":252}
-{"height":25,"length":46,"new":6,"sentence":"USE a . a . a . a FINISH","tree":253}
-{"height":36,"length":46,"new":32,"sentence":"DELETE SESSION_USER IS TYPED SIGNED INTEGER","tree":254}
-{"height":34,"length":46,"new":20,"sentence":"DELETE SESSION_USER IS TYPED TIMESTAMP WITH TIME ZONE","tree":255}
-{"height":34,"length":46,"new":3,"sentence":"DELETE SESSION_USER IS TYPED TIME WITH TIME ZONE","tree":256}
-{"height":34,"length":46,"new":3,"sentence":"DELETE SESSION_USER IS TYPED TIME WITHOUT TIME ZONE","tree":257}
-{"height":34,"length":46,"new":5,"sentence":"DELETE SESSION_USER IS TYPED TIMESTAMP WITHOUT TIME ZONE","tree":258}
-{"height":34,"length":46,"new":2,"sentence":"DELETE LOCAL_TIMESTAMP < SESSION_USER","tree":259}
-{"height":34,"length":46,"new":2,"sentence":"DELETE LOCAL_TIME > SESSION_USER","tree":260}
-{"height":39,"length":46,"new":5376,"sentence":"DELETE EXISTS { ( ) }","tree":261}
-{"height":39,"length":46,"new":5376,"sentence":"DELETE EXISTS ( ( ) )","tree":262}
-{"height":32,"length":46,"new":0,"sentence":"USE [ CURRENT_DATE , LOCAL_TIME ] FINISH","tree":263}
-{"height":19,"length":45,"new":25703,"sentence":"FINISH NEXT FINISH NEXT FINISH NEXT FINISH","tree":264}
-{"height":26,"length":45,"new":0,"sentence":"CALL a ( CURRENT_TIME , CURRENT_TIME )","tree":265}
-{"height":33,"length":45,"new":0,"sentence":"ORDER BY LOCAL_TIME , LOCAL_TIME FINISH","tree":266}
-{"height":36,"length":45,"new":1,"sentence":"DELETE SESSION_USER IS TYPED INTEGER","tree":267}
-{"height":34,"length":45,"new":20,"sentence":"DELETE SESSION_USER IS TYPED ANY NODE","tree":268}
-{"height":34,"length":45,"new":20,"sentence":"DELETE SESSION_USER IS TYPED ANY EDGE","tree":269}
-{"height":36,"length":45,"new":30,"sentence":"DELETE TRIM ( LEADING FROM SESSION_USER )","tree":270}
-{"height":36,"length":45,"new":1,"sentence":"DELETE TRIM ( TRAILING FROM SESSION_USER )","tree":271}
-{"height":36,"length":45,"new":1,"sentence":"DELETE TRIM ( BOTH FROM SESSION_USER )","tree":272}
-{"height":33,"length":45,"new":0,"sentence":"DELETE LOCAL_TIMESTAMP + ( CURRENT_DATE )","tree":273}
-{"height":29,"length":45,"new":42,"sentence":"USE 8.٣E9 FINISH","tree":274}
-{"height":32,"length":44,"new":3,"sentence":"MATCH x = ( ) FINISH","tree":275}
-{"height":32,"length":44,"new":5,"sentence":"MATCH ALL SHORTEST WALK ( ) FINISH","tree":276}
-{"height":32,"length":44,"new":3,"sentence":"MATCH ALL SHORTEST TRAIL ( ) FINISH","tree":277}
-{"height":32,"length":44,"new":0,"sentence":"MATCH ALL SHORTEST ACYCLIC ( ) FINISH","tree":278}
-{"height":32,"length":44,"new":5,"sentence":"MATCH ANY SHORTEST WALK ( ) FINISH","tree":279}
-{"height":32,"length":44,"new":3,"sentence":"MATCH ANY SHORTEST TRAIL ( ) FINISH","tree":280}
-{"height":32,"length":44,"new":0,"sentence":"MATCH ANY SHORTEST ACYCLIC ( ) FINISH","tree":281}
-{"height":32,"length":44,"new":3,"sentence":"MATCH SHORTEST WALK GROUP ( ) FINISH","tree":282}
-{"height":32,"length":44,"new":4,"sentence":"MATCH SHORTEST TRAIL GROUP ( ) FINISH","tree":283}
-{"height":32,"length":44,"new":0,"sentence":"MATCH SHORTEST ACYCLIC GROUPS ( ) FINISH","tree":284}
-{"height":35,"length":44,"new":5,"sentence":"DELETE SESSION_USER IS TYPED INT","tree":285}
-{"height":34,"length":44,"new":2,"sentence":"DELETE SESSION_USER IS TYPED ZONED DATETIME","tree":286}
-{"height":34,"length":44,"new":2,"sentence":"DELETE SESSION_USER IS TYPED LOCAL DATETIME","tree":287}
-{"height":34,"length":44,"new":2,"sentence":"DELETE SESSION_USER IS TYPED ZONED TIME","tree":288}
-{"height":34,"length":44,"new":2,"sentence":"DELETE SESSION_USER IS TYPED LOCAL TIME","tree":289}
-{"height":34,"length":44,"new":1,"sentence":"DELETE SESSION_USER IS TYPED NODE","tree":290}
-{"height":34,"length":44,"new":0,"sentence":"DELETE SESSION_USER IS TYPED VERTEX","tree":291}
-{"height":34,"length":44,"new":1,"sentence":"DELETE SESSION_USER IS TYPED RELATIONSHIP","tree":292}
-{"height":32,"length":44,"new":0,"sentence":"FILTER SESSION_USER OR SESSION_USER FINISH","tree":293}
-{"height":32,"length":44,"new":0,"sentence":"FILTER SESSION_USER XOR SESSION_USER FINISH","tree":294}
-{"height":28,"length":44,"new":1594,"sentence":"USE SESSION_USER . \"x\" FINISH","tree":295}
-{"height":30,"length":43,"new":556,"sentence":"USE HOME_GRAPH { INSERT ( ) }","tree":296}
-{"height":26,"length":43,"new":11,"sentence":"RETURN CURRENT_DATE AS x SKIP ٣","tree":297}
-{"height":32,"length":43,"new":5914,"sentence":"MATCH DIFFERENT RELATIONSHIP BINDINGS ( ) FINISH","tree":298}
-{"height":31,"length":43,"new":0,"sentence":"INSERT ( ) -[ x ]-> ( )","tree":299}
-{"height":34,"length":43,"new":3,"sentence":"DELETE SESSION_USER IS TYPED DATE","tree":300}
-{"height":34,"length":43,"new":1,"sentence":"DELETE SESSION_USER IS TYPED TIMESTAMP","tree":301}
-{"height":34,"length":43,"new":8,"sentence":"DELETE SESSION_USER IS TYPED LIST","tree":302}
-{"height":35,"length":43,"new":1052,"sentence":"DELETE ( CURRENT_TIMESTAMP ) IS NULL","tree":303}
-{"height":36,"length":43,"new":1,"sentence":"DELETE SIN ( SESSION_USER )","tree":304}
-{"height":36,"length":43,"new":1,"sentence":"DELETE COS ( SESSION_USER )","tree":305}
-{"height":36,"length":43,"new":1,"sentence":"DELETE TAN ( SESSION_USER )","tree":306}
-{"height":36,"length":43,"new":1,"sentence":"DELETE COT ( SESSION_USER )","tree":307}
-{"height":36,"length":43,"new":1,"sentence":"DELETE SINH ( SESSION_USER )","tree":308}
-{"height":36,"length":43,"new":1,"sentence":"DELETE TANH ( SESSION_USER )","tree":309}
-{"height":36,"length":43,"new":1,"sentence":"DELETE ACOS ( SESSION_USER )","tree":310}
-{"height":36,"length":43,"new":1,"sentence":"DELETE ATAN ( SESSION_USER )","tree":311}
-{"height":36,"length":43,"new":1,"sentence":"DELETE DEGREES ( SESSION_USER )","tree":312}
-{"height":36,"length":43,"new":1,"sentence":"DELETE RADIANS ( SESSION_USER )","tree":313}
-{"height":33,"length":43,"new":2,"sentence":"DELETE NORMALIZE ( SESSION_USER , NFKC )","tree":314}
-{"height":33,"length":43,"new":1,"sentence":"DELETE NORMALIZE ( SESSION_USER , NFC )","tree":315}
-{"height":33,"length":43,"new":1,"sentence":"DELETE NORMALIZE ( SESSION_USER , NFD )","tree":316}
-{"height":33,"length":43,"new":1,"sentence":"DELETE NORMALIZE ( SESSION_USER , NFKD )","tree":317}
-{"height":31,"length":42,"new":1,"sentence":"ORDER BY LOCAL_TIME SKIP 0xE FINISH","tree":318}
-{"height":26,"length":42,"new":0,"sentence":"RETURN LOCAL_TIMESTAMP AS x LIMIT ٣","tree":319}
-{"height":32,"length":42,"new":2,"sentence":"MATCH DIFFERENT EDGES ( ) FINISH","tree":320}
-{"height":32,"length":42,"new":5914,"sentence":"MATCH REPEATABLE ELEMENT BINDINGS ( ) FINISH","tree":321}
-{"height":32,"length":42,"new":1,"sentence":"MATCH DIFFERENT EDGE ( ) FINISH","tree":322}
-{"height":32,"length":42,"new":1,"sentence":"MATCH DIFFERENT RELATIONSHIPS ( ) FINISH","tree":323}
-{"height":32,"length":42,"new":2,"sentence":"MATCH ANY WALK ( ) FINISH","tree":324}
-{"height":32,"length":42,"new":4,"sentence":"MATCH ANY TRAIL ( ) FINISH","tree":325}
-{"height":32,"length":42,"new":0,"sentence":"MATCH ANY ACYCLIC ( ) FINISH","tree":326}
-{"height":32,"length":42,"new":1,"sentence":"MATCH ALL SHORTEST ( ) FINISH","tree":327}
-{"height":32,"length":42,"new":1,"sentence":"MATCH ANY SHORTEST ( ) FINISH","tree":328}
-{"height":31,"length":42,"new":0,"sentence":"INSERT ( IS a & a )","tree":329}
-{"height":32,"length":42,"new":18,"sentence":"DELETE SESSION_USER IS TYPED NULL","tree":330}
-{"height":33,"length":42,"new":7,"sentence":"DELETE SESSION_USER IS TYPED FLOAT","tree":331}
-{"height":32,"length":42,"new":1,"sentence":"DELETE SESSION_USER IS TYPED ANY VALUE","tree":332}
-{"height":32,"length":42,"new":1,"sentence":"DELETE SESSION_USER IS NOT TYPED PATH","tree":333}
-{"height":32,"length":42,"new":0,"sentence":"DELETE SESSION_USER IS :: PATH","tree":334}
-{"height":36,"length":42,"new":0,"sentence":"DELETE ABS ( SESSION_USER )","tree":335}
-{"height":36,"length":42,"new":0,"sentence":"DELETE LOG10 ( SESSION_USER )","tree":336}
-{"height":36,"length":42,"new":0,"sentence":"DELETE LN ( SESSION_USER )","tree":337}
-{"height":36,"length":42,"new":0,"sentence":"DELETE EXP ( SESSION_USER )","tree":338}
-{"height":36,"length":42,"new":0,"sentence":"DELETE SQRT ( SESSION_USER )","tree":339}
-{"height":36,"length":42,"new":0,"sentence":"DELETE FLOOR ( SESSION_USER )","tree":340}
-{"height":36,"length":42,"new":0,"sentence":"DELETE CEILING ( SESSION_USER )","tree":341}
-{"height":36,"length":42,"new":28,"sentence":"DELETE TRIM ( SESSION_USER )","tree":342}
-{"height":34,"length":42,"new":8,"sentence":"INSERT ( IS `x` )","tree":343}
-{"height":30,"length":41,"new":3,"sentence":"ORDER BY LOCAL_TIMESTAMP LIMIT 0xB FINISH","tree":344}
-{"height":32,"length":41,"new":1,"sentence":"MATCH REPEATABLE ELEMENTS ( ) FINISH","tree":345}
-{"height":32,"length":41,"new":1,"sentence":"MATCH REPEATABLE ELEMENT ( ) FINISH","tree":346}
-{"height":30,"length":41,"new":0,"sentence":"INSERT ( x IS a )","tree":347}
-{"height":29,"length":41,"new":1,"sentence":"INSERT ( x IS a )","tree":348}
-{"height":35,"length":41,"new":1053,"sentence":"DELETE SESSION_USER IS NFC NORMALIZED","tree":349}
-{"height":35,"length":41,"new":0,"sentence":"DELETE SESSION_USER IS NFD NORMALIZED","tree":350}
-{"height":35,"length":41,"new":0,"sentence":"DELETE SESSION_USER IS NFKC NORMALIZED","tree":351}
-{"height":35,"length":41,"new":0,"sentence":"DELETE SESSION_USER IS NFKD NORMALIZED","tree":352}
-{"height":34,"length":41,"new":28,"sentence":"USE [ SESSION_USER ] FINISH","tree":353}
-{"height":35,"length":41,"new":530,"sentence":"DELETE CARDINALITY ( SESSION_USER )","tree":354}
-{"height":35,"length":41,"new":0,"sentence":"DELETE CARDINALITY ( SESSION_USER )","tree":355}
-{"height":35,"length":41,"new":1,"sentence":"DELETE CHARACTER_LENGTH ( SESSION_USER )","tree":356}
-{"height":35,"length":41,"new":1,"sentence":"DELETE LTRIM ( SESSION_USER )","tree":357}
-{"height":30,"length":41,"new":3,"sentence":"DELETE LOCAL_TIME + + SESSION_USER","tree":358}
-{"height":30,"length":41,"new":1,"sentence":"DELETE CURRENT_TIMESTAMP + - SESSION_USER","tree":359}
-{"height":28,"length":41,"new":1,"sentence":"USE .٣E8 FINISH","tree":360}
-{"height":28,"length":41,"new":1,"sentence":"USE 8.E٣ FINISH","tree":361}
-{"height":28,"length":41,"new":3,"sentence":"USE ٣E+9 FINISH","tree":362}
-{"height":28,"length":41,"new":0,"sentence":"USE ٣E-8 FINISH","tree":363}
-{"height":28,"length":40,"new":0,"sentence":"USE HOME_PROPERTY_GRAPH RETURN LOCAL_TIME AS x","tree":364}
-{"height":32,"length":40,"new":4,"sentence":"LET x = SESSION_USER FINISH","tree":365}
-{"height":29,"length":40,"new":4,"sentence":"CALL a ( SESSION_USER )","tree":366}
-{"height":32,"length":40,"new":3,"sentence":"MATCH WALK ( ) FINISH","tree":367}
-{"height":26,"length":40,"new":2,"sentence":"USE a . \"x\" FINISH","tree":368}
-{"height":35,"length":40,"new":1,"sentence":"DELETE SESSION_USER IS NOT NORMALIZED","tree":369}
-{"height":28,"length":40,"new":536,"sentence":"USE VARIABLE SESSION_USER . a FINISH","tree":370}
-{"height":34,"length":39,"new":0,"sentence":"OPTIONAL MATCH ( ) FINISH","tree":371}
-{"height":33,"length":39,"new":1,"sentence":"DELETE UPPER ( SESSION_USER )","tree":372}
-{"height":28,"length":39,"new":0,"sentence":"USE \"x\" . a FINISH","tree":373}
-{"height":31,"length":38,"new":0,"sentence":"RETURN SESSION_USER AS x","tree":374}
-{"height":33,"length":38,"new":0,"sentence":"DELETE ( CURRENT_TIME )","tree":375}
-{"height":32,"length":38,"new":1,"sentence":"LIMIT $\"x\" FINISH","tree":376}
-{"height":32,"length":38,"new":0,"sentence":"LIMIT $`x` FINISH","tree":377}
-{"height":32,"length":37,"new":1,"sentence":"DELETE SESSION_USER IS NOT NULL","tree":378}
-{"height":29,"length":37,"new":6,"sentence":"USE ( SESSION_USER ) FINISH","tree":379}
-{"height":33,"length":37,"new":0,"sentence":"DELETE ( LOCAL_TIME )","tree":380}
-{"height":32,"length":37,"new":0,"sentence":"DELETE ( CURRENT_TIME )","tree":381}
-{"height":29,"length":37,"new":30,"sentence":"USE '''' FINISH","tree":382}
-{"height":27,"length":37,"new":2,"sentence":"USE \"xxx\" FINISH","tree":383}
-{"height":27,"length":37,"new":1,"sentence":"USE `xxx` FINISH","tree":384}
-{"height":24,"length":36,"new":0,"sentence":"FINISH NEXT CALL a ( )","tree":385}
-{"height":29,"length":36,"new":24,"sentence":"{ INSERT ( ) }","tree":386}
-{"height":27,"length":36,"new":0,"sentence":"DELETE CURRENT_TIMESTAMP , CURRENT_TIMESTAMP","tree":387}
-{"height":25,"length":36,"new":656,"sentence":"USE HOME_GRAPH { FINISH }","tree":388}
-{"height":28,"length":36,"new":0,"sentence":"FOR x IN SESSION_USER FINISH","tree":389}
-{"height":26,"length":36,"new":1,"sentence":"SKIP 0o5 LIMIT ٣ FINISH","tree":390}
-{"height":29,"length":36,"new":0,"sentence":"INSERT ( : a )","tree":391}
-{"height":31,"length":36,"new":0,"sentence":"DELETE ( LOCAL_TIMESTAMP )","tree":392}
-{"height":31,"length":36,"new":0,"sentence":"DELETE ( CURRENT_TIME )","tree":393}
-{"height":31,"length":36,"new":0,"sentence":"DELETE ( CURRENT_TIME )","tree":394}
-{"height":31,"length":36,"new":0,"sentence":"DELETE ( CURRENT_TIMESTAMP )","tree":395}
-{"height":31,"length":36,"new":0,"sentence":"DELETE ( LOCAL_TIMESTAMP )","tree":396}
-{"height":29,"length":36,"new":21,"sentence":"LIMIT 8٣98 FINISH","tree":397}
-{"height":25,"length":35,"new":29151,"sentence":"FINISH NEXT INSERT ( )","tree":398}
-{"height":26,"length":35,"new":2,"sentence":"RETURN DISTINCT LOCAL_TIMESTAMP AS x","tree":399}
-{"height":26,"length":35,"new":0,"sentence":"RETURN ALL LOCAL_TIMESTAMP AS x","tree":400}
-{"height":31,"length":35,"new":2,"sentence":"ORDER BY LOCAL_TIME ASC FINISH","tree":401}
-{"height":31,"length":35,"new":1,"sentence":"ORDER BY LOCAL_TIME ASCENDING FINISH","tree":402}
-{"height":30,"length":35,"new":1,"sentence":"ORDER BY LOCAL_TIMESTAMP DESC FINISH","tree":403}
-{"height":30,"length":35,"new":1,"sentence":"ORDER BY CURRENT_TIMESTAMP DESCENDING FINISH","tree":404}
-{"height":30,"length":35,"new":4,"sentence":"DELETE SESSION_USER IS NOT FALSE","tree":405}
-{"height":30,"length":35,"new":1,"sentence":"LIMIT $bbb FINISH","tree":406}
-{"height":25,"length":34,"new":0,"sentence":"USE VARIABLE ( CURRENT_DATE ) FINISH","tree":407}
-{"height":32,"length":34,"new":240,"sentence":"FILTER WHERE SESSION_USER FINISH","tree":408}
-{"height":24,"length":34,"new":1,"sentence":"CALL a . a ( )","tree":409}
-{"height":30,"length":34,"new":1,"sentence":"DELETE SESSION_USER IS FALSE","tree":410}
-{"height":30,"length":34,"new":1,"sentence":"DELETE SESSION_USER IS TRUE","tree":411}
-{"height":30,"length":34,"new":1,"sentence":"DELETE SESSION_USER IS UNKNOWN","tree":412}
-{"height":30,"length":34,"new":2,"sentence":"DELETE + SESSION_USER","tree":413}
-{"height":30,"length":34,"new":0,"sentence":"DELETE - SESSION_USER","tree":414}
-{"height":26,"length":34,"new":2,"sentence":"USE \"\"\"\" FINISH","tree":415}
-{"height":26,"length":34,"new":2,"sentence":"USE ```` FINISH","tree":416}
-{"height":22,"length":33,"new":0,"sentence":"USE HOME_PROPERTY_GRAPH INSERT ( ) FINISH","tree":417}
-{"height":27,"length":33,"new":0,"sentence":"CALL a ( ) FINISH","tree":418}
-{"height":26,"length":33,"new":0,"sentence":"CALL `x` ( )","tree":419}
-{"height":28,"length":32,"new":0,"sentence":"SKIP $b FINISH","tree":420}
-{"height":27,"length":32,"new":1,"sentence":"USE $b FINISH","tree":421}
-{"height":30,"length":32,"new":1,"sentence":"DELETE NOT SESSION_USER","tree":422}
-{"height":27,"length":32,"new":3,"sentence":"LIMIT 8_8 FINISH","tree":423}
-{"height":22,"length":31,"new":4,"sentence":"USE HOME_GRAPH INSERT ( )","tree":424}
-{"height":25,"length":31,"new":3,"sentence":"USE \"\" FINISH","tree":425}
-{"height":25,"length":31,"new":1,"sentence":"USE '' FINISH","tree":426}
-{"height":27,"length":31,"new":2,"sentence":"LIMIT 0xFcc FINISH","tree":427}
-{"height":25,"length":30,"new":536,"sentence":"CALL a ( )","tree":428}
-{"height":23,"length":30,"new":28,"sentence":"USE VARIABLE [ ] FINISH","tree":429}
-{"height":23,"length":30,"new":1,"sentence":"USE LIST [ ] FINISH","tree":430}
-{"height":26,"length":30,"new":1,"sentence":"DELETE DATE ( )","tree":431}
-{"height":26,"length":30,"new":1,"sentence":"DELETE ZONED_TIME ( )","tree":432}
-{"height":27,"length":30,"new":1,"sentence":"DELETE LOCAL_TIME ( )","tree":433}
-{"height":26,"length":30,"new":1,"sentence":"DELETE ZONED_DATETIME ( )","tree":434}
-{"height":26,"length":30,"new":1,"sentence":"DELETE LOCAL_DATETIME ( )","tree":435}
-{"height":26,"length":30,"new":2,"sentence":"USE ٣ FINISH","tree":436}
-{"height":24,"length":30,"new":864,"sentence":"USE [ ] FINISH","tree":437}
-{"height":26,"length":30,"new":2,"sentence":"USE 0xb FINISH","tree":438}
-{"height":26,"length":30,"new":2,"sentence":"USE 0o2 FINISH","tree":439}
-{"height":24,"length":29,"new":246,"sentence":"{ FINISH }","tree":440}
-{"height":26,"length":29,"new":2,"sentence":"LIMIT 0x_C FINISH","tree":441}
-{"height":26,"length":29,"new":2,"sentence":"LIMIT 0o_5 FINISH","tree":442}
-{"height":23,"length":29,"new":8,"sentence":"USE abbb FINISH","tree":443}
-{"height":27,"length":29,"new":3,"sentence":"LIMIT 0x2 FINISH","tree":444}
-{"height":27,"length":29,"new":2,"sentence":"LIMIT 0 FINISH","tree":445}
-{"height":25,"length":28,"new":1,"sentence":"OFFSET 0xe FINISH","tree":446}
-{"height":26,"length":28,"new":0,"sentence":"LIMIT 0x9 FINISH","tree":447}
-{"height":26,"length":28,"new":0,"sentence":"LIMIT 3 FINISH","tree":448}
-{"height":26,"length":28,"new":0,"sentence":"LIMIT 4 FINISH","tree":449}
-{"height":26,"length":28,"new":0,"sentence":"LIMIT 5 FINISH","tree":450}
-{"height":26,"length":28,"new":0,"sentence":"LIMIT 6 FINISH","tree":451}
-{"height":26,"length":28,"new":0,"sentence":"LIMIT 7 FINISH","tree":452}
-{"height":22,"length":27,"new":0,"sentence":"INSERT ( ) FINISH","tree":453}
-{"height":26,"length":27,"new":1,"sentence":"DETACH DELETE LOCAL_TIME","tree":454}
-{"height":25,"length":27,"new":1,"sentence":"NODETACH DELETE CURRENT_TIME","tree":455}
-{"height":21,"length":27,"new":1,"sentence":"OPTIONAL CALL a ( )","tree":456}
-{"height":22,"length":26,"new":29,"sentence":"USE TRUE FINISH","tree":457}
-{"height":22,"length":26,"new":28,"sentence":"USE NULL FINISH","tree":458}
-{"height":22,"length":26,"new":1,"sentence":"USE FALSE FINISH","tree":459}
-{"height":22,"length":26,"new":1,"sentence":"USE UNKNOWN FINISH","tree":460}
-{"height":21,"length":25,"new":0,"sentence":"USE ab FINISH","tree":461}
-{"height":14,"length":15,"new":0,"sentence":"FINISH","tree":462}
-{"height":14,"length":15,"new":0,"sentence":"FINISH","tree":463}
+{"height":43,"length":77,"new":3,"sentence":"MATCH ACYCLIC ( ( ) -[ ]-> ( ) ) + FINISH","tree":31}
+{"height":47,"length":77,"new":101,"sentence":"DELETE SESSION_USER IS TYPED ( ) -[ LABEL a { } ]-> ( )","tree":32}
+{"height":45,"length":77,"new":8,"sentence":"DELETE SESSION_USER IS TYPED ( { } ) -[ { } ]-> ( )","tree":33}
+{"height":45,"length":77,"new":4,"sentence":"DELETE SESSION_USER IS TYPED ( ) -[ { } ]-> ( { } )","tree":34}
+{"height":27,"length":74,"new":2,"sentence":"RETURN LOCAL_TIME AS x NEXT YIELD x AS y , x AS z FINISH","tree":35}
+{"height":41,"length":74,"new":19135,"sentence":"DELETE TRIM ( SESSION_USER , 8 + 8 )","tree":36}
+{"height":41,"length":74,"new":6273,"sentence":"DELETE TRIM ( SESSION_USER , 0o6 - 0o3 )","tree":37}
+{"height":48,"length":73,"new":8,"sentence":"DELETE SESSION_USER IS TYPED ( ) -[ IS a ]-> ( )","tree":38}
+{"height":48,"length":72,"new":1,"sentence":"DELETE SESSION_USER IS TYPED ( ) -[ LABELS a ]-> ( )","tree":39}
+{"height":40,"length":71,"new":30857,"sentence":"INSERT ( x ) FILTER CASE SESSION_USER WHEN x THEN NULL END","tree":40}
+{"height":48,"length":70,"new":29,"sentence":"DELETE SESSION_USER IS TYPED VERTEX { a :: STRING }","tree":41}
+{"height":34,"length":69,"new":652,"sentence":"ORDER BY CURRENT_TIMESTAMP , CURRENT_DATE , CURRENT_DATE , CURRENT_TIMESTAMP FINISH","tree":42}
+{"height":44,"length":69,"new":12,"sentence":"DELETE SESSION_USER IS TYPED ( ) <-[ { } ]- ( )","tree":43}
+{"height":48,"length":69,"new":0,"sentence":"DELETE SESSION_USER IS TYPED NODE { a TYPED BOOL }","tree":44}
+{"height":37,"length":69,"new":63,"sentence":"INSERT ( x ) FILTER CASE x WHEN IS NORMALIZED THEN NULL END","tree":45}
+{"height":37,"length":69,"new":31,"sentence":"INSERT ( x ) FILTER CASE x WHEN IS NULL THEN NULL END","tree":46}
+{"height":44,"length":69,"new":7,"sentence":"DELETE DATE ( '2024-01-01' )","tree":47}
+{"height":29,"length":68,"new":1914,"sentence":"INSERT ( x ) RETURN x GROUP BY x , x","tree":48}
+{"height":41,"length":68,"new":4998,"sentence":"DELETE SESSION_USER || TRIM ( SESSION_USER , 0xC )","tree":49}
+{"height":40,"length":68,"new":0,"sentence":"DELETE TRIM ( SESSION_USER || SESSION_USER , 8 )","tree":50}
+{"height":38,"length":68,"new":7327,"sentence":"DELETE MOD ( SESSION_USER + SESSION_USER , SESSION_USER )","tree":51}
+{"height":38,"length":68,"new":0,"sentence":"DELETE MOD ( SESSION_USER - SESSION_USER , SESSION_USER )","tree":52}
+{"height":38,"length":68,"new":0,"sentence":"DELETE MOD ( SESSION_USER , SESSION_USER + SESSION_USER )","tree":53}
+{"height":38,"length":68,"new":0,"sentence":"DELETE MOD ( SESSION_USER , SESSION_USER - SESSION_USER )","tree":54}
+{"height":38,"length":68,"new":5413,"sentence":"DELETE LOG ( SESSION_USER + SESSION_USER , SESSION_USER )","tree":55}
+{"height":38,"length":68,"new":0,"sentence":"DELETE LOG ( SESSION_USER - SESSION_USER , SESSION_USER )","tree":56}
+{"height":38,"length":68,"new":0,"sentence":"DELETE LOG ( SESSION_USER , SESSION_USER + SESSION_USER )","tree":57}
+{"height":38,"length":68,"new":0,"sentence":"DELETE LOG ( SESSION_USER , SESSION_USER - SESSION_USER )","tree":58}
+{"height":38,"length":68,"new":5413,"sentence":"DELETE POWER ( SESSION_USER + SESSION_USER , SESSION_USER )","tree":59}
+{"height":38,"length":68,"new":0,"sentence":"DELETE POWER ( SESSION_USER - SESSION_USER , SESSION_USER )","tree":60}
+{"height":38,"length":68,"new":0,"sentence":"DELETE POWER ( SESSION_USER , SESSION_USER + SESSION_USER )","tree":61}
+{"height":38,"length":68,"new":0,"sentence":"DELETE POWER ( SESSION_USER , SESSION_USER - SESSION_USER )","tree":62}
+{"height":30,"length":67,"new":32,"sentence":"INSERT ( x ) SET x = { a : LOCAL_TIMESTAMP }","tree":63}
+{"height":30,"length":67,"new":376,"sentence":"LET x = CURRENT_TIMESTAMP , y = CURRENT_DATE , z = CURRENT_TIMESTAMP FINISH","tree":64}
+{"height":32,"length":67,"new":1,"sentence":"INSERT ( x ) CALL ( x ) { FINISH }","tree":65}
+{"height":40,"length":67,"new":188,"sentence":"DELETE SESSION_USER IS TYPED STRING | VARCHAR | PATH | PATH","tree":66}
+{"height":32,"length":66,"new":0,"sentence":"INSERT ( x ) SET x . a = SESSION_USER","tree":67}
+{"height":43,"length":66,"new":23,"sentence":"MATCH ( IS % | % | % ) FINISH","tree":68}
+{"height":33,"length":66,"new":21925,"sentence":"USE [ CURRENT_TIMESTAMP , CURRENT_TIMESTAMP , CURRENT_TIME , CURRENT_DATE ] FINISH","tree":69}
+{"height":47,"length":65,"new":311,"sentence":"CALL { CALL ( ) { CALL a ( ) } }","tree":70}
+{"height":29,"length":65,"new":2130,"sentence":"CALL a ( CURRENT_TIME , CURRENT_TIMESTAMP , CURRENT_TIME , LOCAL_TIME )","tree":71}
+{"height":36,"length":65,"new":0,"sentence":"INSERT ( { a : CURRENT_TIMESTAMP , a : LOCAL_TIME } )","tree":72}
+{"height":42,"length":65,"new":9,"sentence":"MATCH ( IS % | % & % ) FINISH","tree":73}
+{"height":46,"length":65,"new":5,"sentence":"MATCH ( IS ( % | % ) ) FINISH","tree":74}
+{"height":29,"length":65,"new":3657,"sentence":"USE CASE SESSION_USER WHEN IS NORMALIZED THEN NULL WHEN IS NORMALIZED THEN NULL WHEN IS NORMALIZED THEN NULL END FINISH","tree":75}
+{"height":40,"length":65,"new":2,"sentence":"USE DATE '2024-01-01' FINISH","tree":76}
+{"height":43,"length":64,"new":0,"sentence":"MATCH ( IS % & % & % ) FINISH","tree":77}
+{"height":37,"length":64,"new":7866,"sentence":"DELETE LEFT ( SESSION_USER , SESSION_USER + SESSION_USER )","tree":78}
+{"height":37,"length":64,"new":1,"sentence":"DELETE RIGHT ( SESSION_USER , SESSION_USER - SESSION_USER )","tree":79}
+{"height":44,"length":63,"new":9,"sentence":"DELETE SESSION_USER IS TYPED NODE LABEL a { }","tree":80}
+{"height":32,"length":63,"new":30,"sentence":"INSERT ( x ) FILTER PROPERTY_EXISTS ( x , a )","tree":81}
+{"height":52,"length":63,"new":2700,"sentence":"FILTER EXISTS { RETURN CURRENT_TIMESTAMP AS x } FINISH","tree":82}
+{"height":37,"length":63,"new":10941,"sentence":"DELETE SESSION_USER || LEFT ( SESSION_USER , SESSION_USER )","tree":83}
+{"height":36,"length":63,"new":4354,"sentence":"DELETE RIGHT ( SESSION_USER || SESSION_USER , SESSION_USER )","tree":84}
+{"height":40,"length":63,"new":9063,"sentence":"DELETE TRIM ( SESSION_USER || SESSION_USER FROM SESSION_USER )","tree":85}
+{"height":36,"length":63,"new":1,"sentence":"DELETE RIGHT ( SESSION_USER || SESSION_USER , SESSION_USER )","tree":86}
+{"height":42,"length":63,"new":7,"sentence":"DELETE ZONED_TIME ( '12:00:00' )","tree":87}
+{"height":43,"length":63,"new":5,"sentence":"DELETE LOCAL_TIME ( '12:00:00' )","tree":88}
+{"height":40,"length":63,"new":6189,"sentence":"DELETE CURRENT_TIME + DURATION ( 'P1Y2M' )","tree":89}
+{"height":28,"length":62,"new":4,"sentence":"RETURN LOCAL_TIME AS x UNION DISTINCT RETURN CURRENT_DATE AS x","tree":90}
+{"height":27,"length":62,"new":2,"sentence":"RETURN CURRENT_TIME AS x UNION ALL RETURN CURRENT_TIMESTAMP AS x","tree":91}
+{"height":34,"length":62,"new":49,"sentence":"INSERT ( x ) FILTER x IS LABELED %","tree":92}
+{"height":29,"length":62,"new":14688,"sentence":"USE COALESCE ( LOCAL_TIMESTAMP , CURRENT_DATE , CURRENT_TIME , LOCAL_TIMESTAMP ) FINISH","tree":93}
+{"height":34,"length":62,"new":4987,"sentence":"DELETE LOCAL_TIMESTAMP + SESSION_USER * SESSION_USER * SESSION_USER","tree":94}
+{"height":34,"length":62,"new":3712,"sentence":"DELETE LOCAL_TIME + SESSION_USER / SESSION_USER * SESSION_USER","tree":95}
+{"height":34,"length":61,"new":41,"sentence":"USE CASE SESSION_USER WHEN : % | % THEN NULL END FINISH","tree":96}
+{"height":31,"length":61,"new":4888,"sentence":"USE CASE SESSION_USER WHEN IS NULL , IS NORMALIZED , IS NORMALIZED , IS NORMALIZED THEN NULL END FINISH","tree":97}
+{"height":33,"length":61,"new":3684,"sentence":"DELETE LOCAL_TIME + SESSION_USER * SESSION_USER * SESSION_USER","tree":98}
+{"height":23,"length":60,"new":5,"sentence":"CALL a ( ) CALL a ( ) CALL a ( )","tree":99}
+{"height":37,"length":60,"new":166,"sentence":"MATCH ( ) <~[ ]~ ( ) FINISH","tree":100}
+{"height":29,"length":60,"new":1277,"sentence":"INSERT ( x ) RETURN x GROUP BY x","tree":101}
+{"height":45,"length":60,"new":9,"sentence":"DELETE SESSION_USER IS TYPED VERTEX : a","tree":102}
+{"height":32,"length":60,"new":6302,"sentence":"DELETE CURRENT_TIME + SESSION_USER * SESSION_USER * SESSION_USER","tree":103}
+{"height":32,"length":60,"new":3687,"sentence":"DELETE LOCAL_TIMESTAMP + SESSION_USER / SESSION_USER * SESSION_USER","tree":104}
+{"height":42,"length":59,"new":864,"sentence":"MATCH ( ( ) WHERE SESSION_USER ) FINISH","tree":105}
+{"height":38,"length":59,"new":30,"sentence":"DELETE SESSION_USER IS TYPED ANY VALUE < PATH | CHAR >","tree":106}
+{"height":38,"length":59,"new":2,"sentence":"USE TIME '12:00:00' FINISH","tree":107}
+{"height":27,"length":58,"new":820,"sentence":"INSERT ( ) -[ ]-> ( ) <-[ ]- ( ) <-[ ]- ( )","tree":108}
+{"height":42,"length":58,"new":288,"sentence":"MATCH ( { a : CURRENT_DATE } ) FINISH","tree":109}
+{"height":41,"length":58,"new":7,"sentence":"MATCH ( IS % & ! % ) FINISH","tree":110}
+{"height":45,"length":58,"new":0,"sentence":"MATCH ( IS ! ( % ) ) FINISH","tree":111}
+{"height":45,"length":58,"new":0,"sentence":"DELETE SESSION_USER IS TYPED NODE LABELS a","tree":112}
+{"height":38,"length":58,"new":18,"sentence":"DELETE SESSION_USER IS TYPED ANY < ANY | PATH >","tree":113}
+{"height":33,"length":57,"new":1,"sentence":"INSERT ( : a { a : LOCAL_TIMESTAMP } )","tree":114}
+{"height":45,"length":57,"new":437,"sentence":"MATCH ( x WHERE SESSION_USER ) FINISH","tree":115}
+{"height":34,"length":57,"new":1908,"sentence":"USE CASE SESSION_USER WHEN IS NORMALIZED , <> SESSION_USER THEN NULL END FINISH","tree":116}
+{"height":34,"length":57,"new":0,"sentence":"USE CASE SESSION_USER WHEN IS NORMALIZED , IS LABELED % THEN NULL END FINISH","tree":117}
+{"height":30,"length":56,"new":222,"sentence":"DELETE CURRENT_TIMESTAMP , CURRENT_DATE , LOCAL_TIME , LOCAL_TIME","tree":118}
+{"height":34,"length":56,"new":62,"sentence":"INSERT ( IS a { a : CURRENT_TIME } )","tree":119}
+{"height":34,"length":56,"new":0,"sentence":"INSERT ( IS a { a : LOCAL_TIME } )","tree":120}
+{"height":41,"length":56,"new":18,"sentence":"DELETE SESSION_USER IS TYPED ( { } )","tree":121}
+{"height":41,"length":56,"new":1,"sentence":"DELETE SESSION_USER IS TYPED NODE TYPE { }","tree":122}
+{"height":33,"length":56,"new":5,"sentence":"INSERT ( IS a & a & a & a )","tree":123}
+{"height":41,"length":56,"new":6317,"sentence":"DELETE SESSION_USER = ( SESSION_USER )","tree":124}
+{"height":32,"length":55,"new":24684,"sentence":"DELETE SESSION_USER OR SESSION_USER OR SESSION_USER","tree":125}
+{"height":32,"length":55,"new":24736,"sentence":"DELETE SESSION_USER XOR SESSION_USER OR SESSION_USER","tree":126}
+{"height":32,"length":55,"new":0,"sentence":"DELETE SESSION_USER OR SESSION_USER XOR SESSION_USER","tree":127}
+{"height":32,"length":55,"new":0,"sentence":"DELETE SESSION_USER XOR SESSION_USER XOR SESSION_USER","tree":128}
+{"height":32,"length":55,"new":0,"sentence":"DELETE SESSION_USER + SESSION_USER + SESSION_USER","tree":129}
+{"height":32,"length":55,"new":0,"sentence":"DELETE SESSION_USER - SESSION_USER + SESSION_USER","tree":130}
+{"height":32,"length":55,"new":0,"sentence":"DELETE SESSION_USER + SESSION_USER - SESSION_USER","tree":131}
+{"height":32,"length":55,"new":0,"sentence":"DELETE SESSION_USER - SESSION_USER - SESSION_USER","tree":132}
+{"height":37,"length":55,"new":1137,"sentence":"DELETE TAN ( SESSION_USER + SESSION_USER )","tree":133}
+{"height":37,"length":55,"new":1,"sentence":"DELETE DEGREES ( SESSION_USER - SESSION_USER )","tree":134}
+{"height":46,"length":54,"new":3024,"sentence":"DELETE EXISTS { OPTIONAL MATCH ( ) }","tree":135}
+{"height":34,"length":54,"new":18,"sentence":"INSERT ( x { a : CURRENT_TIMESTAMP } )","tree":136}
+{"height":31,"length":54,"new":4176,"sentence":"USE CASE SESSION_USER WHEN IS NULL THEN NULL ELSE LOCAL_TIMESTAMP END FINISH","tree":137}
+{"height":32,"length":54,"new":40,"sentence":"USE CASE SESSION_USER WHEN IS NULL , IS TYPED PATH THEN NULL END FINISH","tree":138}
+{"height":36,"length":54,"new":0,"sentence":"USE CASE SESSION_USER WHEN IS NORMALIZED THEN SESSION_USER END FINISH","tree":139}
+{"height":31,"length":54,"new":15840,"sentence":"DELETE SESSION_USER OR SESSION_USER AND SESSION_USER","tree":140}
+{"height":31,"length":54,"new":0,"sentence":"DELETE SESSION_USER XOR SESSION_USER AND SESSION_USER","tree":141}
+{"height":38,"length":54,"new":0,"sentence":"DELETE ( SESSION_USER OR SESSION_USER )","tree":142}
+{"height":38,"length":54,"new":0,"sentence":"DELETE ( SESSION_USER XOR SESSION_USER )","tree":143}
+{"height":31,"length":54,"new":0,"sentence":"DELETE SESSION_USER + SESSION_USER * SESSION_USER","tree":144}
+{"height":31,"length":54,"new":0,"sentence":"DELETE SESSION_USER + SESSION_USER / SESSION_USER","tree":145}
+{"height":31,"length":54,"new":0,"sentence":"DELETE SESSION_USER - SESSION_USER * SESSION_USER","tree":146}
+{"height":31,"length":54,"new":0,"sentence":"DELETE SESSION_USER - SESSION_USER / SESSION_USER","tree":147}
+{"height":37,"length":54,"new":1136,"sentence":"DELETE ABS ( SESSION_USER + SESSION_USER )","tree":148}
+{"height":37,"length":54,"new":0,"sentence":"DELETE ABS ( SESSION_USER - SESSION_USER )","tree":149}
+{"height":37,"length":54,"new":1136,"sentence":"DELETE LOG10 ( SESSION_USER + SESSION_USER )","tree":150}
+{"height":37,"length":54,"new":0,"sentence":"DELETE LOG10 ( SESSION_USER - SESSION_USER )","tree":151}
+{"height":37,"length":54,"new":1136,"sentence":"DELETE LN ( SESSION_USER + SESSION_USER )","tree":152}
+{"height":37,"length":54,"new":0,"sentence":"DELETE LN ( SESSION_USER - SESSION_USER )","tree":153}
+{"height":37,"length":54,"new":1136,"sentence":"DELETE EXP ( SESSION_USER + SESSION_USER )","tree":154}
+{"height":37,"length":54,"new":0,"sentence":"DELETE EXP ( SESSION_USER - SESSION_USER )","tree":155}
+{"height":37,"length":54,"new":1136,"sentence":"DELETE SQRT ( SESSION_USER + SESSION_USER )","tree":156}
+{"height":37,"length":54,"new":0,"sentence":"DELETE SQRT ( SESSION_USER - SESSION_USER )","tree":157}
+{"height":37,"length":54,"new":1136,"sentence":"DELETE FLOOR ( SESSION_USER + SESSION_USER )","tree":158}
+{"height":37,"length":54,"new":0,"sentence":"DELETE FLOOR ( SESSION_USER - SESSION_USER )","tree":159}
+{"height":37,"length":54,"new":1137,"sentence":"DELETE CEILING ( SESSION_USER + SESSION_USER )","tree":160}
+{"height":37,"length":54,"new":0,"sentence":"DELETE CEILING ( SESSION_USER - SESSION_USER )","tree":161}
+{"height":28,"length":53,"new":0,"sentence":"INSERT ( x ) SET x : a","tree":162}
+{"height":28,"length":53,"new":1,"sentence":"INSERT ( x ) REMOVE x : a","tree":163}
+{"height":27,"length":53,"new":0,"sentence":"USE HOME_GRAPH LIMIT 0xA USE HOME_PROPERTY_GRAPH LIMIT 9 FINISH","tree":164}
+{"height":39,"length":53,"new":21706,"sentence":"MATCH SHORTEST $b GROUP ( ) FINISH","tree":165}
+{"height":38,"length":53,"new":0,"sentence":"INSERT ( { a : SESSION_USER } )","tree":166}
+{"height":26,"length":53,"new":1,"sentence":"RETURN CURRENT_TIMESTAMP AS x NEXT YIELD x FINISH","tree":167}
+{"height":40,"length":53,"new":772,"sentence":"RETURN MIN ( SESSION_USER ) AS x","tree":168}
+{"height":34,"length":53,"new":0,"sentence":"DELETE SESSION_USER || SESSION_USER || SESSION_USER","tree":169}
+{"height":32,"length":53,"new":0,"sentence":"DELETE SESSION_USER AND SESSION_USER AND SESSION_USER","tree":170}
+{"height":32,"length":53,"new":0,"sentence":"DELETE SESSION_USER * SESSION_USER * SESSION_USER","tree":171}
+{"height":32,"length":53,"new":0,"sentence":"DELETE SESSION_USER / SESSION_USER * SESSION_USER","tree":172}
+{"height":32,"length":53,"new":0,"sentence":"DELETE SESSION_USER * SESSION_USER / SESSION_USER","tree":173}
+{"height":32,"length":53,"new":0,"sentence":"DELETE SESSION_USER / SESSION_USER / SESSION_USER","tree":174}
+{"height":38,"length":53,"new":2910,"sentence":"DELETE CARDINALITY ( SESSION_USER || SESSION_USER )","tree":175}
+{"height":28,"length":52,"new":0,"sentence":"INSERT ( x ) REMOVE x . a","tree":176}
+{"height":27,"length":52,"new":4,"sentence":"USE HOME_GRAPH LIMIT 0o4 RETURN CURRENT_TIMESTAMP AS x","tree":177}
+{"height":32,"length":52,"new":1,"sentence":"USE CASE SESSION_USER WHEN IS NOT LABELED % THEN NULL END FINISH","tree":178}
+{"height":37,"length":52,"new":2631,"sentence":"DELETE CHARACTER_LENGTH ( SESSION_USER || SESSION_USER )","tree":179}
+{"height":33,"length":52,"new":0,"sentence":"DELETE SESSION_USER || SESSION_USER || SESSION_USER","tree":180}
+{"height":33,"length":52,"new":0,"sentence":"DELETE SESSION_USER || SESSION_USER || SESSION_USER","tree":181}
+{"height":36,"length":52,"new":5464,"sentence":"DELETE BTRIM ( SESSION_USER , SESSION_USER )","tree":182}
+{"height":37,"length":52,"new":29,"sentence":"DELETE RTRIM ( SESSION_USER || SESSION_USER )","tree":183}
+{"height":39,"length":51,"new":268,"sentence":"CALL ( ) { INSERT ( ) }","tree":184}
+{"height":25,"length":51,"new":9691,"sentence":"USE HOME_PROPERTY_GRAPH INSERT ( ) RETURN CURRENT_DATE AS x","tree":185}
+{"height":29,"length":51,"new":0,"sentence":"LET x = LOCAL_TIMESTAMP , y = CURRENT_TIME FINISH","tree":186}
+{"height":38,"length":51,"new":9,"sentence":"MATCH ANY $b ( ) FINISH","tree":187}
+{"height":42,"length":51,"new":2,"sentence":"MATCH ( IS ! a ) FINISH","tree":188}
+{"height":36,"length":51,"new":40,"sentence":"DELETE SESSION_USER IS TYPED LIST < BOOLEAN >","tree":189}
+{"height":36,"length":51,"new":2,"sentence":"DELETE SESSION_USER IS TYPED ARRAY < PATH >","tree":190}
+{"height":36,"length":51,"new":0,"sentence":"DELETE SESSION_USER IS TYPED LIST < ANY >","tree":191}
+{"height":44,"length":51,"new":320,"sentence":"DELETE EXISTS ( MATCH ( ) )","tree":192}
+{"height":32,"length":51,"new":0,"sentence":"USE CASE SESSION_USER WHEN <> SESSION_USER THEN NULL END FINISH","tree":193}
+{"height":31,"length":51,"new":0,"sentence":"USE CASE SESSION_USER WHEN IS NULL , SESSION_USER THEN NULL END FINISH","tree":194}
+{"height":28,"length":50,"new":0,"sentence":"RETURN LOCAL_TIMESTAMP AS x , LOCAL_TIMESTAMP AS y","tree":195}
+{"height":35,"length":50,"new":436,"sentence":"MATCH ( ) WHERE SESSION_USER FINISH","tree":196}
+{"height":34,"length":50,"new":0,"sentence":"MATCH ( ) , ( ) FINISH","tree":197}
+{"height":35,"length":50,"new":6,"sentence":"MATCH SHORTEST 0o4 WALK ( ) FINISH","tree":198}
+{"height":35,"length":50,"new":4,"sentence":"MATCH SHORTEST 0xf TRAIL ( ) FINISH","tree":199}
+{"height":35,"length":50,"new":0,"sentence":"MATCH SHORTEST 0xE ACYCLIC ( ) FINISH","tree":200}
+{"height":29,"length":50,"new":6,"sentence":"RETURN COUNT ( * ) AS x GROUP BY ( )","tree":201}
+{"height":39,"length":50,"new":640,"sentence":"DELETE LOCAL_TIMESTAMP >= SESSION_USER","tree":202}
+{"height":34,"length":50,"new":0,"sentence":"USE CASE WHEN SESSION_USER THEN CURRENT_TIME END FINISH","tree":203}
+{"height":36,"length":50,"new":3,"sentence":"RETURN COUNT ( DISTINCT LOCAL_TIME ) AS x","tree":204}
+{"height":35,"length":50,"new":0,"sentence":"RETURN COUNT ( ALL CURRENT_TIME ) AS x","tree":205}
+{"height":31,"length":50,"new":0,"sentence":"INSERT ( x ) FILTER x","tree":206}
+{"height":34,"length":50,"new":1137,"sentence":"DELETE SESSION_USER || LOWER ( SESSION_USER )","tree":207}
+{"height":35,"length":50,"new":0,"sentence":"DELETE LOWER ( SESSION_USER || SESSION_USER )","tree":208}
+{"height":35,"length":50,"new":1775,"sentence":"DELETE NORMALIZE ( SESSION_USER || SESSION_USER )","tree":209}
+{"height":31,"length":50,"new":0,"sentence":"DELETE LOCAL_TIME + SESSION_USER + SESSION_USER","tree":210}
+{"height":31,"length":50,"new":3602,"sentence":"DELETE LOCAL_TIME - SESSION_USER + SESSION_USER","tree":211}
+{"height":32,"length":50,"new":0,"sentence":"DELETE LOCAL_TIME + SESSION_USER / SESSION_USER","tree":212}
+{"height":31,"length":50,"new":0,"sentence":"DELETE LOCAL_TIME + SESSION_USER - SESSION_USER","tree":213}
+{"height":31,"length":50,"new":0,"sentence":"DELETE LOCAL_TIME - SESSION_USER - SESSION_USER","tree":214}
+{"height":32,"length":50,"new":0,"sentence":"DELETE LOCAL_TIME - SESSION_USER * SESSION_USER","tree":215}
+{"height":32,"length":50,"new":0,"sentence":"DELETE LOCAL_TIME - SESSION_USER / SESSION_USER","tree":216}
+{"height":24,"length":49,"new":1921,"sentence":"LIMIT 0xB LIMIT 0xE INSERT ( )","tree":217}
+{"height":27,"length":49,"new":3757,"sentence":"LIMIT 0xa LIMIT 0xD LIMIT 0xE FINISH","tree":218}
+{"height":26,"length":49,"new":399,"sentence":"INSERT ( ) , ( ) , ( ) , ( )","tree":219}
+{"height":36,"length":49,"new":0,"sentence":"MATCH SHORTEST 0xE GROUP ( ) FINISH","tree":220}
+{"height":38,"length":49,"new":0,"sentence":"DELETE LOCAL_TIME >= SESSION_USER","tree":221}
+{"height":31,"length":49,"new":16790,"sentence":"USE NULLIF ( SESSION_USER , LOCAL_TIMESTAMP ) FINISH","tree":222}
+{"height":31,"length":49,"new":0,"sentence":"USE NULLIF ( LOCAL_TIME , SESSION_USER ) FINISH","tree":223}
+{"height":31,"length":49,"new":0,"sentence":"USE COALESCE ( SESSION_USER , CURRENT_TIME ) FINISH","tree":224}
+{"height":32,"length":49,"new":0,"sentence":"USE COALESCE ( LOCAL_TIMESTAMP , SESSION_USER ) FINISH","tree":225}
+{"height":34,"length":49,"new":540,"sentence":"USE CASE WHEN SESSION_USER THEN NULL ELSE NULL END FINISH","tree":226}
+{"height":29,"length":49,"new":0,"sentence":"USE CASE SESSION_USER WHEN IS NORMALIZED , IS NULL THEN NULL END FINISH","tree":227}
+{"height":31,"length":49,"new":0,"sentence":"DELETE LOCAL_TIME - SESSION_USER * SESSION_USER","tree":228}
+{"height":31,"length":48,"new":146,"sentence":"FOR x IN SESSION_USER || SESSION_USER FINISH","tree":229}
+{"height":28,"length":48,"new":44,"sentence":"RETURN LOCAL_TIMESTAMP AS x ORDER BY LOCAL_TIME","tree":230}
+{"height":35,"length":48,"new":1,"sentence":"MATCH SHORTEST 8 ( ) FINISH","tree":231}
+{"height":41,"length":48,"new":0,"sentence":"MATCH ( IS a ) FINISH","tree":232}
+{"height":36,"length":48,"new":4,"sentence":"DELETE SESSION_USER IS TYPED ( )","tree":233}
+{"height":37,"length":48,"new":0,"sentence":"DELETE LOCAL_TIME = SESSION_USER","tree":234}
+{"height":37,"length":48,"new":0,"sentence":"DELETE SESSION_USER <> SESSION_USER","tree":235}
+{"height":37,"length":48,"new":0,"sentence":"DELETE LOCAL_TIMESTAMP <> SESSION_USER","tree":236}
+{"height":35,"length":48,"new":2448,"sentence":"DELETE ( CURRENT_TIME ) IS TYPED STRING","tree":237}
+{"height":30,"length":48,"new":0,"sentence":"USE CASE SESSION_USER WHEN IS TYPED ANY THEN NULL END FINISH","tree":238}
+{"height":35,"length":48,"new":1,"sentence":"RETURN AVG ( CURRENT_DATE ) AS x","tree":239}
+{"height":35,"length":48,"new":1,"sentence":"RETURN MAX ( CURRENT_DATE ) AS x","tree":240}
+{"height":35,"length":48,"new":1,"sentence":"RETURN SUM ( CURRENT_TIMESTAMP ) AS x","tree":241}
+{"height":39,"length":47,"new":0,"sentence":"MATCH ( : % ) FINISH","tree":242}
+{"height":37,"length":47,"new":16,"sentence":"DELETE SESSION_USER IS TYPED BOOLEAN LIST","tree":243}
+{"height":37,"length":47,"new":0,"sentence":"DELETE SESSION_USER IS TYPED PATH LIST","tree":244}
+{"height":37,"length":47,"new":0,"sentence":"DELETE SESSION_USER IS TYPED ANY LIST","tree":245}
+{"height":32,"length":46,"new":0,"sentence":"INSERT ( ) <-[ IS a ]- ( )","tree":246}
+{"height":32,"length":46,"new":48,"sentence":"INSERT ( ) -[ IS a ]-> ( )","tree":247}
+{"height":36,"length":46,"new":48,"sentence":"DELETE SESSION_USER IS TYPED SIGNED INTEGER","tree":248}
+{"height":34,"length":46,"new":24,"sentence":"DELETE SESSION_USER IS TYPED TIMESTAMP WITH TIME ZONE","tree":249}
+{"height":34,"length":46,"new":6,"sentence":"DELETE SESSION_USER IS TYPED TIME WITH TIME ZONE","tree":250}
+{"height":34,"length":46,"new":6,"sentence":"DELETE SESSION_USER IS TYPED TIME WITHOUT TIME ZONE","tree":251}
+{"height":34,"length":46,"new":10,"sentence":"DELETE SESSION_USER IS TYPED TIMESTAMP WITHOUT TIME ZONE","tree":252}
+{"height":34,"length":46,"new":2,"sentence":"DELETE CURRENT_TIME < CURRENT_DATE","tree":253}
+{"height":34,"length":46,"new":2,"sentence":"DELETE LOCAL_TIME > SESSION_USER","tree":254}
+{"height":39,"length":46,"new":5376,"sentence":"DELETE EXISTS { ( ) }","tree":255}
+{"height":39,"length":46,"new":5376,"sentence":"DELETE EXISTS ( ( ) )","tree":256}
+{"height":31,"length":46,"new":0,"sentence":"USE [ LOCAL_TIME , CURRENT_DATE ] FINISH","tree":257}
+{"height":19,"length":45,"new":39185,"sentence":"FINISH NEXT FINISH NEXT FINISH NEXT FINISH","tree":258}
+{"height":26,"length":45,"new":0,"sentence":"CALL a ( CURRENT_TIMESTAMP , LOCAL_TIMESTAMP )","tree":259}
+{"height":32,"length":45,"new":0,"sentence":"ORDER BY CURRENT_DATE , CURRENT_DATE FINISH","tree":260}
+{"height":36,"length":45,"new":2,"sentence":"DELETE SESSION_USER IS TYPED INTEGER","tree":261}
+{"height":34,"length":45,"new":16,"sentence":"DELETE SESSION_USER IS TYPED ANY NODE","tree":262}
+{"height":34,"length":45,"new":18,"sentence":"DELETE SESSION_USER IS TYPED ANY EDGE","tree":263}
+{"height":34,"length":45,"new":2,"sentence":"DELETE SESSION_USER <= SESSION_USER","tree":264}
+{"height":36,"length":45,"new":30,"sentence":"DELETE TRIM ( LEADING FROM SESSION_USER )","tree":265}
+{"height":36,"length":45,"new":1,"sentence":"DELETE TRIM ( TRAILING FROM SESSION_USER )","tree":266}
+{"height":36,"length":45,"new":1,"sentence":"DELETE TRIM ( BOTH FROM SESSION_USER )","tree":267}
+{"height":33,"length":45,"new":0,"sentence":"DELETE LOCAL_TIMESTAMP + ( CURRENT_TIMESTAMP )","tree":268}
+{"height":29,"length":45,"new":14,"sentence":"USE ٣.8E8 FINISH","tree":269}
+{"height":32,"length":44,"new":3,"sentence":"MATCH x = ( ) FINISH","tree":270}
+{"height":32,"length":44,"new":5,"sentence":"MATCH ALL SHORTEST WALK ( ) FINISH","tree":271}
+{"height":32,"length":44,"new":3,"sentence":"MATCH ALL SHORTEST TRAIL ( ) FINISH","tree":272}
+{"height":32,"length":44,"new":0,"sentence":"MATCH ALL SHORTEST ACYCLIC ( ) FINISH","tree":273}
+{"height":32,"length":44,"new":5,"sentence":"MATCH ANY SHORTEST WALK ( ) FINISH","tree":274}
+{"height":32,"length":44,"new":3,"sentence":"MATCH ANY SHORTEST TRAIL ( ) FINISH","tree":275}
+{"height":32,"length":44,"new":0,"sentence":"MATCH ANY SHORTEST ACYCLIC ( ) FINISH","tree":276}
+{"height":32,"length":44,"new":3,"sentence":"MATCH SHORTEST WALK GROUPS ( ) FINISH","tree":277}
+{"height":32,"length":44,"new":4,"sentence":"MATCH SHORTEST TRAIL GROUPS ( ) FINISH","tree":278}
+{"height":32,"length":44,"new":0,"sentence":"MATCH SHORTEST ACYCLIC GROUPS ( ) FINISH","tree":279}
+{"height":35,"length":44,"new":10,"sentence":"DELETE SESSION_USER IS TYPED INT","tree":280}
+{"height":34,"length":44,"new":4,"sentence":"DELETE SESSION_USER IS TYPED ZONED DATETIME","tree":281}
+{"height":34,"length":44,"new":4,"sentence":"DELETE SESSION_USER IS TYPED LOCAL DATETIME","tree":282}
+{"height":34,"length":44,"new":4,"sentence":"DELETE SESSION_USER IS TYPED ZONED TIME","tree":283}
+{"height":34,"length":44,"new":4,"sentence":"DELETE SESSION_USER IS TYPED LOCAL TIME","tree":284}
+{"height":34,"length":44,"new":2,"sentence":"DELETE SESSION_USER IS TYPED VERTEX","tree":285}
+{"height":34,"length":44,"new":2,"sentence":"DELETE SESSION_USER IS TYPED EDGE","tree":286}
+{"height":34,"length":44,"new":2,"sentence":"DELETE SESSION_USER IS TYPED RELATIONSHIP","tree":287}
+{"height":32,"length":44,"new":0,"sentence":"FILTER SESSION_USER OR SESSION_USER FINISH","tree":288}
+{"height":32,"length":44,"new":0,"sentence":"FILTER SESSION_USER XOR SESSION_USER FINISH","tree":289}
+{"height":28,"length":44,"new":1918,"sentence":"USE SESSION_USER . \"x\" FINISH","tree":290}
+{"height":30,"length":43,"new":155,"sentence":"USE HOME_PROPERTY_GRAPH { INSERT ( ) }","tree":291}
+{"height":26,"length":43,"new":11,"sentence":"RETURN CURRENT_TIME AS x OFFSET ٣","tree":292}
+{"height":32,"length":43,"new":5914,"sentence":"MATCH DIFFERENT RELATIONSHIP BINDINGS ( ) FINISH","tree":293}
+{"height":31,"length":43,"new":0,"sentence":"INSERT ( ) -[ x ]-> ( )","tree":294}
+{"height":34,"length":43,"new":6,"sentence":"DELETE SESSION_USER IS TYPED DATE","tree":295}
+{"height":34,"length":43,"new":2,"sentence":"DELETE SESSION_USER IS TYPED TIMESTAMP","tree":296}
+{"height":34,"length":43,"new":4,"sentence":"DELETE SESSION_USER IS TYPED LIST","tree":297}
+{"height":35,"length":43,"new":1268,"sentence":"DELETE ( CURRENT_DATE ) IS NULL","tree":298}
+{"height":36,"length":43,"new":1,"sentence":"DELETE SIN ( SESSION_USER )","tree":299}
+{"height":36,"length":43,"new":1,"sentence":"DELETE COS ( SESSION_USER )","tree":300}
+{"height":36,"length":43,"new":1,"sentence":"DELETE COT ( SESSION_USER )","tree":301}
+{"height":36,"length":43,"new":1,"sentence":"DELETE SINH ( SESSION_USER )","tree":302}
+{"height":36,"length":43,"new":1,"sentence":"DELETE COSH ( SESSION_USER )","tree":303}
+{"height":36,"length":43,"new":1,"sentence":"DELETE TANH ( SESSION_USER )","tree":304}
+{"height":36,"length":43,"new":1,"sentence":"DELETE ASIN ( SESSION_USER )","tree":305}
+{"height":36,"length":43,"new":1,"sentence":"DELETE ACOS ( SESSION_USER )","tree":306}
+{"height":36,"length":43,"new":1,"sentence":"DELETE ATAN ( SESSION_USER )","tree":307}
+{"height":36,"length":43,"new":1,"sentence":"DELETE RADIANS ( SESSION_USER )","tree":308}
+{"height":33,"length":43,"new":2,"sentence":"DELETE NORMALIZE ( SESSION_USER , NFKD )","tree":309}
+{"height":33,"length":43,"new":1,"sentence":"DELETE NORMALIZE ( SESSION_USER , NFC )","tree":310}
+{"height":33,"length":43,"new":1,"sentence":"DELETE NORMALIZE ( SESSION_USER , NFD )","tree":311}
+{"height":33,"length":43,"new":1,"sentence":"DELETE NORMALIZE ( SESSION_USER , NFKC )","tree":312}
+{"height":30,"length":42,"new":1,"sentence":"ORDER BY LOCAL_TIMESTAMP OFFSET 0xD FINISH","tree":313}
+{"height":26,"length":42,"new":0,"sentence":"RETURN CURRENT_DATE AS x LIMIT 0o3","tree":314}
+{"height":32,"length":42,"new":2,"sentence":"MATCH DIFFERENT RELATIONSHIPS ( ) FINISH","tree":315}
+{"height":32,"length":42,"new":5914,"sentence":"MATCH REPEATABLE ELEMENT BINDINGS ( ) FINISH","tree":316}
+{"height":32,"length":42,"new":1,"sentence":"MATCH DIFFERENT EDGE ( ) FINISH","tree":317}
+{"height":32,"length":42,"new":1,"sentence":"MATCH DIFFERENT EDGES ( ) FINISH","tree":318}
+{"height":32,"length":42,"new":2,"sentence":"MATCH ANY WALK ( ) FINISH","tree":319}
+{"height":32,"length":42,"new":4,"sentence":"MATCH ANY TRAIL ( ) FINISH","tree":320}
+{"height":32,"length":42,"new":0,"sentence":"MATCH ANY ACYCLIC ( ) FINISH","tree":321}
+{"height":32,"length":42,"new":1,"sentence":"MATCH ALL SHORTEST ( ) FINISH","tree":322}
+{"height":32,"length":42,"new":1,"sentence":"MATCH ANY SHORTEST ( ) FINISH","tree":323}
+{"height":31,"length":42,"new":0,"sentence":"INSERT ( IS a & a )","tree":324}
+{"height":32,"length":42,"new":12,"sentence":"DELETE SESSION_USER IS TYPED NULL","tree":325}
+{"height":33,"length":42,"new":14,"sentence":"DELETE SESSION_USER IS TYPED FLOAT","tree":326}
+{"height":32,"length":42,"new":2,"sentence":"DELETE SESSION_USER IS TYPED ANY VALUE","tree":327}
+{"height":32,"length":42,"new":1,"sentence":"DELETE SESSION_USER IS NOT TYPED ANY","tree":328}
+{"height":32,"length":42,"new":0,"sentence":"DELETE SESSION_USER IS :: ANY","tree":329}
+{"height":36,"length":42,"new":0,"sentence":"DELETE ABS ( SESSION_USER )","tree":330}
+{"height":36,"length":42,"new":0,"sentence":"DELETE LOG10 ( SESSION_USER )","tree":331}
+{"height":36,"length":42,"new":0,"sentence":"DELETE LN ( SESSION_USER )","tree":332}
+{"height":36,"length":42,"new":0,"sentence":"DELETE EXP ( SESSION_USER )","tree":333}
+{"height":36,"length":42,"new":0,"sentence":"DELETE SQRT ( SESSION_USER )","tree":334}
+{"height":36,"length":42,"new":0,"sentence":"DELETE FLOOR ( SESSION_USER )","tree":335}
+{"height":36,"length":42,"new":1,"sentence":"DELETE CEIL ( SESSION_USER )","tree":336}
+{"height":36,"length":42,"new":28,"sentence":"DELETE TRIM ( SESSION_USER )","tree":337}
+{"height":34,"length":42,"new":0,"sentence":"INSERT ( IS \"x\" )","tree":338}
+{"height":30,"length":41,"new":3,"sentence":"ORDER BY LOCAL_TIMESTAMP LIMIT 0o2 FINISH","tree":339}
+{"height":32,"length":41,"new":1,"sentence":"MATCH REPEATABLE ELEMENTS ( ) FINISH","tree":340}
+{"height":32,"length":41,"new":1,"sentence":"MATCH REPEATABLE ELEMENT ( ) FINISH","tree":341}
+{"height":30,"length":41,"new":0,"sentence":"INSERT ( x IS a )","tree":342}
+{"height":29,"length":41,"new":1,"sentence":"INSERT ( x IS a )","tree":343}
+{"height":35,"length":41,"new":1269,"sentence":"DELETE SESSION_USER IS NFC NORMALIZED","tree":344}
+{"height":35,"length":41,"new":0,"sentence":"DELETE SESSION_USER IS NFD NORMALIZED","tree":345}
+{"height":35,"length":41,"new":0,"sentence":"DELETE SESSION_USER IS NFKC NORMALIZED","tree":346}
+{"height":35,"length":41,"new":0,"sentence":"DELETE SESSION_USER IS NFKD NORMALIZED","tree":347}
+{"height":34,"length":41,"new":28,"sentence":"USE [ SESSION_USER ] FINISH","tree":348}
+{"height":35,"length":41,"new":638,"sentence":"DELETE CARDINALITY ( SESSION_USER )","tree":349}
+{"height":35,"length":41,"new":0,"sentence":"DELETE CARDINALITY ( SESSION_USER )","tree":350}
+{"height":35,"length":41,"new":1,"sentence":"DELETE CHAR_LENGTH ( SESSION_USER )","tree":351}
+{"height":35,"length":41,"new":1,"sentence":"DELETE LTRIM ( SESSION_USER )","tree":352}
+{"height":30,"length":41,"new":4,"sentence":"DELETE CURRENT_DATE + + SESSION_USER","tree":353}
+{"height":30,"length":41,"new":2,"sentence":"DELETE CURRENT_DATE + - SESSION_USER","tree":354}
+{"height":28,"length":41,"new":1,"sentence":"USE .٣E8 FINISH","tree":355}
+{"height":28,"length":41,"new":1,"sentence":"USE 8.E٣ FINISH","tree":356}
+{"height":28,"length":41,"new":3,"sentence":"USE ٣E+٣ FINISH","tree":357}
+{"height":28,"length":41,"new":0,"sentence":"USE 9E-9 FINISH","tree":358}
+{"height":27,"length":40,"new":0,"sentence":"USE HOME_GRAPH RETURN CURRENT_TIMESTAMP AS x","tree":359}
+{"height":32,"length":40,"new":4,"sentence":"LET x = SESSION_USER FINISH","tree":360}
+{"height":29,"length":40,"new":4,"sentence":"CALL a ( SESSION_USER )","tree":361}
+{"height":32,"length":40,"new":3,"sentence":"MATCH WALK ( ) FINISH","tree":362}
+{"height":35,"length":40,"new":1,"sentence":"DELETE SESSION_USER IS NOT NORMALIZED","tree":363}
+{"height":28,"length":40,"new":644,"sentence":"USE VARIABLE SESSION_USER . a FINISH","tree":364}
+{"height":34,"length":39,"new":0,"sentence":"OPTIONAL MATCH ( ) FINISH","tree":365}
+{"height":33,"length":39,"new":1,"sentence":"DELETE UPPER ( SESSION_USER )","tree":366}
+{"height":31,"length":38,"new":0,"sentence":"RETURN SESSION_USER AS x","tree":367}
+{"height":33,"length":38,"new":0,"sentence":"DELETE ( CURRENT_TIME )","tree":368}
+{"height":32,"length":38,"new":9,"sentence":"LIMIT $`x` FINISH","tree":369}
+{"height":32,"length":38,"new":0,"sentence":"LIMIT $\"x\" FINISH","tree":370}
+{"height":32,"length":37,"new":1,"sentence":"DELETE SESSION_USER IS NOT NULL","tree":371}
+{"height":29,"length":37,"new":6,"sentence":"USE ( SESSION_USER ) FINISH","tree":372}
+{"height":32,"length":37,"new":0,"sentence":"DELETE ( CURRENT_DATE )","tree":373}
+{"height":32,"length":37,"new":0,"sentence":"DELETE ( CURRENT_TIMESTAMP )","tree":374}
+{"height":29,"length":37,"new":30,"sentence":"USE '''' FINISH","tree":375}
+{"height":27,"length":37,"new":3,"sentence":"USE \"xxx\" FINISH","tree":376}
+{"height":27,"length":37,"new":1,"sentence":"USE `xxx` FINISH","tree":377}
+{"height":29,"length":36,"new":12,"sentence":"{ INSERT ( ) }","tree":378}
+{"height":27,"length":36,"new":0,"sentence":"DELETE CURRENT_TIME , CURRENT_TIME","tree":379}
+{"height":25,"length":36,"new":988,"sentence":"USE HOME_PROPERTY_GRAPH { FINISH }","tree":380}
+{"height":28,"length":36,"new":0,"sentence":"FOR x IN SESSION_USER FINISH","tree":381}
+{"height":26,"length":36,"new":2,"sentence":"SKIP 0o4 LIMIT 0o7 FINISH","tree":382}
+{"height":29,"length":36,"new":0,"sentence":"INSERT ( : a )","tree":383}
+{"height":31,"length":36,"new":0,"sentence":"DELETE ( CURRENT_DATE )","tree":384}
+{"height":31,"length":36,"new":0,"sentence":"DELETE ( CURRENT_TIME )","tree":385}
+{"height":31,"length":36,"new":0,"sentence":"DELETE ( LOCAL_TIMESTAMP )","tree":386}
+{"height":31,"length":36,"new":0,"sentence":"DELETE ( CURRENT_DATE )","tree":387}
+{"height":31,"length":36,"new":0,"sentence":"DELETE ( CURRENT_TIMESTAMP )","tree":388}
+{"height":29,"length":36,"new":21,"sentence":"LIMIT 9٣8٣ FINISH","tree":389}
+{"height":25,"length":35,"new":44988,"sentence":"FINISH NEXT INSERT ( )","tree":390}
+{"height":26,"length":35,"new":2,"sentence":"RETURN DISTINCT CURRENT_TIME AS x","tree":391}
+{"height":26,"length":35,"new":0,"sentence":"RETURN ALL CURRENT_TIMESTAMP AS x","tree":392}
+{"height":30,"length":35,"new":2,"sentence":"ORDER BY LOCAL_TIMESTAMP ASC FINISH","tree":393}
+{"height":31,"length":35,"new":1,"sentence":"ORDER BY LOCAL_TIME ASCENDING FINISH","tree":394}
+{"height":30,"length":35,"new":1,"sentence":"ORDER BY CURRENT_TIME DESC FINISH","tree":395}
+{"height":30,"length":35,"new":1,"sentence":"ORDER BY CURRENT_TIME DESCENDING FINISH","tree":396}
+{"height":30,"length":35,"new":4,"sentence":"DELETE SESSION_USER IS NOT FALSE","tree":397}
+{"height":30,"length":35,"new":1,"sentence":"LIMIT $bbb FINISH","tree":398}
+{"height":26,"length":34,"new":0,"sentence":"USE VARIABLE ( LOCAL_TIME ) FINISH","tree":399}
+{"height":32,"length":34,"new":240,"sentence":"FILTER WHERE SESSION_USER FINISH","tree":400}
+{"height":30,"length":34,"new":1,"sentence":"DELETE SESSION_USER IS FALSE","tree":401}
+{"height":30,"length":34,"new":1,"sentence":"DELETE SESSION_USER IS TRUE","tree":402}
+{"height":30,"length":34,"new":1,"sentence":"DELETE SESSION_USER IS UNKNOWN","tree":403}
+{"height":30,"length":34,"new":4,"sentence":"DELETE + SESSION_USER","tree":404}
+{"height":30,"length":34,"new":0,"sentence":"DELETE - SESSION_USER","tree":405}
+{"height":26,"length":34,"new":2,"sentence":"USE \"\"\"\" FINISH","tree":406}
+{"height":26,"length":34,"new":2,"sentence":"USE ```` FINISH","tree":407}
+{"height":22,"length":33,"new":0,"sentence":"USE HOME_PROPERTY_GRAPH INSERT ( ) FINISH","tree":408}
+{"height":27,"length":33,"new":0,"sentence":"CALL a ( ) FINISH","tree":409}
+{"height":26,"length":33,"new":0,"sentence":"CALL `x` ( )","tree":410}
+{"height":28,"length":32,"new":0,"sentence":"SKIP $b FINISH","tree":411}
+{"height":27,"length":32,"new":2,"sentence":"USE $b FINISH","tree":412}
+{"height":30,"length":32,"new":1,"sentence":"DELETE NOT SESSION_USER","tree":413}
+{"height":27,"length":32,"new":3,"sentence":"LIMIT 8_٣ FINISH","tree":414}
+{"height":22,"length":31,"new":2,"sentence":"USE HOME_PROPERTY_GRAPH INSERT ( )","tree":415}
+{"height":25,"length":31,"new":3,"sentence":"USE \"\" FINISH","tree":416}
+{"height":25,"length":31,"new":1,"sentence":"USE '' FINISH","tree":417}
+{"height":27,"length":31,"new":4,"sentence":"LIMIT 0xdAe FINISH","tree":418}
+{"height":23,"length":30,"new":28,"sentence":"USE VARIABLE [ ] FINISH","tree":419}
+{"height":23,"length":30,"new":1,"sentence":"USE LIST [ ] FINISH","tree":420}
+{"height":26,"length":30,"new":1,"sentence":"DELETE DATE ( )","tree":421}
+{"height":26,"length":30,"new":1,"sentence":"DELETE ZONED_TIME ( )","tree":422}
+{"height":27,"length":30,"new":1,"sentence":"DELETE LOCAL_TIME ( )","tree":423}
+{"height":26,"length":30,"new":1,"sentence":"DELETE ZONED_DATETIME ( )","tree":424}
+{"height":26,"length":30,"new":1,"sentence":"DELETE LOCAL_DATETIME ( )","tree":425}
+{"height":24,"length":30,"new":1080,"sentence":"USE [ ] FINISH","tree":426}
+{"height":24,"length":29,"new":456,"sentence":"{ FINISH }","tree":427}
+{"height":26,"length":29,"new":2,"sentence":"LIMIT 0x_f FINISH","tree":428}
+{"height":26,"length":29,"new":2,"sentence":"LIMIT 0o_4 FINISH","tree":429}
+{"height":27,"length":29,"new":3,"sentence":"LIMIT 0x2 FINISH","tree":430}
+{"height":27,"length":29,"new":2,"sentence":"LIMIT 0 FINISH","tree":431}
+{"height":26,"length":28,"new":0,"sentence":"LIMIT 0x9 FINISH","tree":432}
+{"height":26,"length":28,"new":0,"sentence":"LIMIT 3 FINISH","tree":433}
+{"height":26,"length":28,"new":0,"sentence":"LIMIT 4 FINISH","tree":434}
+{"height":26,"length":28,"new":0,"sentence":"LIMIT 5 FINISH","tree":435}
+{"height":26,"length":28,"new":0,"sentence":"LIMIT 6 FINISH","tree":436}
+{"height":26,"length":28,"new":0,"sentence":"LIMIT 7 FINISH","tree":437}
+{"height":22,"length":27,"new":0,"sentence":"INSERT ( ) FINISH","tree":438}
+{"height":25,"length":27,"new":1,"sentence":"DETACH DELETE CURRENT_TIME","tree":439}
+{"height":25,"length":27,"new":1,"sentence":"NODETACH DELETE CURRENT_TIMESTAMP","tree":440}
+{"height":21,"length":27,"new":3,"sentence":"OPTIONAL CALL a ( )","tree":441}
+{"height":25,"length":27,"new":2,"sentence":"LIMIT 0xF FINISH","tree":442}
+{"height":25,"length":27,"new":2,"sentence":"LIMIT 0xb FINISH","tree":443}
+{"height":22,"length":26,"new":29,"sentence":"USE FALSE FINISH","tree":444}
+{"height":22,"length":26,"new":28,"sentence":"USE NULL FINISH","tree":445}
+{"height":22,"length":26,"new":1,"sentence":"USE TRUE FINISH","tree":446}
+{"height":22,"length":26,"new":1,"sentence":"USE UNKNOWN FINISH","tree":447}
+{"height":19,"length":23,"new":5,"sentence":"USE a FINISH","tree":448}
