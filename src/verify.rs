@@ -1325,6 +1325,24 @@ fn syntax_rules<'t>(
                     ));
                 }
             }
+            // 21.2 SR 73, 75: the elements of a list literal and the field values of a record
+            // literal conform to the Format of <literal>: a signed number, a general literal,
+            // or a list or record of such (judged on the tree, H3).
+            "list literal" | "record literal" => {
+                let want = if name == "list literal" { "list element" } else { "field" };
+                let mut items = Vec::new();
+                find(node, want, &mut items);
+                if let Some(bad) = items.iter().find(|i| {
+                    own(i, "value expression").is_some_and(|ve| !literal_shaped(ve))
+                }) {
+                    let rule = if name == "list literal" { "21.2 SR 73" } else { "21.2 SR 75" };
+                    out.push(violation(
+                        &path,
+                        rule,
+                        format!("{} is not a literal", bad.text()),
+                    ));
+                }
+            }
             // 8.2 SR 2: exactly one access mode.
             "transaction characteristics" => {
                 let mut modes = Vec::new();
@@ -1431,6 +1449,41 @@ fn not_integer_shaped(node: &Plain) -> Option<String> {
         return Some(name.clone());
     }
     kids.into_iter().find_map(not_integer_shaped)
+}
+
+/// Whether a value expression's tree is a literal's (21.2 SR 73, 75): a chain of one-child
+/// wrappers down to an <unsigned literal>, a sign on an <unsigned numeric literal>, or a list or
+/// record constructor whose elements are literal-shaped themselves.
+fn literal_shaped(node: &Plain) -> bool {
+    let Some(n) = def_name(node) else { return false };
+    let Plain::Def { children, .. } = node else { return false };
+    let kids = flat(children);
+    let defs: Vec<&&Plain> = kids.iter().filter(|k| matches!(k, Plain::Def { .. })).collect();
+    match n {
+        "unsigned literal" | "unsigned numeric literal" | "general literal" => true,
+        "list value constructor" | "list value constructor by enumeration" | "record constructor"
+        | "fields specification" | "field list" | "list element list" => {
+            let mut items = Vec::new();
+            find(node, "list element", &mut items);
+            find(node, "field", &mut items);
+            items
+                .iter()
+                .all(|i| own(i, "value expression").is_none_or(literal_shaped))
+        }
+        // A sign on a number: <factor> ::= [ <sign> ] <numeric primary>.
+        "factor" => {
+            let tokens_ok = kids.iter().all(|k| matches!(k, Plain::Def { .. }));
+            tokens_ok
+                && defs.iter().all(|d| {
+                    def_name(d) == Some("sign") || literal_shaped(d)
+                })
+        }
+        "sign" => true,
+        _ => {
+            // A wrapper: one definition and nothing else.
+            kids.len() == 1 && defs.len() == 1 && literal_shaped(defs[0])
+        }
+    }
 }
 
 /// The <statement>s a procedure specification simply contains: those of its body's

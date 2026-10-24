@@ -15,7 +15,9 @@ use std::sync::LazyLock;
 static ISO: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static BASE: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO));
 
-const RULES: [&str; 41] = [
+const RULES: [&str; 43] = [
+    "21.2 SR 73",
+    "21.2 SR 75",
     "18.9 SR 88",
     "10.1 SR 8",
     "10.2 SR 8",

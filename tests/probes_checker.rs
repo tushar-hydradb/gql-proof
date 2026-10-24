@@ -88,6 +88,39 @@ fn identifier_characters() {
 }
 
 #[test]
+fn unreachable_leaves_are_checked() {
+    // 21.3 SR 8, 21.4 SR 1: no production reaches them, the leaf rules still say what they are.
+    red(leaf("bidirectional control character", "x"), "21.3 SR 8");
+    green(leaf("bidirectional control character", "\u{2068}"), "21.3 SR 8");
+    red(leaf("other language character", "a"), "21.4 SR 1");
+    green(leaf("other language character", "\u{00E9}"), "21.4 SR 1");
+}
+
+/// 21.2 SR 42: no production of the ISO grammar references <escaped character>, so no tree
+/// holds one (its rule is vacuous for every tree).
+#[test]
+fn escaped_character_is_unreachable() {
+    for p in &ISO.prods {
+        for sym in &p.rhs {
+            if let gql_proof::cfg::Sym::Nt(nt) = sym {
+                assert_ne!(ISO.base(*nt), "escaped character", "{}", gql_proof::describe(&ISO, 0));
+            }
+        }
+    }
+}
+
+#[test]
+fn literal_elements() {
+    // A list text derives as a <list literal> and as a <list value constructor>; the literal's
+    // tree is the one SR 73 judges.
+    let some = |text: &str, rule: &str| verdicts(text).iter().any(|r| r.contains(&rule));
+    assert!(some("LET y = 1 RETURN [y] AS x", "21.2 SR 73"));
+    assert!(!some("RETURN [1, -2, 'a', NULL, [TRUE]] AS x", "21.2 SR 73"));
+    assert!(some("LET y = 1 RETURN {a: y} AS x", "21.2 SR 75"));
+    assert!(!some("RETURN {a: 1, b: 'x'} AS x", "21.2 SR 75"));
+}
+
+#[test]
 fn temporal_tokens() {
     red(token("time zone string", "'+25:00'"), "21.2 SR 61");
     green(token("time zone string", "'+01:00'"), "21.2 SR 61");

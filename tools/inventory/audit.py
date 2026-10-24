@@ -52,9 +52,13 @@ def load(paths):
     tests = "".join(open(f).read() for f in glob.glob("tests/*.rs"))
     unprobed = set()
     for r in rows:
-        if r["kind"] in ("constraint", "type") and r["status"] in ("generated", "reading", "checked"):
-            quoted = re.findall(r'"([0-9][0-9.]* SR [^"]+)"', r["check"])
-            if not quoted:
+        if r["kind"] in ("constraint", "type") and r["status"] in ("generated", "reading", "checked", "grammar"):
+            quoted = re.findall(r'"([0-9][0-9.]* SR [^"]+|ISO BNF)"', r["check"])
+            named = re.findall(r"test:(\w+)", r["check"])
+            for t in named:
+                if f"fn {t}(" not in tests:
+                    errors.append(f"{r['clause']} SR {r['sr']} {r['item']}: no test {t}")
+            if not quoted and not named:
                 errors.append(f"{r['clause']} SR {r['sr']} {r['item']}: the check column quotes no rule string")
             for q in quoted:
                 if f'"{q}"' not in src:

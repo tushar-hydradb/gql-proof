@@ -167,6 +167,7 @@ pub fn all_rules(id086: MatchModeDefault) -> Vec<Box<dyn Rule>> {
         Box::new(PropertyValueTypes),
         Box::new(ClosedInitializerTypes),
         Box::new(UnionNullability),
+        Box::new(LiteralElements),
     ]
 }
 
@@ -1591,6 +1592,90 @@ impl Rule for UnionNullability {
             }
             _ => Some(s.without(COMP_NOT_NULL).without(COMP_NULLABLE).without(RAW_NOT_NULL)),
         }
+    }
+}
+
+/// 21.2 SR 73, 75: a list literal's elements and a record literal's field values conform to
+/// the Format of <literal>.
+///
+/// Judged on the tree (H3), as `verify::literal_shaped` does: below a <list literal> or
+/// <record literal> (LIT_SCOPE, through its constructor's structure), each element's value
+/// expression (LIT_VALUE) is a chain of one-child wrappers down to an <unsigned literal>, a sign
+/// on a number (<factor>), or a nested list or record constructor whose elements are judged
+/// the same way. Anything else under LIT_VALUE is refused.
+pub struct LiteralElements;
+
+const LIT_SCOPE: Fact = 79;
+const LIT_VALUE: Fact = 80;
+const LITERAL_LEAVES: [&str; 3] = ["unsigned literal", "unsigned numeric literal", "general literal"];
+const LITERAL_NESTS: [&str; 2] = ["list value constructor", "record constructor"];
+
+impl Rule for LiteralElements {
+    fn name(&self) -> &str {
+        "literal elements"
+    }
+
+    fn cite(&self) -> &str {
+        "21.2 SR 73, 75: list literal elements and record literal field values are literals"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(LIT_SCOPE, "lit-scope"), (LIT_VALUE, "lit-value")])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn down(&self, node: &Node, inh: &State, pos: usize, _left: &[State], out: &mut State) {
+        let owner = node.def.split('/').next().unwrap_or(node.def);
+        let child = owner_of(&node.items[pos]);
+        if child.is_none() {
+            return;
+        }
+        let opens = !node.group && matches!(node.def, "list literal" | "record literal");
+        let scope = opens || inh.has(LIT_SCOPE) || (inh.has(LIT_VALUE) && LITERAL_NESTS.contains(&owner));
+        if scope {
+            if matches!(owner, "list element" | "field") && child == Some("value expression") {
+                out.set(LIT_VALUE, true);
+            } else if !(matches!(owner, "list element" | "field")) {
+                out.set(LIT_SCOPE, true);
+            }
+            return;
+        }
+        if inh.has(LIT_VALUE) && !LITERAL_LEAVES.contains(&owner) {
+            out.set(LIT_VALUE, true);
+        }
+    }
+
+    fn rejects(&self, node: &Node, inh: &State) -> bool {
+        if !inh.has(LIT_VALUE) {
+            return false;
+        }
+        let owner = node.def.split('/').next().unwrap_or(node.def);
+        if LITERAL_LEAVES.contains(&owner) || LITERAL_NESTS.contains(&owner) {
+            return false;
+        }
+        let defs = node
+            .items
+            .iter()
+            .filter(|i| matches!(i, Item::Def(_) | Item::Group(_)))
+            .count();
+        let tokens = node.items.len() - defs;
+        match owner {
+            // [ <sign> ] <numeric primary>
+            "factor" => tokens > 0,
+            "sign" | "plus sign" | "minus sign" => false,
+            // A one-child wrapper, as the checker sees it with groups flattened.
+            _ => tokens > 0 || defs != 1,
+        }
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if self.rejects(node, inh) {
+            return None;
+        }
+        Some(s)
     }
 }
 

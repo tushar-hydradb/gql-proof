@@ -6,7 +6,7 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 
 | kind | generated | reading | checked | grammar | hypothesis | open |
 |---|---|---|---|---|---|---|
-| constraint | 112 | 49 | 23 | 15 | 0 | 0 |
+| constraint | 116 | 49 | 23 | 11 | 0 | 0 |
 | type | 48 | 37 | 6 | 0 | 1 | 0 |
 | environment | 0 | 0 | 0 | 0 | 76 | 0 |
 
@@ -222,13 +222,13 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 | 18.6 SR 4 | type | reading | the value type of a property type is a supported property value type | src/verify/types.rs "18.6 SR 4" |
 | 18.7 SR 4 | type | reading | the property value type is a supported property value type | src/verify/types.rs "18.7 SR 4"; src/verify.rs "18.7 SR 4" |
 | 18.9 SR 7 | constraint | generated | a max length is at least 1 | src/verify.rs:syntax_rules: "18.9 SR 7" (a max length of 0) |
-| 18.9 SR 8 | constraint | grammar | a min length is at least 0 |  |
+| 18.9 SR 8 | constraint | grammar | a min length is at least 0 | src/verify.rs:Verifier::check_def "ISO BNF" (every node matches its ISO definition) |
 | 18.9 SR 10 | constraint | generated | a fixed length is at least 1 | src/verify.rs:syntax_rules: "18.9 SR 10" (a fixed length of 0) |
 | 18.9 SR 13 | constraint | generated | in a character string type the min length, given or implicit, is at most the max length | src/verify.rs:syntax_rules: "18.9 SR 13" (the min length is above the max length) |
 | 18.9 SR 21 | constraint | generated | in a byte string type the min length, given or implicit, is at most the max length | src/verify.rs:syntax_rules: "18.9 SR 21" (the min length is above the max length) |
 | 18.9 SR 28 | constraint | generated | a byte string type's minimum length is at most its maximum length | src/verify.rs:syntax_rules: "18.9 SR 21" |
 | 18.9 SR 29 | constraint | generated | a precision is at least 1 | src/verify.rs:syntax_rules: "18.9 SR 29" (a precision of 0) |
-| 18.9 SR 37 | constraint | grammar | a scale is at least 0 |  |
+| 18.9 SR 37 | constraint | grammar | a scale is at least 0 | src/verify.rs:Verifier::check_def "ISO BNF" (every node matches its ISO definition) |
 | 18.9 SR 38 | constraint | generated | an exact numeric type's scale is at most its precision | src/verify.rs:syntax_rules: "18.9 SR 38" (the scale is above the precision) |
 | 18.9 SR 40 | constraint | generated | an approximate numeric type's precision is at least 2 | src/verify.rs:syntax_rules: "18.9 SR 40" (an approximate numeric type of precision 1) |
 | 18.9 SR 68 | constraint | checked | a list type named with GROUP has a node or edge reference type as its element type | src/verify/types.rs "18.9 SR 68" |
@@ -299,26 +299,26 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 | 20.28 SR 3 b | type | reading | the two instants of DURATION_BETWEEN are essentially comparable | src/verify/types.rs:duration_between ("20.28 SR 3", also "20.26 GR 1" for a non-instant) |
 | 20.28 SR 3 d | type | generated | DURATION_BETWEEN of two times is DAY TO SECOND | src/verify/types.rs:duration_between ("20.28 SR 3", times subtracted as YEAR TO MONTH) |
 | 20.28 SR 3 e | type | generated | DURATION_BETWEEN's type is the day-time duration for DAY TO SECOND, else year-month | src/verify: "20.28 SR 3" |
-| 21.2 SR 1 | constraint | grammar | No separator between the radix prefix (0x, 0o, 0b) and the first digit or underscore of a hex, octal or binary integer. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
-| 21.2 SR 11 | constraint | grammar | No separator before the approximate number suffix. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
-| 21.2 SR 17 | constraint | grammar | No separator before the exact number suffix. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
+| 21.2 SR 1 | constraint | grammar | No separator between the radix prefix (0x, 0o, 0b) and the first digit or underscore of a hex, octal or binary integer. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the printed text is the tokens joined by  |
+| 21.2 SR 11 | constraint | grammar | No separator before the approximate number suffix. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the printed text is the tokens joined by  |
+| 21.2 SR 17 | constraint | grammar | No separator before the exact number suffix. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the printed text is the tokens joined by  |
 | 21.2 SR 18 b | constraint | checked | Some exact numeric type must represent the literal's value exactly. | src/verify.rs:syntax_rules "21.2 SR 18" (H2: 18 digits) |
 | 21.2 SR 20 | constraint | checked | An approximate literal's value lies within the range of its declared type. | src/verify.rs:syntax_rules "21.2 SR 20" (H2: 32 bit float range) |
-| 21.2 SR 29 | constraint | grammar | No separator between the no-escape marker @ and the quoted sequence after it. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
+| 21.2 SR 29 | constraint | grammar | No separator between the no-escape marker @ and the quoted sequence after it. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the printed text is the tokens joined by  |
 | 21.2 SR 31 a | constraint | generated | With escaping enabled, a quote-delimited character representation is no bare quote or reverse solidus outside an escape. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
 | 21.2 SR 31 b | constraint | generated | With escaping disabled, a quote-delimited character representation is no bare quote. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
 | 21.2 SR 32 a | constraint | generated | With escaping enabled, a double quote-delimited character representation is no bare double quote or reverse solidus outside an escape. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
 | 21.2 SR 32 b | constraint | generated | With escaping disabled, a double quote-delimited character representation is no bare double quote. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
 | 21.2 SR 33 a | constraint | generated | With escaping enabled, a grave accent-delimited character representation is no bare grave accent or reverse solidus outside an escape. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
 | 21.2 SR 33 b | constraint | generated | With escaping disabled, a grave accent-delimited character representation is no bare grave accent. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
-| 21.2 SR 37 | constraint | grammar | No separator between the two quotes of a doubled quote. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
-| 21.2 SR 38 | constraint | grammar | No separator between the two double quotes of a doubled double quote. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
-| 21.2 SR 39 | constraint | grammar | No separator between the two grave accents of a doubled grave accent. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
+| 21.2 SR 37 | constraint | grammar | No separator between the two quotes of a doubled quote. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the printed text is the tokens joined by  |
+| 21.2 SR 38 | constraint | grammar | No separator between the two double quotes of a doubled double quote. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the printed text is the tokens joined by  |
+| 21.2 SR 39 | constraint | grammar | No separator between the two grave accents of a doubled grave accent. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the printed text is the tokens joined by  |
 | 21.2 SR 40 | constraint | generated | A character representation is a string literal character or, with escaping enabled, an escape; with escaping disabled only a string literal character. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
 | 21.2 SR 41 b i | constraint | generated | Every string literal character is in the source text repertoire. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" |
 | 21.2 SR 41 b ii | constraint | generated | A string literal character that is not whitespace is not in general category Cc. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" (refuses char::is_control, which is Cc) |
 | 21.2 SR 41 b iv | constraint | generated | A string literal character is not an unassigned code point (Cn). | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" (no Cn) |
-| 21.2 SR 42 | constraint | grammar | No separator after the leading reverse solidus of an escape. | src/verify.rs:leaf_rule "21.2 SR 31-33, 41" (refuses a reverse solidus) |
+| 21.2 SR 42 | constraint | grammar | No separator after the leading reverse solidus of an escape. | test:escaped_character_is_unreachable (no production references <escaped character>) |
 | 21.2 SR 57 | constraint | generated | A separator inside a byte string literal contains a newline. | src/verify.rs:Verifier::token_rule "21.2 SR 57" |
 | 21.2 SR 59 | constraint | generated | A date string holds an ISO 8601 date. | src/verify.rs:Verifier::token_rule "21.2 SR 59" |
 | 21.2 SR 61 | constraint | generated | A time zone string holds an ISO 8601 time shift. | src/verify.rs:Verifier::token_rule "21.2 SR 61" |
@@ -328,23 +328,23 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 | 21.2 SR 68 | constraint | generated | A duration string holds the years-and-months or days-and-time format without separators, or an ISO 8601 duration. | src/verify.rs:Verifier::token_rule "21.2 SR 68" |
 | 21.2 SR 69 | constraint | generated | An SQL datetime literal follows the datetime literal of ISO/IEC 9075-2:2023. | src/verify.rs:leaf_rule "21.2 SR 69" |
 | 21.2 SR 70 | constraint | generated | An SQL interval literal follows the interval literal of ISO/IEC 9075-2:2023. | src/verify.rs:leaf_rule "21.2 SR 70" |
-| 21.2 SR 73 | constraint | grammar | Every value expression in a list literal's elements conforms to the Format and Syntax Rules of a literal. | src/verify/types.rs module header (the reading: SR 73 removes a derivation, never a senten |
-| 21.2 SR 75 | constraint | grammar | Every value expression in a record literal's fields conforms to the Format and Syntax Rules of a literal. | src/verify/types.rs module header (same reading as SR 73) |
+| 21.2 SR 73 | constraint | generated | Every value expression in a list literal's elements conforms to the Format and Syntax Rules of a literal. | src/verify.rs:syntax_rules "21.2 SR 73" (judged on the literal tree, H3; the gate keeps it |
+| 21.2 SR 75 | constraint | generated | Every value expression in a record literal's fields conforms to the Format and Syntax Rules of a literal. | src/verify.rs:syntax_rules "21.2 SR 75" (judged on the literal tree, H3; the gate keeps it |
 | 21.3 SR 1 | constraint | generated | An identifier start is underscore or an XID_Start character, possibly profiled (IE003). | src/verify.rs:leaf_rule "21.3 SR 1" |
 | 21.3 SR 2 | constraint | generated | An identifier extend is an XID_Continue character, possibly profiled (IE003). | src/verify.rs:leaf_rule "21.3 SR 2" |
-| 21.3 SR 3 | constraint | grammar | A non-delimited identifier is not empty. |  |
+| 21.3 SR 3 | constraint | grammar | A non-delimited identifier is not empty. | src/verify.rs:Verifier::check_def "ISO BNF" (every node matches its ISO definition) |
 | 21.3 SR 4 | constraint | generated | A delimited identifier is not empty. | src/verify.rs:syntax_rules "21.3 SR 4" |
 | 21.3 SR 5 b | constraint | checked | An identifier's representative form has at most 16383 characters. | src/verify.rs:syntax_rules "21.3 SR 5" |
 | 21.3 SR 5 c | constraint | generated | An identifier's representative form holds no character of category Cc, Cf, Cn, Cs, Zl or Zp. | src/verify.rs:leaf_rule "21.3 SR 1", "21.3 SR 2" (XID excludes them), "21.2 SR 31-33, 41"  |
 | 21.3 SR 5 d | constraint | generated | An identifier's representative form holds no space separator other than the space itself. | src/verify.rs:syntax_rules "21.3 SR 5" |
 | 21.3 SR 6 | constraint | generated | Whitespace is a run of White_Space characters. | src/verify.rs:leaf_rule "21.3 SR 6" |
-| 21.3 SR 8 | constraint | grammar | A bidirectional control character is one of nine named Cf characters. | src/verify.rs:leaf_rule "21.3 SR 8" |
+| 21.3 SR 8 | constraint | generated | A bidirectional control character is one of nine named Cf characters. | src/verify.rs:leaf_rule "21.3 SR 8" |
 | 21.3 SR 9 | constraint | generated | A simple comment character is any repertoire character other than a newline. | src/verify.rs:leaf_rule "21.3 SR 9" |
 | 21.3 SR 10 | constraint | generated | Bracketed comment contents never contain the terminator */. | src/verify.rs:leaf_rule "21.3 SR 10" |
 | 21.3 SR 13 | constraint | generated | No token other than a byte string literal contains a separator. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
 | 21.3 SR 14 | constraint | generated | A non-delimiter token is followed by a delimiter token or a separator. | src/verify.rs:Verifier::verify "21.3 SR 13, 14" (the rendering must equal the tree's token |
 | 21.3 SR 18 | constraint | generated | The case-normal form of a non-delimited identifier is no reserved word. | src/verify.rs:Verifier::token_rule "21.3 SR 18" (regular and extended identifiers) |
-| 21.4 SR 1 | constraint | grammar | An other language character is any Unicode character outside the GQL language characters. | src/verify.rs:leaf_rule "21.4 SR 1" |
+| 21.4 SR 1 | constraint | generated | An other language character is any Unicode character outside the GQL language characters. | src/verify.rs:leaf_rule "21.4 SR 1" |
 | 21.4 SR 2 | constraint | generated | An other digit is a Unicode Nd character outside 0-9. | src/verify.rs:leaf_rule "21.4 SR 2" |
 | 22.1 SR 3 b | environment | hypothesis | A substituted parameter reference ($$name) names a dynamic parameter the request supplies. |  |
 | 22.1 SR 3 d | environment | hypothesis | The value of that dynamic parameter is GQL source text, which becomes the reference's parameter substitution. |  |
