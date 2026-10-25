@@ -67,6 +67,13 @@ and `tools/inventory/violations.py` read them as they are
   two variable audit (153 and 333 at two). 4 trees flagged by the types
   checker only (`x + NULL` as a TRIM count), as at two. how the run got from
   stalling to this: `research/three-variables-fast-2026-10-25.md`
+- `typed-3vars-turbolay-claim-vars.jsonl`: the complete three variable set
+  again, from `tushar/oracle` at 77eb327 (2026-10-26, main's fast run merged),
+  the same 3,857 rows and 3,823 distinct sentences as
+  `typed-3vars-turbolay-claim.jsonl` with the generation record on every row
+  (`vars`, `params`: 1,313 rows name a variable, 35 a parameter); 80 s of
+  extraction with `--parallel`. the set the oracle runs at three variables
+  (`research/oracle-witness-2026-10-23.md`)
 - `typed-2vars-whole-grammar-before-258437a.jsonl`: types under scope, 2
   variables, whole grammar (no claim), before extraction took the smallest
   context first. 1,228 distinct, each with the `targets` it covers. kept for

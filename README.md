@@ -17,7 +17,7 @@ it was built for turbolay and runs against neo4j too. anything that takes gql te
 on turbolay #243 (484d1a72), turbolay accepts 1,401 of the 2,243 typed queries. take out the queries that are our own mistakes, turbolay's documented deviations and the ones needing parameters, and turbolay handles 1,420 of 1,707 (83%). most of the rest is two turbolay parse gaps, and on our side one rule family about path patterns that we do not enforce yet
 
 not yet:
-- answers for what the standard leaves to the implementation. for 3,604 of the 3,800 typed queries a graph is built from the query's patterns and the whole result on it is computed from the general rules (`gql-proof oracle`, `research/oracle-witness-2026-10-23.md`); the 180 left are queries whose result is implementation-defined (SESSION_USER, the clock, byte strings) or that modify data, and a run checks only that the engine accepts or rejects them and with which status
+- an engine that runs data modification against the oracle. every typed query, at two variables (3,800) and at three (3,823), gets a graph built from its patterns and its whole result on it computed from the general rules (`gql-proof oracle`, `research/oracle-witness-2026-10-23.md`): a result table, a data exception, or a refusal where the query breaks a syntax rule; what the standard leaves to the implementation is declared per engine or claimed by class. turbolay's gql engine is read only, so its INSERT, SET, REMOVE and DELETE are checked against the rules alone
 - a catalog, so nothing refers to a named graph, a graph type or a procedure
 
 ## where it is going
