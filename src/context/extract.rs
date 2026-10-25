@@ -20,8 +20,8 @@
 //! a target with no tree found has none at the cap, by exhaustion.
 
 use super::{
-    AheadTable, Context, Ends, Engine, Instance, Kid, Layers, Linked, Opt, Shape, assign_names,
-    link_slots,
+    AheadTable, Context, Ends, Engine, Graph, Instance, Kid, Layers, Linked, Opt, Shape,
+    assign_names, link_slots,
 };
 use crate::cfg::{Cfg, Lit, NtId, OccId, ProdId, Sym};
 use crate::coverage::{self, Criteria, ROOT, Target};
@@ -35,12 +35,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 use std::time::Instant;
 
-/// A production's tables: its kept partial layers, the labels it makes, and on first use
-/// the backward table of cheapest completions.
+/// A production's tables: its kept partial layers, the steps between them, the labels it
+/// makes, and on first use the backward table of cheapest completions.
 struct Prepared<L> {
     layers: Layers<L>,
+    graph: Graph<L>,
     ends: Ends<L>,
     ahead: OnceCell<AheadTable<L>>,
+    useful_up: OnceCell<Vec<BTreeSet<Opt<L>>>>,
 }
 
 /// A node of an extracted tree: its production, its ground label, how its instance's slots
@@ -119,6 +121,10 @@ pub struct Extractor<'e, 'a, C: Context> {
     /// (the closure emission ran, without grounding). Necessary for every ground within one
     /// of them: a push that refuses a live label refuses every narrower one.
     reached: Vec<BTreeSet<C::Label>>,
+    /// The same by join key, for asking whether a label overlaps a reached one.
+    reached_keyed: Vec<BTreeMap<Option<C::Label>, Vec<C::Label>>>,
+    /// Per production and ground label: the options a wide witness walk needs.
+    useful_within: RefCell<UsefulMemo<C::Label>>,
     /// Per nonterminal: the size of its smallest tree, and of the smallest context around it
     /// from the start (every sibling at its smallest, up to the top); the climb takes parents
     /// cheapest first by the latter.
@@ -140,6 +146,8 @@ pub struct Extractor<'e, 'a, C: Context> {
     by_depth: RefCell<BTreeMap<usize, Vec<Key<C::Label>>>>,
     stats: RefCell<ExtractStats>,
 }
+
+type UsefulMemo<L> = BTreeMap<(ProdId, L), Rc<Vec<BTreeSet<Opt<L>>>>>;
 
 /// A search in progress: its kind (0 a witness, 1 a context, 2 a joined-level context), the
 /// nonterminal and the label.
@@ -207,15 +215,24 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
         // fixed point kept hold partial labels made from options as they were when each scan
         // ran, before later joins replaced them, and every table here must agree with the
         // labels the searches push.
+        let counted = || {
+            let s = e.stats.borrow();
+            s.prods
+                .values()
+                .fold((0, 0), |(a, b), p| (a + p.pushes, b + p.pushed))
+        };
+        let (pushes_before, pushed_before) = counted();
         let prepared: Vec<Prepared<C::Label>> = (0..cfg.prods.len() as ProdId)
             .map(|p| {
                 e.cache.borrow_mut().remove(&p);
-                let layers = e.layers(p);
+                let (layers, graph) = e.layers_graph(p);
                 let ends = e.ends(p, &layers);
                 Prepared {
                     layers,
+                    graph,
                     ends,
                     ahead: OnceCell::new(),
+                    useful_up: OnceCell::new(),
                 }
             })
             .collect();
@@ -245,10 +262,17 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             }
         }
         if e.options.progress {
+            let (pushes, pushed) = counted();
             eprintln!(
-                "extraction: layers and made labels of {} productions ({} made labels) in {:?}",
+                "extraction: layers and made labels of {} productions ({} made labels, {} partial labels, {} pushes giving {}) in {:?}",
                 prepared.len(),
                 prepared.iter().map(|p| p.ends.len()).sum::<usize>(),
+                prepared
+                    .iter()
+                    .flat_map(|p| p.layers.iter().map(BTreeMap::len))
+                    .sum::<usize>(),
+                pushes - pushes_before,
+                pushed - pushed_before,
                 began.elapsed()
             );
         }
@@ -266,6 +290,15 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             .map(|labels| labels.values().copied().min().unwrap_or(FAR))
             .collect();
         let above = above(cfg, &smallest, start);
+        let mut reached_keyed = vec![BTreeMap::new(); cfg.nts.len()];
+        for (nt, ls) in reached.iter().enumerate() {
+            for l in ls {
+                reached_keyed[nt]
+                    .entry(e.ctx.join_key(l))
+                    .or_insert_with(Vec::new)
+                    .push(l.clone());
+            }
+        }
         Extractor {
             e,
             start,
@@ -273,6 +306,8 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             fillable,
             makers,
             reached,
+            reached_keyed,
+            useful_within: RefCell::new(BTreeMap::new()),
             smallest,
             above,
             witnesses: RefCell::new(BTreeMap::new()),
@@ -299,15 +334,38 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
         }
     }
 
+    /// Whether some ground label within `l` may have a context: it overlaps a label the
+    /// closure reached. Necessary, as the closure is.
+    fn reached_end(&self, nt: NtId, l: &C::Label) -> bool {
+        self.reached_keyed[nt as usize]
+            .get(&self.e.ctx.join_key(l))
+            .is_some_and(|ls| ls.iter().any(|r| self.e.ctx.overlaps(l, r)))
+    }
+
+    /// The backward table of `p`'s cheapest completions to a label that may have a context.
     fn ahead(&self, p: ProdId) -> &AheadTable<C::Label> {
         let pre = &self.prepared[p as usize];
+        let lhs = self.cfg().prods[p as usize].lhs;
         pre.ahead.get_or_init(|| {
             let began = Instant::now();
-            let table = self.e.ahead(p, &pre.layers, |_| true);
+            let table = self
+                .e
+                .graph_ahead(&pre.layers, &pre.graph, |end| self.reached_end(lhs, end));
             let mut stats = self.stats.borrow_mut();
             stats.ahead_tables += 1;
             stats.ahead_nanos += began.elapsed().as_nanos() as u64;
             table
+        })
+    }
+
+    /// Per position of `p`, the options of instances that end in a label that may have a
+    /// context: a context search's wide walk needs no others.
+    fn useful_up(&self, p: ProdId) -> &[BTreeSet<Opt<C::Label>>] {
+        let pre = &self.prepared[p as usize];
+        let lhs = self.cfg().prods[p as usize].lhs;
+        pre.useful_up.get_or_init(|| {
+            self.e
+                .graph_useful(&pre.graph, |end| self.reached_end(lhs, end))
         })
     }
 
@@ -556,9 +614,16 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             .or_else(|| {
                 // The wide walk, over only the options of instances that can end within `g`'s
                 // reach: a finished label `g` lies within lies within the instance's end too.
-                let useful = self
-                    .e
-                    .useful_options(p, &pre.layers, |end| self.e.ctx.within(g, end));
+                let key = (p, g.clone());
+                let cached = self.useful_within.borrow().get(&key).cloned();
+                let useful = cached.unwrap_or_else(|| {
+                    let useful = Rc::new(
+                        self.e
+                            .graph_useful(&pre.graph, |end| self.e.ctx.within(g, end)),
+                    );
+                    self.useful_within.borrow_mut().insert(key, useful.clone());
+                    useful
+                });
                 self.e.ground_in(
                     p,
                     &instance,
@@ -747,7 +812,7 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             let (r, _) = pre.ends.iter().min_by_key(|(_, (c, _, _))| *c)?;
             self.e.smallest(q, &pre.layers, &pre.ends, r)
         })?;
-        let (ground, out) = self.e.ground(
+        let (ground, out) = self.e.ground_in(
             q,
             &seed,
             Some((j, &fixed)),
@@ -755,6 +820,7 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             &child_ok,
             None,
             &[true],
+            Some(self.useful_up(q)),
         )?;
         Some(found(ground, out))
     }
@@ -1039,6 +1105,14 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                 };
                 let target_began = Instant::now();
                 let candidates_before = self.e.stats.borrow().emit.ground_candidates;
+                let useful_before = {
+                    let s = self.e.stats.borrow();
+                    (s.emit.useful_runs, s.emit.useful_nanos)
+                };
+                let (ahead_before, ahead_nanos_before) = {
+                    let s = self.stats.borrow();
+                    (s.ahead_tables, s.ahead_nanos)
+                };
                 let by_prod_before = if progress {
                     self.e.stats.borrow().emit.ground_by_prod.clone()
                 } else {
@@ -1083,6 +1157,14 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                         self.e.stats.borrow().emit.ground_candidates - candidates_before
                     );
                     let stats = self.e.stats.borrow();
+                    let own = self.stats.borrow();
+                    eprintln!(
+                        "  {} useful passes {} ms, {} ahead tables {} ms",
+                        stats.emit.useful_runs - useful_before.0,
+                        (stats.emit.useful_nanos - useful_before.1) / 1_000_000,
+                        own.ahead_tables - ahead_before,
+                        (own.ahead_nanos - ahead_nanos_before) / 1_000_000
+                    );
                     let mut spent: Vec<(u64, u64, u64, u32)> = stats
                         .emit
                         .ground_by_prod
@@ -1229,7 +1311,8 @@ fn reach<C: Context>(
                 if passed.insert(p) {
                     let t = Instant::now();
                     firsts += 1;
-                    let found = e.cheapest_ends(p, &pre.layers, |_| true, |_, _| true);
+                    let found =
+                        e.graph_cheapest_ends(&pre.layers, &pre.graph, |_| true, |_, _| true);
                     first_t += t.elapsed().as_nanos();
                     for ((pos, o), end) in found {
                         open.entry(p).or_default().insert((pos, o.clone()));
@@ -1283,9 +1366,9 @@ fn reach<C: Context>(
             let t = Instant::now();
             fallbacks += 1;
             let by_key = &by_key[lhs];
-            let found = e.cheapest_ends(
-                p,
+            let found = e.graph_cheapest_ends(
                 &pre.layers,
+                &pre.graph,
                 |end| {
                     by_key
                         .get(&e.ctx.join_key(end))

@@ -89,6 +89,9 @@ pub struct EmitStats {
     /// Per production walked: its walks and the candidates they tried themselves (not in
     /// the searches they started), for finding where the searches spend.
     pub ground_by_prod: BTreeMap<u32, GroundProd>,
+    /// Backward passes for the options a wide walk needs (`Engine::graph_useful`).
+    pub useful_runs: u64,
+    pub useful_nanos: u64,
     pub nanos: u64,
 }
 

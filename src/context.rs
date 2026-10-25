@@ -169,6 +169,33 @@ impl<L> Keyed<L> {
             .filter(move |(k, _)| ctx.compatible(node, pos, partial, **k))
             .flat_map(|(_, v)| v)
     }
+
+    /// As `compatible`, each option with its index among all of them in group order.
+    fn compatible_indexed<'s, C: Context<Label = L>>(
+        &'s self,
+        ctx: &'s C,
+        node: &'s Node<'s>,
+        pos: usize,
+        partial: u64,
+    ) -> impl Iterator<Item = (u32, &'s (Opt<L>, u64))> {
+        self.by
+            .iter()
+            .scan(0u32, |base, (k, v)| {
+                let at = *base;
+                *base += v.len() as u32;
+                Some((at, k, v))
+            })
+            .filter(move |(_, k, _)| ctx.compatible(node, pos, partial, **k))
+            .flat_map(|(at, _, v)| v.iter().enumerate().map(move |(i, o)| (at + i as u32, o)))
+    }
+
+    /// Every option, in group order: what `compatible_indexed` indexes.
+    fn flat(&self) -> Vec<(Opt<L>, u64)>
+    where
+        L: Clone,
+    {
+        self.by.values().flatten().cloned().collect()
+    }
 }
 
 /// What [`Context::project`] makes of a label.
@@ -604,6 +631,273 @@ impl<'a, C: Context> Engine<'a, C> {
         }
     }
 
+    /// [`Engine::layers`], with every step it took recorded as a [`Graph`]: the backward
+    /// passes over the layers that follow (tables, the closure, the options a walk needs)
+    /// then read the steps instead of pushing again.
+    fn layers_graph(&self, p: ProdId) -> (Layers<C::Label>, Graph<C::Label>) {
+        let _span = tracing::debug_span!("layers", p).entered();
+        let began = Instant::now();
+        let node = self.node(p);
+        let mut layers = vec![BTreeMap::from([(self.ctx.empty(&node), (1, None))])];
+        let mut opts = Vec::new();
+        let mut steps = Vec::new();
+        let mut links: Vec<Link> = Vec::new();
+        let mut link_ids: HashMap<Link, u32> = HashMap::new();
+        for (pos, &sym) in self.cfg.prods[p as usize].rhs.iter().enumerate() {
+            let options = self.keyed(&node, pos, self.options(sym));
+            let mut next: BTreeMap<C::Label, Back<C::Label>> = BTreeMap::new();
+            // Partial labels after this position numbered as they appear, renumbered in the
+            // layer's order once it is complete.
+            let mut seen: BTreeMap<C::Label, u32> = BTreeMap::new();
+            let mut here: Vec<Step> = Vec::new();
+            for (i, (partial, (cost, _))) in layers[pos].iter().enumerate() {
+                let key = self.partial_key(&node, pos, &options, partial);
+                for (oi, (o, size)) in options.compatible_indexed(self.ctx, &node, pos, key) {
+                    for (q, link) in self.push(p, &node, pos, partial, o) {
+                        let fresh = seen.len() as u32;
+                        let at = *seen.entry(q.clone()).or_insert(fresh);
+                        let li = *link_ids.entry(link.clone()).or_insert_with(|| {
+                            links.push(link.clone());
+                            links.len() as u32 - 1
+                        });
+                        here.push(Step {
+                            partial: i as u32,
+                            opt: oi,
+                            next: at,
+                            link: li,
+                        });
+                        let c = cost + size;
+                        if next.get(&q).is_none_or(|(old, _)| c < *old) {
+                            next.insert(q, (c, Some((partial.clone(), o.clone(), link))));
+                        }
+                    }
+                }
+            }
+            let mut rank = vec![0u32; seen.len()];
+            for (order, (_, at)) in seen.iter().enumerate() {
+                rank[*at as usize] = order as u32;
+            }
+            for s in &mut here {
+                s.next = rank[s.next as usize];
+            }
+            opts.push(options.flat());
+            steps.push(here);
+            layers.push(next);
+        }
+        let n = steps.len();
+        let finished = layers[n].keys().map(|q| self.finish(p, &node, q)).collect();
+        let mut stats = self.stats.borrow_mut();
+        let ps = self.prod_stats(&mut stats, p);
+        ps.scans += 1;
+        ps.nanos += began.elapsed().as_nanos() as u64;
+        for l in &layers {
+            ps.partials_max = ps.partials_max.max(l.len());
+            ps.partials_total += l.len() as u64;
+        }
+        let sizes = layers.iter().map(BTreeMap::len).collect();
+        (
+            layers,
+            Graph {
+                sizes,
+                opts,
+                steps,
+                links,
+                finished,
+            },
+        )
+    }
+
+    /// Per partial label after each position, by index: the cost of its cheapest completion
+    /// to a finished label `target` takes, and how (the step's index, or at the end the
+    /// finish's); the first cheapest in the scan's order, as [`Engine::ahead`] keeps it.
+    fn graph_back(
+        &self,
+        g: &Graph<C::Label>,
+        target: impl Fn(&C::Label) -> bool,
+    ) -> Vec<Vec<Option<(u64, u32)>>> {
+        let n = g.steps.len();
+        let mut best: Vec<Vec<Option<(u64, u32)>>> = vec![Vec::new(); n + 1];
+        best[n] = g
+            .finished
+            .iter()
+            .map(|fs| {
+                fs.iter()
+                    .position(|(l, _)| target(l))
+                    .map(|k| (0, k as u32))
+            })
+            .collect();
+        for pos in (0..n).rev() {
+            let mut here: Vec<Option<(u64, u32)>> = vec![None; g.sizes[pos]];
+            for (si, s) in g.steps[pos].iter().enumerate() {
+                let Some((rest, _)) = best[pos + 1][s.next as usize] else {
+                    continue;
+                };
+                let c = g.opts[pos][s.opt as usize].1 + rest;
+                let h = &mut here[s.partial as usize];
+                if h.is_none_or(|(b, _)| c < b) {
+                    *h = Some((c, si as u32));
+                }
+            }
+            best[pos] = here;
+        }
+        best
+    }
+
+    /// [`Engine::ahead`] read off the graph.
+    fn graph_ahead(
+        &self,
+        layers: &Layers<C::Label>,
+        g: &Graph<C::Label>,
+        target: impl Fn(&C::Label) -> bool,
+    ) -> AheadTable<C::Label> {
+        let best = self.graph_back(g, target);
+        let n = g.steps.len();
+        let keys: Vec<Vec<&C::Label>> = layers.iter().map(|l| l.keys().collect()).collect();
+        let mut ahead: Vec<Ahead<C::Label>> = vec![BTreeMap::new(); n + 1];
+        let mut ends = BTreeMap::new();
+        for (i, b) in best[n].iter().enumerate() {
+            if let Some((_, k)) = b {
+                let (l, link) = &g.finished[i][*k as usize];
+                ahead[n].insert(keys[n][i].clone(), (0, None, link.clone()));
+                ends.insert(keys[n][i].clone(), l.clone());
+            }
+        }
+        for pos in 0..n {
+            for (i, b) in best[pos].iter().enumerate() {
+                if let Some((c, si)) = b {
+                    let s = g.steps[pos][*si as usize];
+                    ahead[pos].insert(
+                        keys[pos][i].clone(),
+                        (
+                            *c,
+                            Some((
+                                g.opts[pos][s.opt as usize].0.clone(),
+                                keys[pos + 1][s.next as usize].clone(),
+                                g.links[s.link as usize].clone(),
+                            )),
+                            Link::default(),
+                        ),
+                    );
+                }
+            }
+        }
+        AheadTable { ahead, ends }
+    }
+
+    /// What [`Engine::instances`] gives without the instances: for every position and every
+    /// option there that `open` asks for, the label the smallest instance of `p` taking it
+    /// gives, among those `target` accepts. The choice per option is the one `taking` makes,
+    /// ties included: partial labels in order, each one's steps in order, the first cheapest
+    /// kept.
+    fn graph_cheapest_ends(
+        &self,
+        layers: &Layers<C::Label>,
+        g: &Graph<C::Label>,
+        target: impl Fn(&C::Label) -> bool,
+        open: impl Fn(usize, &Opt<C::Label>) -> bool,
+    ) -> Vec<(Choice<C::Label>, C::Label)> {
+        let n = g.steps.len();
+        let wanted: Vec<Vec<bool>> = (0..n)
+            .map(|pos| g.opts[pos].iter().map(|(o, _)| open(pos, o)).collect())
+            .collect();
+        if wanted.iter().all(|w| !w.contains(&true)) {
+            self.stats.borrow_mut().emit.backward_skipped += 1;
+            return Vec::new();
+        }
+        self.stats.borrow_mut().emit.backward_runs += 1;
+        let best = self.graph_back(g, target);
+        // Per partial label after each position: the finished label its cheapest completion
+        // gives, as (complete partial label, finish).
+        let mut end: Vec<Vec<Option<(u32, u32)>>> = vec![Vec::new(); n + 1];
+        end[n] = best[n]
+            .iter()
+            .enumerate()
+            .map(|(i, b)| b.map(|(_, k)| (i as u32, k)))
+            .collect();
+        for pos in (0..n).rev() {
+            end[pos] = best[pos]
+                .iter()
+                .map(|b| {
+                    b.and_then(|(_, si)| end[pos + 1][g.steps[pos][si as usize].next as usize])
+                })
+                .collect();
+        }
+        let mut out = Vec::new();
+        for pos in 0..n {
+            let costs: Vec<u64> = layers[pos].values().map(|(c, _)| *c).collect();
+            // Per option: the cheapest whole instance taking it here, first in scan order.
+            let mut chosen: Vec<Option<(u64, (u32, u32))>> = vec![None; g.opts[pos].len()];
+            for s in &g.steps[pos] {
+                if !wanted[pos][s.opt as usize] {
+                    continue;
+                }
+                let Some((rest, _)) = best[pos + 1][s.next as usize] else {
+                    continue;
+                };
+                let whole = costs[s.partial as usize] + g.opts[pos][s.opt as usize].1 + rest;
+                let ch = &mut chosen[s.opt as usize];
+                if ch.is_none_or(|(b, _)| whole < b) {
+                    let e = end[pos + 1][s.next as usize].expect("a completion has an end");
+                    *ch = Some((whole, e));
+                }
+            }
+            // In the order `instances` lists them: the options as `options` gives them.
+            let mut found: Vec<(&Opt<C::Label>, (u32, u32))> = chosen
+                .iter()
+                .enumerate()
+                .filter_map(|(oi, ch)| ch.map(|(_, e)| (&g.opts[pos][oi].0, e)))
+                .collect();
+            found.sort_by(|a, b| a.0.cmp(b.0));
+            for (o, (i, k)) in found {
+                out.push((
+                    (pos, o.clone()),
+                    g.finished[i as usize][k as usize].0.clone(),
+                ));
+            }
+        }
+        out
+    }
+
+    /// Per position of `p`, the options some instance takes there that ends in a label
+    /// `target` accepts. With `target` the labels a ground label overlaps, a ground tree of
+    /// `p` within that label takes at each position a ground of one of these: its children's
+    /// options make an instance whose partial labels hold the tree's, and whose end holds
+    /// its label.
+    fn graph_useful(
+        &self,
+        g: &Graph<C::Label>,
+        target: impl Fn(&C::Label) -> bool,
+    ) -> Vec<BTreeSet<Opt<C::Label>>> {
+        let began = Instant::now();
+        let n = g.steps.len();
+        let mut useful = vec![BTreeSet::new(); n];
+        let mut next: Vec<bool> = g
+            .finished
+            .iter()
+            .map(|fs| fs.iter().any(|(l, _)| target(l)))
+            .collect();
+        for pos in (0..n).rev() {
+            let mut here = vec![false; g.sizes[pos]];
+            let mut taken = vec![false; g.opts[pos].len()];
+            for s in &g.steps[pos] {
+                if next[s.next as usize] {
+                    here[s.partial as usize] = true;
+                    taken[s.opt as usize] = true;
+                }
+            }
+            for (oi, t) in taken.iter().enumerate() {
+                if *t {
+                    useful[pos].insert(g.opts[pos][oi].0.clone());
+                }
+            }
+            next = here;
+        }
+        let mut stats = self.stats.borrow_mut();
+        stats.emit.useful_runs += 1;
+        stats.emit.useful_nanos += began.elapsed().as_nanos() as u64;
+        useful
+    }
+
     /// Every partial label reachable after each position of `p`, with its smallest size and
     /// the step that reached it.
     fn layers(&self, p: ProdId) -> Vec<BTreeMap<C::Label, Back<C::Label>>> {
@@ -988,7 +1282,7 @@ impl<'a, C: Context> Engine<'a, C> {
     }
 
     /// [`Engine::ground`], the wide walk taking at each position only the grounds of the
-    /// options `useful` lists there (all, without it): see [`Engine::useful_options`].
+    /// options `useful` lists there (all, without it): see [`Engine::graph_useful`].
     #[allow(clippy::too_many_arguments)]
     fn ground_in(
         &self,
@@ -1232,132 +1526,6 @@ impl<'a, C: Context> Engine<'a, C> {
         out
     }
 
-    /// What [`Engine::instances`] gives without the instances: for every position and every
-    /// option there that `open` asks for, the label the smallest instance of `p` taking it
-    /// gives, among those `target` accepts. One backward product over the layers, where
-    /// `instances` makes two (the table, then each option against the partial labels before
-    /// it); the choice per option is the one `taking` makes, ties included: partial labels in
-    /// order, each one's steps in order, the first cheapest kept.
-    fn cheapest_ends(
-        &self,
-        p: ProdId,
-        layers: &Layers<C::Label>,
-        target: impl Fn(&C::Label) -> bool,
-        open: impl Fn(usize, &Opt<C::Label>) -> bool,
-    ) -> Vec<(Choice<C::Label>, C::Label)> {
-        let node = self.node(p);
-        let rhs = &self.cfg.prods[p as usize].rhs;
-        let n = rhs.len();
-        let wanted: Vec<Vec<(Opt<C::Label>, u64)>> = (0..n)
-            .map(|pos| {
-                self.options(rhs[pos])
-                    .into_iter()
-                    .filter(|(o, _)| open(pos, o))
-                    .collect()
-            })
-            .collect();
-        if wanted.iter().all(Vec::is_empty) {
-            self.stats.borrow_mut().emit.backward_skipped += 1;
-            return Vec::new();
-        }
-        self.stats.borrow_mut().emit.backward_runs += 1;
-        let _span = tracing::debug_span!("cheapest_ends", p).entered();
-        // Per partial label after each position: the cost of its cheapest completion and the
-        // label that completion ends in.
-        let mut next: BTreeMap<C::Label, (u64, C::Label)> = BTreeMap::new();
-        for q in layers[n].keys() {
-            if let Some((l, _)) = self
-                .finish(p, &node, q)
-                .into_iter()
-                .find(|(l, _)| target(l))
-            {
-                next.insert(q.clone(), (0, l));
-            }
-        }
-        // Per position, as `instances` orders them.
-        let mut out = vec![Vec::new(); n];
-        for pos in (0..n).rev() {
-            let open_here: BTreeSet<&Opt<C::Label>> = wanted[pos].iter().map(|(o, _)| o).collect();
-            // Per open option: the cheapest whole instance so far and its end.
-            let mut best: BTreeMap<&Opt<C::Label>, (u64, &C::Label)> = BTreeMap::new();
-            let options = self.keyed(&node, pos, self.options(rhs[pos]));
-            let mut here: BTreeMap<C::Label, (u64, C::Label)> = BTreeMap::new();
-            for (partial, (cost, _)) in &layers[pos] {
-                let key = self.partial_key(&node, pos, &options, partial);
-                for (o, size) in options.compatible(self.ctx, &node, pos, key) {
-                    let open = open_here.contains(o);
-                    for (q, _) in self.push(p, &node, pos, partial, o) {
-                        let Some((rest, end)) = next.get(&q) else {
-                            continue;
-                        };
-                        let c = size + rest;
-                        if here.get(partial).is_none_or(|(h, _)| c < *h) {
-                            here.insert(partial.clone(), (c, end.clone()));
-                        }
-                        if open {
-                            let whole = cost + c;
-                            if best.get(o).is_none_or(|(b, _)| whole < *b) {
-                                best.insert(o, (whole, end));
-                            }
-                        }
-                    }
-                }
-            }
-            for (o, _) in &wanted[pos] {
-                if let Some((_, end)) = best.get(o) {
-                    out[pos].push(((pos, o.clone()), (*end).clone()));
-                }
-            }
-            next = here;
-        }
-        out.into_iter().flatten().collect()
-    }
-
-    /// Per position of `p`, the options some instance takes there that ends in a label
-    /// `target` accepts. With `target` the labels a ground label overlaps, a ground tree of
-    /// `p` within that label takes at each position a ground of one of these: its children's
-    /// options make an instance whose partial labels hold the tree's, and whose end holds
-    /// its label. One backward product over the layers.
-    fn useful_options(
-        &self,
-        p: ProdId,
-        layers: &Layers<C::Label>,
-        target: impl Fn(&C::Label) -> bool,
-    ) -> Vec<BTreeSet<Opt<C::Label>>> {
-        let node = self.node(p);
-        let rhs = &self.cfg.prods[p as usize].rhs;
-        let n = rhs.len();
-        let mut useful = vec![BTreeSet::new(); n];
-        // The partial labels after each position that some step sequence completes.
-        let mut next: BTreeSet<&C::Label> = layers[n]
-            .keys()
-            .filter(|q| {
-                self.finish(p, &node, q)
-                    .into_iter()
-                    .any(|(l, _)| target(&l))
-            })
-            .collect();
-        for pos in (0..n).rev() {
-            let options = self.keyed(&node, pos, self.options(rhs[pos]));
-            let mut here = BTreeSet::new();
-            for partial in layers[pos].keys() {
-                let key = self.partial_key(&node, pos, &options, partial);
-                for (o, _) in options.compatible(self.ctx, &node, pos, key) {
-                    if self
-                        .push(p, &node, pos, partial, o)
-                        .iter()
-                        .any(|(q, _)| next.contains(q))
-                    {
-                        here.insert(partial);
-                        useful[pos].insert(o.clone());
-                    }
-                }
-            }
-            next = here;
-        }
-        useful
-    }
-
     /// The cheapest way from each partial label of `p` at each position to a finished label
     /// `target` takes, backwards; and the label each complete partial label ends in. One full
     /// product over the layers; keyed.
@@ -1496,6 +1664,31 @@ type Choice<L> = (usize, Opt<L>);
 
 /// The options an instance takes at each position, and how its slots link.
 type Instance<L> = (Vec<Opt<L>>, Shape);
+
+/// The steps of a production's layers, as [`Engine::layers_graph`] recorded them: every push
+/// that gave a partial label, by index. A backward pass over them is the pass the scan would
+/// make again, without the rule.
+struct Graph<L> {
+    /// Per position, the partial labels after it (the layer's size).
+    sizes: Vec<usize>,
+    /// Per position: the options in the order the scan tries them, with their sizes.
+    opts: Vec<Vec<(Opt<L>, u64)>>,
+    /// Per position: each step, in the order the scan made them.
+    steps: Vec<Vec<Step>>,
+    links: Vec<Link>,
+    /// Per complete partial label, by index: what `finish` gives it.
+    finished: Vec<Vec<(L, Link)>>,
+}
+
+/// A step of a [`Graph`]: the partial label before (by index in its layer), the option (by
+/// index among the position's), the partial label after, and the link (by index).
+#[derive(Clone, Copy)]
+struct Step {
+    partial: u32,
+    opt: u32,
+    next: u32,
+    link: u32,
+}
 
 /// Reached labels of one nonterminal by join key, with their emitted ids.
 type ReachedByKey<'a, L> = BTreeMap<Option<L>, Vec<(&'a L, NtId)>>;
