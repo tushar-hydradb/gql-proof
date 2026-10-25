@@ -3069,8 +3069,8 @@ impl Env<'_> {
             | "datetime function" | "localtime function" | "localdatetime function" | "duration function"
             | "duration absolute value function" => {
                 // CURRENT_DATE and friends: the clock's; DATE('...') and friends: their
-                // argument's. An empty record or null argument is the one exception the
-                // rules fix (22G05 invalid datetime, null in, null out).
+                // argument's. An empty record has no admitted field name set (20.27 SR 2 to
+                // 4: 22G05); a string's format is checked (22007); null in, null out.
                 let mut params = Vec::new();
                 for n in ["date function parameters", "time function parameters", "datetime function parameters", "duration function parameters"] {
                     find_all(p, n, &mut params);
@@ -3632,17 +3632,17 @@ fn temporal_string(name: &str, s: &str) -> R<Val> {
         },
     };
     match name {
-        "date" => if is_date(s) { Ok(Val::Opaque("date".to_string())) } else { Err(Stop::Exception("22G05".to_string())) },
-        "local time" => if is_time(s) { Ok(Val::Opaque("local time".to_string())) } else { Err(Stop::Exception("22G05".to_string())) },
+        "date" => if is_date(s) { Ok(Val::Opaque("date".to_string())) } else { Err(Stop::Exception("22007".to_string())) },
+        "local time" => if is_time(s) { Ok(Val::Opaque("local time".to_string())) } else { Err(Stop::Exception("22007".to_string())) },
         "zoned time" => match zone {
             Some(_) if is_time(core) => Ok(Val::Opaque("zoned time".to_string())),
             None if is_time(core) => unsupported("a zoned time without an offset: the default zone is implementation-defined"),
-            _ => Err(Stop::Exception("22G05".to_string())),
+            _ => Err(Stop::Exception("22007".to_string())),
         },
         "local datetime" | "zoned datetime" => {
-            let Some((d, t)) = core.split_once('T') else { return Err(Stop::Exception("22G05".to_string())) };
+            let Some((d, t)) = core.split_once('T') else { return Err(Stop::Exception("22007".to_string())) };
             if !is_date(d) || !is_time(t) {
-                return Err(Stop::Exception("22G05".to_string()));
+                return Err(Stop::Exception("22007".to_string()));
             }
             if name == "local datetime" {
                 Ok(Val::Opaque("local datetime".to_string()))
@@ -3652,7 +3652,7 @@ fn temporal_string(name: &str, s: &str) -> R<Val> {
                 unsupported("a zoned datetime without an offset: the default zone is implementation-defined")
             }
         }
-        "duration" => if s.starts_with('P') || s.starts_with("-P") { Ok(Val::Opaque("duration".to_string())) } else { Err(Stop::Exception("22G05".to_string())) },
+        "duration" => if s.starts_with('P') || s.starts_with("-P") { Ok(Val::Opaque("duration".to_string())) } else { Err(Stop::Exception("22007".to_string())) },
         _ => unsupported(format!("a {name} of a string")),
     }
 }

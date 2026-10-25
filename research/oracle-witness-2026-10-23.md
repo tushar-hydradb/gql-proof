@@ -287,8 +287,29 @@ rules, written from them literally:
 - where the rules give the implementation a choice the evaluator stops too,
   with the reason, and the record keeps the witness tier: which N paths ANY
   keeps, ties under SHORTEST N and ORDER BY, which rows LIMIT keeps without an
-  order, the type of AVG over exact numerics, the scale of exact division
-  with a remainder, ELEMENT_ID's spelling
+  order. four of the choices an engine can declare (`--declarations`, a json
+  per engine, `claims/turbolay.declarations.json`: SESSION_USER is
+  `anonymous`, exact division truncates, AVG over exact numerics is a float,
+  ELEMENT_ID is `node:0`); declared, the values are concrete and the rows
+  exact. an implementation-defined value that reaches a result without a
+  declaration claims its class only (`{"kind": "Opaque", "value": "date"}`),
+  and the probe checks a non-null value of that class
+- data modification (13.2 to 13.5) on a graph the statements change as they
+  go: INSERT (bound node patterns reference, the rest create; the record is
+  amended with the new variables), SET (a property assigned, null removing
+  it; all properties replaced; a label added), REMOVE (a property; a label,
+  the last one 22G0N or 22G0Q), DELETE (all records' elements at once; DETACH
+  takes a node's edges, otherwise an edge left is G1001); a reference to a
+  deleted element afterwards is 22G11. inline procedure calls (15.2) run
+  their body per record on the variables in scope, join its rows, keep the
+  record on an omitted result, and under OPTIONAL on an empty one. the typed
+  set has no modifying sentence (turbolay's claim leaves them out); the
+  construction is checked on hand written ones below
+
+a statement after an omitted result starts on a new unit table (9.2 GR 3 a
+ii); an earlier version of the evaluator skipped that statement, which made a
+`FINISH NEXT` family look like a finding against turbolay. corrected, both
+give 1 row for `FINISH NEXT RETURN 1 AS n`, and that finding is withdrawn
 
 the oracle command parses each sentence with the typed rules choosing the
 derivation (`context::accepts` on the pair rule, falling back to the syntax
@@ -300,17 +321,18 @@ on the 2-variable set (3,800 distinct):
 
 | tier | sentences |
 | --- | --- |
-| bag (theorem 2), of which exceptions 16 | 3,604 |
+| bag (theorem 2), of which exceptions 26 | 3,702 |
 | witness (theorem 1) | 0 |
-| status only | 180 |
+| status only | 72 |
 
-the evaluator stops, by reason: an implementation-defined value in the
-result 57 (`RETURN SESSION_USER`, `RETURN CURRENT_DATE`); a parameter with no
-admitted class 21 (the `NOT NULL` sites); IS NORMALIZED on SESSION_USER 10; a
-literal class the harness has no values of 8; byte string functions 10; a
-data modifying or catalog statement 6; LIMIT without an order below the row
-count 5; CALL 2; the rest 1 or 2 each. so the status tier is now almost
-entirely what the standard itself leaves open
+the evaluator stops, by reason: a parameter with no admitted class 22 (the
+`NOT NULL` sites, a `types.rs` reading); quantifier bounds over 512 (10
+sentences, bounds of 800 to 2,560 from radix spellings: a hop count finding
+for an engine, and a graph the loaders should not be asked for); LIMIT
+without an order below the row count 5 (which rows stay is
+implementation-dependent); a duration term the walker does not name 2; a
+CAST of a node AS PATH 1; the rest single. so the status tier is now what the
+standard itself leaves open plus the parameter reading
 
 ### what turbolay says
 
@@ -319,11 +341,11 @@ within a relative tolerance), an expected exception matched by class:
 
 | verdict | records |
 | --- | --- |
-| agree | 2,381 |
-| disagree | 276 |
-| refused (turbolay's parse and planning gaps) | 995 |
-| failed at run time, in the status tier | 11 |
-| unjudged (status tier) | 113 |
+| agree | 2,486 |
+| disagree | 280 |
+| refused (turbolay's parse and planning gaps) | 989 |
+| failed at run time, in the status tier | 7 |
+| unjudged (status tier) | 14 |
 
 every disagreement is in one of these families, each checked by hand against
 the text and by direct queries on a three node chain:
@@ -337,19 +359,42 @@ the text and by direct queries on a three node chain:
   ( <- |+| <- ) RETURN 1 AS n` over two edges gives 3 rows; 16.7 SR 10 and
   22.2 GR 14 give 4 (two operands, two edges, the operands kept apart), a
   union would give 2
-- **a statement after FINISH runs on nothing** (2): `FINISH NEXT RETURN 1 AS
-  n` gives 0 rows; 9.2 GR 3 a ii starts the next statement on a new unit
-  table, so 1
 - the negated wildcard (3 sentences, above), and AVG over integers answering a
   float where the rules leave the type open (now out of the core, so no
   longer a disagreement)
-- two single records: `PERCENTILE_CONT ( NULL , x + x )` with a fraction of 2,
-  which the rules raise 22G0C on and turbolay refuses at planning as
-  unsupported; and a `NOT NULL` parameter site turbolay refuses for the
-  missing parameter
+- eight single records turbolay refuses where the rules raise an exception:
+  six typed `LET VALUE ... NOT NULL` definitions of null (22004 by 22.10;
+  turbolay's closed type parse gap), `PERCENTILE_CONT ( NULL , x + x )` with a
+  fraction of 2 (22G0C; turbolay refuses at planning as unsupported), and a
+  `NOT NULL` parameter site refused for the missing parameter
 
 these are findings against turbolay to file with the sentences and graphs;
 none is a reading the evaluator should change
+
+### three variables
+
+nothing in the construction or the evaluator depends on the variable count:
+variables are keys of the record, slots come from the pattern. two generated
+sets show it running at three: the scope-only purdom set at 3 variables
+(`sentences/scope-turbolay-claim.jsonl`, 758 sentences, not type checked, so
+many are type-invalid and stop at `a condition that is not boolean`): 308 in
+the bag tier, 1 witness, 442 status; and fifteen hand written three- and
+four-variable sentences (`tests/oracle.rs`, `three_variables_bind_and_join_alike`,
+and the `three.jsonl` run: joins across path patterns, a two-cycle matched
+from both nodes, a three-node chain filtered by three predicates, a path over
+three nodes, a quantified group between two singletons, a selective pattern):
+all fifteen in the bag tier, and turbolay agrees on all fifteen and on their
+63 near misses. the 3-variable *typed* run itself waits on the fixed point
+(`research/three-variable-run-2026-10-23.md`); when it lands, its set runs
+through the same command unchanged
+
+the data modification and inline call sentences (eighteen hand written ones,
+`mods.jsonl`): all in the bag tier, with 22G11, G1001 and 22007 where the
+rules raise them; turbolay runs the two inline calls and the two temporal
+ones and agrees, and refuses every INSERT, SET, REMOVE and DELETE (`expected
+exactly one typed query statement`: its gql engine is read only), so for
+modification the construction is checked against the rules alone until an
+engine runs them
 
 ## near misses, as a corollary (built)
 
@@ -367,14 +412,16 @@ false) restricted to the pattern; a label added where a negation forbids it
 and a property value moved off its literal are the two mutations not emitted
 yet
 
-on the 2-variable set: 5,426 near misses over 1,860 records (2,724 edges
-dropped, 2,700 flipped, 2 properties dropped: the set has few property
-predicates, and label sets of one). turbolay: 4,047 agree, 383 disagree, of
-which 376 are the multiset alternation family, 4 the `?` family, and 3 new:
-`MATCH x = <- RETURN x NEXT ORDER BY PATH_LENGTH ( x ) FINISH` finds the one
-edge in one orientation and not after it is flipped, where `( ) <- ( )` with
-anonymous ends matches a single edge either way. with the near misses the
-run has 6,439 agreements on turbolay from 3,800 sentences
+on the 2-variable set: 6,636 near misses over 1,860 records (2,722 edges
+dropped, 2,698 flipped, 1,212 labels added, 2 properties dropped, 2 changed:
+the set has few property predicates and label sets of one). turbolay: 4,612
+agree, 380 disagree, every one in the multiset alternation family (376) or
+the `?` family (4). an earlier three looked new (a path variable over one
+edge, flipped) and were the oracle's: the record of a `... ORDER BY ...
+FINISH` chain had no observation query, so the probe ran the `FINISH`
+sentence itself on the changed graph; the observation now comes from the
+evaluator's table. with the near misses the run has 7,098 agreements on
+turbolay from 3,800 sentences
 
 ## the ir and the setup statements
 
@@ -589,10 +636,10 @@ two rows of the 2-variable set, read closely:
   unit binding table type)
 - near misses as full bags: the evaluator makes them one call per mutation;
   not emitted yet
-- the 180 status rows are the standard's own openings (implementation-defined
-  values in a result, the `NOT NULL` parameter sites, byte strings, data
-  modification, CALL); a per-engine declaration of the implementation-defined
-  items would turn the first family into bags
+- the 72 status rows: the `NOT NULL` parameter sites (a `types.rs` reading),
+  quantifier bounds over 512, LIMIT without an order, and three singles
+- an engine that runs data modification, to check that part of the evaluator
+  against something other than the rules
 - the `neo4j` runner compares witness rows only, not bags; neo4j parses almost
   none of the set anyway
 - value variables: `C` carries their class; the expression evaluator is where

@@ -129,8 +129,8 @@ python3 -I tools/engines/breakdown.py target/engines/turbolay-typed-results.json
 the witness graphs and expected rows, and a run that loads each graph and compares:
 
 ```
-gql-proof oracle --match-mode-default different-edges sentences/typed-2vars-turbolay-claim-path-minimums.jsonl > target/engines/oracle-typed.jsonl
-just turbolay-oracle ~/code/turbolay     # each graph loaded, the query run, rows compared by _id
+gql-proof oracle --match-mode-default different-edges --declarations claims/turbolay.declarations.json sentences/typed-2vars-turbolay-claim-vars.jsonl > target/engines/oracle-typed.jsonl
+just turbolay-oracle ~/code/turbolay     # each graph loaded, the query run, the whole result compared, then every near miss
 ```
 
 `breakdown.py` sorts every refusal by cause: our invalid query, an engine parse gap, a documented deviation, a data error raised as it should, a bug already reported. its rules match turbolay's messages at #243, a new engine needs its own

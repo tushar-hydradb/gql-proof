@@ -317,7 +317,10 @@ fn inline_calls_and_statements_after_finish() {
     // 9.2 GR 3 a ii: after an omitted result the next statement starts on the unit table.
     let r = record("FINISH NEXT RETURN 1 AS n", MatchModeDefault::DifferentEdges);
     assert_eq!(r.expect.rows, Some(1));
-    // 22G05 for a date string that is not a date.
+    // 22007 for a date string that is not a date (20.x), 22G05 for a record with no
+    // admitted field names (20.27 SR 2).
     let r = record("ORDER BY DATE ( '2024-13-01' ) FINISH", MatchModeDefault::DifferentEdges);
+    assert_eq!(r.expect.status.as_deref(), Some("22007"));
+    let r = record("ORDER BY DATE ( { } ) FINISH", MatchModeDefault::DifferentEdges);
     assert_eq!(r.expect.status.as_deref(), Some("22G05"));
 }
