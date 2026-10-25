@@ -1918,6 +1918,12 @@ pub fn oracle(
     for why in parameter_problems {
         b.out_of_core(why);
     }
+    // A parameter no static class satisfies is evaluated as a value of unknown class: what
+    // the evaluator still computes holds for every value, so for the `1` the probe sends.
+    let mut opaque_for_eval = unsendable.clone();
+    for name in &dynamic_only {
+        opaque_for_eval.insert(parameter_key(name.trim_start_matches('$')), "any".to_string());
+    }
     let mut had_match = false;
     let mut shape = Shape::Other("no statement block".to_string());
     let mut blocks = Vec::new();
@@ -1994,7 +2000,7 @@ pub fn oracle(
     let mut observed_bag: Option<Vec<eval::Row>> = None;
     // The columns of the table a FINISH dropped, for the observation query.
     let mut observed_columns: Option<Vec<String>> = None;
-    match eval::evaluate(tree, &graph, &parameters, &unsendable, mode_default, declared) {
+    match eval::evaluate(tree, &graph, &parameters, &opaque_for_eval, mode_default, declared) {
         Ok(eval::Outcome::Table(table)) => {
             expect.tier = Tier::Bag;
             expect.rows = Some(table.rows.len());
@@ -2011,7 +2017,7 @@ pub fn oracle(
             expect.tier = Tier::Bag;
             expect.result = false;
             expect.row = None;
-            if let Ok(eval::Outcome::Table(table)) = eval::evaluate_observing(tree, &graph, &parameters, &unsendable, mode_default, declared) {
+            if let Ok(eval::Outcome::Table(table)) = eval::evaluate_observing(tree, &graph, &parameters, &opaque_for_eval, mode_default, declared) {
                 expect.rows = Some(table.rows.len());
                 let mut columns: BTreeSet<String> = BTreeSet::new();
                 for r in &table.rows {
@@ -2042,10 +2048,12 @@ pub fn oracle(
             expect.evaluator = Some(reason);
         }
     }
-    // A parameter site no concrete class satisfies: the sentence is valid only through a
-    // dynamic parameter. 4.14.4 lets an engine cure it with run time type tests, which no
-    // value passes (22G03), or refuse it (class 42).
-    if !dynamic_only.is_empty() {
+    // A parameter site no static class satisfies, where the evaluator could not compute a
+    // result either: the sentence is valid only through a dynamic parameter. 4.14.4 lets an
+    // engine cure it with run time type tests, which no value passes (22G03), or refuse it
+    // (class 42). Where the evaluator did compute a result with the parameter of unknown
+    // class, that result stands for every value.
+    if !dynamic_only.is_empty() && expect.tier != Tier::Bag {
         expect.tier = Tier::Bag;
         expect.outcome = "invalid";
         expect.status = Some("42000".to_string());
@@ -2122,9 +2130,9 @@ pub fn oracle(
         let mentioned = label_names(tree);
         for (mut miss, mutated) in graph.mutations(&mentioned).into_iter().take(12) {
             let outcome = if finish {
-                eval::evaluate_observing(tree, &mutated, &parameters, &unsendable, mode_default, declared)
+                eval::evaluate_observing(tree, &mutated, &parameters, &opaque_for_eval, mode_default, declared)
             } else {
-                eval::evaluate(tree, &mutated, &parameters, &unsendable, mode_default, declared)
+                eval::evaluate(tree, &mutated, &parameters, &opaque_for_eval, mode_default, declared)
             };
             match outcome {
                 Ok(eval::Outcome::Table(table)) => {

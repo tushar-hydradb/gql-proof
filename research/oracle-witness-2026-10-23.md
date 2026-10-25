@@ -321,28 +321,36 @@ on the 2-variable set (3,800 distinct):
 
 | tier | sentences |
 | --- | --- |
-| bag (theorem 2): a result, an exception, or a refusal the rules require | 3,759 |
-| of which: a result table or no result | 3,705 |
-| of which: a data exception (22G11, 22012, 22007, 22G0C, ...) | 20 |
-| of which: a syntax rule broken, the engine shall refuse (class 42) | 34 |
+| bag (theorem 2): a result, an exception, or a refusal the rules require | 3,779 |
+| of which: a result table or no result | 3,730 |
+| of which: a data exception (22G11, 22012, 22007, 22G0C, 22G03, ...) | 37 |
+| of which: a syntax rule broken, the engine shall refuse (class 42) | 12 |
 | witness (theorem 1): quantifier bounds of 80 to 2,560, beyond the evaluator | 21 |
 | status only | 0 |
 
 the third outcome, `invalid`, is what the rules fix for a sentence that
 breaks a syntax rule the generator's static rule did not enforce: the engine
-shall refuse it, status class 42. two families, 34 sentences, each a finding
-for the soundness track as well as an expectation:
+shall refuse it, status class 42. 12 sentences, each a finding for the
+soundness track as well as an expectation:
 
 - 11 typed `VALUE` definitions whose initializer 10.3 SR says shall be
   assignable to the declared type and is not: a date to `PATH | PATH` and
   `NULL | PATH`, a local datetime to `ZONED DATETIME`, a zoned time to `LOCAL
-  TIME` and `TIME WITHOUT TIME ZONE`. the record names the rule
-- 23 parameters whose site no static type satisfies: `$b . a`, `x * $b + $b`
-  cast to a node, a list with `$b` beside a date, `$b` inside a typed `LET`.
-  they are valid only because a dynamic parameter stands wherever a class is
-  checked. 4.14.4 lets an engine refuse (class 42) or cure the sentence with
-  run time type tests, which no value passes, so the record also names 22G03
-  as the outcome under curing; the probe takes either
+  TIME` and `TIME WITHOUT TIME ZONE`. the record names the rule; turbolay
+  refuses all eleven
+- 1 parameter whose site the evaluator cannot type either (`$b . a`): valid
+  only because a dynamic parameter stands wherever a class is checked. 4.14.4
+  lets an engine refuse (class 42) or cure the sentence with run time type
+  tests, which no value passes, so the record also names 22G03 as the outcome
+  under curing; the probe takes either
+
+the other 22 parameter sites the typed rule admits no class for are
+evaluated with a value of unknown class: what the evaluator computes then
+holds for every value (a `RETURN` of the parameter, a list holding it), and
+where a type test must fail (`x * $b + $b` cast to a node) the outcome is the
+22G03 the test raises. so the typed rule is stricter than the standard at
+those sites, a reading for the soundness track, and the oracle does not
+inherit it
 
 the `NOT NULL` sites themselves now run: the declared type of the definition
 gives the parameter's class (`FLOAT NOT NULL = $b` sends `1.5`), and a class
@@ -363,11 +371,11 @@ within a relative tolerance), an expected exception matched by class:
 
 | verdict | records |
 | --- | --- |
-| agree | 2,501 |
-| disagree | 280 |
-| refused (turbolay's parse and planning gaps) | 982 |
+| agree | 2,529 |
+| disagree | 279 |
+| refused (turbolay's parse and planning gaps) | 955 |
 | unsendable (a parameter of a class the harness has no values of) | 7 |
-| failed at run time, in the status tier | 6 |
+| failed at run time with another exception than expected | 6 |
 
 every disagreement is in one of these families, each checked by hand against
 the text and by direct queries on a three node chain:
@@ -384,11 +392,11 @@ the text and by direct queries on a three node chain:
 - the negated wildcard (3 sentences, above), and AVG over integers answering a
   float where the rules leave the type open (now out of the core, so no
   longer a disagreement)
-- eight single records turbolay refuses where the rules raise an exception:
-  six typed `LET VALUE ... NOT NULL` definitions of null (22004 by 22.10;
-  turbolay's closed type parse gap), `PERCENTILE_CONT ( NULL , x + x )` with a
-  fraction of 2 (22G0C; turbolay refuses at planning as unsupported), and a
-  `NOT NULL` parameter site refused for the missing parameter
+- seven records turbolay refuses before running where the rules raise an
+  exception at run time: six typed `LET VALUE ... NOT NULL` definitions of
+  null (22004 by 22.10; turbolay's closed type parse gap) and
+  `PERCENTILE_CONT ( NULL , x + x )` with a fraction of 2 (22G0C; turbolay
+  refuses at planning as unsupported)
 
 these are findings against turbolay to file with the sentences and graphs;
 none is a reading the evaluator should change
@@ -444,7 +452,7 @@ the multiset alternation family (376) or the `?` family (4). an earlier three lo
 edge, flipped) and were the oracle's: the record of a `... ORDER BY ...
 FINISH` chain had no observation query, so the probe ran the `FINISH`
 sentence itself on the changed graph; the observation now comes from the
-evaluator's table. with the near misses the run has 6,987 agreements on
+evaluator's table. with the near misses the run has 7,015 agreements on
 turbolay from 3,800 sentences
 
 ## the ir and the setup statements

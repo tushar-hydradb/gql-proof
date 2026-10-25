@@ -172,6 +172,7 @@ fn matches(expected: &Value, got: &Value) -> bool {
         let hint = expected["value"].as_str().unwrap_or("");
         let text = got["value"].as_str().unwrap_or("");
         return match hint {
+            "any" => gk != Some("Null"),
             "string" => gk == Some("Str"),
             "bytes" => gk == Some("Other") && text.contains("Bytes"),
             "duration" => gk == Some("Other") && text.contains("Duration"),
