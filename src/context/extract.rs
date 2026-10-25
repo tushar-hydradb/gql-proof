@@ -19,6 +19,7 @@
 //! `Engine::ground` is exhaustive over ground candidates and `users` lists every parent, so
 //! a target with no tree found has none at the cap, by exhaustion.
 
+use super::Stats;
 use super::{
     AheadTable, Context, Ends, Engine, Graph, Instance, Kid, Layers, Linked, Opt, Shape,
     assign_names, link_slots,
@@ -30,6 +31,7 @@ use crate::tree;
 use anyhow::Result;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
+use rayon::prelude::*;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -222,20 +224,34 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                 .fold((0, 0), |(a, b), p| (a + p.pushes, b + p.pushed))
         };
         let (pushes_before, pushed_before) = counted();
-        let prepared: Vec<Prepared<C::Label>> = (0..cfg.prods.len() as ProdId)
+        e.cache.borrow_mut().clear();
+        // One scan per production, on every core: a scan reads the fixed point and changes
+        // nothing, and counts into stats of its own, added after.
+        let view = e.view();
+        let scanned: Vec<(Prepared<C::Label>, Stats)> = (0..cfg.prods.len() as ProdId)
+            .into_par_iter()
             .map(|p| {
-                e.cache.borrow_mut().remove(&p);
-                let (layers, graph) = e.layers_graph(p);
-                let ends = e.ends(p, &layers);
-                Prepared {
+                let mut stats = Stats::default();
+                let (layers, graph) = view.layers_graph(&mut stats, p);
+                let ends = view.ends(&layers, &graph);
+                let prepared = Prepared {
                     layers,
                     graph,
                     ends,
                     ahead: OnceCell::new(),
                     useful_up: OnceCell::new(),
-                }
+                };
+                (prepared, stats)
             })
             .collect();
+        let mut prepared = Vec::with_capacity(scanned.len());
+        {
+            let mut stats = e.stats.borrow_mut();
+            for (pre, s) in scanned {
+                stats.absorb(s);
+                prepared.push(pre);
+            }
+        }
         let mut live: Vec<BTreeMap<C::Label, C::Label>> = vec![BTreeMap::new(); cfg.nts.len()];
         for (nt, labels) in e.labels.iter().enumerate() {
             for l in labels.keys() {

@@ -55,9 +55,10 @@ pub type Slot = u8;
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Link(pub Vec<Option<Slot>>);
 
-/// A context-sensitive rule over synthesized labels.
-pub trait Context {
-    type Label: Clone + Ord + Debug;
+/// A context-sensitive rule over synthesized labels. Shared across threads: productions are
+/// scanned in parallel once the fixed point is done.
+pub trait Context: Sync {
+    type Label: Clone + Ord + Debug + Send + Sync;
     fn name(&self) -> &str;
     /// How many slots `label` holds.
     fn slots(&self, label: &Self::Label) -> usize;
@@ -463,19 +464,111 @@ impl<'a, C: Context> Engine<'a, C> {
     }
 
     fn prod_stats<'s>(&self, stats: &'s mut Stats, p: ProdId) -> &'s mut ProdStats {
-        stats.prods.entry(p).or_insert_with(|| ProdStats {
-            describe: crate::describe(self.cfg, p),
-            ..ProdStats::default()
-        })
+        prod_stats(self.cfg, stats, p)
+    }
+
+    /// What a scan reads of the engine, shareable across threads.
+    fn view(&self) -> Scan<'_, 'a, C> {
+        Scan {
+            cfg: self.cfg,
+            ctx: self.ctx,
+            keys: self.options.keys,
+            shapes: &self.shapes,
+            labels: &self.labels,
+            subsumed: &self.subsumed,
+            masks: self.masks.as_deref(),
+        }
+    }
+
+    /// [`Scan::finish`], counted in the engine's stats.
+    fn finish(&self, p: ProdId, node: &Node, partial: &C::Label) -> Vec<(C::Label, Link)> {
+        self.view()
+            .finish(&mut self.stats.borrow_mut(), p, node, partial)
+    }
+
+    fn node(&self, p: ProdId) -> Node<'_> {
+        self.view().node(p)
+    }
+
+    /// The options at a right hand side position, with their sizes.
+    fn options(&self, sym: Sym) -> Vec<(Opt<C::Label>, u64)> {
+        self.view().options(sym)
+    }
+
+    /// [`Scan::push`], counted in the engine's stats.
+    fn push(
+        &self,
+        p: ProdId,
+        node: &Node,
+        pos: usize,
+        partial: &C::Label,
+        o: &Opt<C::Label>,
+    ) -> Vec<(C::Label, Link)> {
+        self.view()
+            .push(&mut self.stats.borrow_mut(), p, node, pos, partial, o)
+    }
+
+    /// `options` at `pos` of `node`, grouped by the rule's key.
+    fn keyed(
+        &self,
+        node: &Node,
+        pos: usize,
+        options: Vec<(Opt<C::Label>, u64)>,
+    ) -> Keyed<C::Label> {
+        self.view().keyed(node, pos, options)
+    }
+
+    /// The key of `partial` before `pos`, if the options there are in more than one group.
+    fn partial_key(
+        &self,
+        node: &Node,
+        pos: usize,
+        options: &Keyed<C::Label>,
+        partial: &C::Label,
+    ) -> u64 {
+        self.view().partial_key(node, pos, options, partial)
+    }
+}
+
+/// The per production stats entry, made on first use.
+fn prod_stats<'s>(cfg: &Cfg, stats: &'s mut Stats, p: ProdId) -> &'s mut ProdStats {
+    stats.prods.entry(p).or_insert_with(|| ProdStats {
+        describe: crate::describe(cfg, p),
+        ..ProdStats::default()
+    })
+}
+
+/// What a scan of a production reads of the engine: the grammar, the rule and the labels,
+/// none of it changed by a scan, so scans run on several threads at once once the fixed
+/// point is done. Each counts into stats it is given.
+struct Scan<'e, 'a, C: Context> {
+    cfg: &'a Cfg,
+    ctx: &'a C,
+    keys: bool,
+    shapes: &'e [Vec<Item<'a>>],
+    labels: &'e [BTreeMap<C::Label, u64>],
+    subsumed: &'e [BTreeSet<C::Label>],
+    masks: Option<&'e [Masks]>,
+}
+
+impl<'e, 'a, C: Context> Scan<'e, 'a, C> {
+    fn live(&self, nt: usize, l: &C::Label) -> bool {
+        !self.subsumed[nt].contains(l)
     }
 
     /// The rule's `finish` for production `p`, counted, each label then projected to what is
     /// still read above `p`'s left hand side.
-    fn finish(&self, p: ProdId, node: &Node, partial: &C::Label) -> Vec<(C::Label, Link)> {
+    fn finish(
+        &self,
+        stats: &mut Stats,
+        p: ProdId,
+        node: &Node,
+        partial: &C::Label,
+    ) -> Vec<(C::Label, Link)> {
         let began = Instant::now();
         let mut out = self.ctx.finish(node, partial);
         let (mut projected, mut doomed) = (0, 0);
-        if let Some(masks) = &self.masks {
+        if let Some(masks) = self.masks {
             let m = masks[self.cfg.prods[p as usize].lhs as usize];
             out = out
                 .into_iter()
@@ -519,7 +612,6 @@ impl<'a, C: Context> Engine<'a, C> {
             let mut seen = BTreeSet::new();
             out.retain(|(l, _)| seen.insert(l.clone()));
         }
-        let mut stats = self.stats.borrow_mut();
         stats.projected += projected;
         stats.doomed += doomed;
         if !stats.defs.contains_key(node.def) {
@@ -531,7 +623,8 @@ impl<'a, C: Context> Engine<'a, C> {
         d.finish_nanos += began.elapsed().as_nanos() as u64;
         out
     }
-    fn node(&self, p: ProdId) -> Node<'_> {
+
+    fn node(&self, p: ProdId) -> Node<'e> {
         let lhs = &self.cfg.nts[self.cfg.prods[p as usize].lhs as usize];
         Node {
             def: &lhs.base,
@@ -557,13 +650,14 @@ impl<'a, C: Context> Engine<'a, C> {
     /// the rule's keys rule out is skipped, not pushed.
     fn push(
         &self,
+        stats: &mut Stats,
         p: ProdId,
         node: &Node,
         pos: usize,
         partial: &C::Label,
         o: &Opt<C::Label>,
     ) -> Vec<(C::Label, Link)> {
-        if self.options.keys
+        if self.keys
             && let Opt::Label(child) = o
             && !self.ctx.compatible(
                 node,
@@ -572,7 +666,7 @@ impl<'a, C: Context> Engine<'a, C> {
                 self.ctx.child_key(node, pos, child),
             )
         {
-            self.stats.borrow_mut().skipped += 1;
+            stats.skipped += 1;
             return Vec::new();
         }
         let began = Instant::now();
@@ -581,7 +675,6 @@ impl<'a, C: Context> Engine<'a, C> {
             Opt::Label(l) => self.ctx.push(node, pos, partial, Some(l)),
         };
         let nanos = began.elapsed().as_nanos() as u64;
-        let mut stats = self.stats.borrow_mut();
         // Looked up by the borrowed name: a push is the hot path, and the name is allocated
         // only the first time.
         if !stats.defs.contains_key(node.def) {
@@ -591,7 +684,7 @@ impl<'a, C: Context> Engine<'a, C> {
         d.pushes += 1;
         d.pushed += out.len() as u64;
         d.push_nanos += nanos;
-        let ps = self.prod_stats(&mut stats, p);
+        let ps = prod_stats(self.cfg, stats, p);
         ps.pushes += 1;
         ps.pushed += out.len() as u64;
         out
@@ -608,7 +701,7 @@ impl<'a, C: Context> Engine<'a, C> {
         let mut by = BTreeMap::<u64, Vec<_>>::new();
         for (o, size) in options {
             let key = match &o {
-                Opt::Label(l) if self.options.keys => self.ctx.child_key(node, pos, l),
+                Opt::Label(l) if self.keys => self.ctx.child_key(node, pos, l),
                 _ => 0,
             };
             by.entry(key).or_default().push((o, size));
@@ -634,7 +727,7 @@ impl<'a, C: Context> Engine<'a, C> {
     /// [`Engine::layers`], with every step it took recorded as a [`Graph`]: the backward
     /// passes over the layers that follow (tables, the closure, the options a walk needs)
     /// then read the steps instead of pushing again.
-    fn layers_graph(&self, p: ProdId) -> (Layers<C::Label>, Graph<C::Label>) {
+    fn layers_graph(&self, stats: &mut Stats, p: ProdId) -> (Layers<C::Label>, Graph<C::Label>) {
         let _span = tracing::debug_span!("layers", p).entered();
         let began = Instant::now();
         let node = self.node(p);
@@ -653,7 +746,7 @@ impl<'a, C: Context> Engine<'a, C> {
             for (i, (partial, (cost, _))) in layers[pos].iter().enumerate() {
                 let key = self.partial_key(&node, pos, &options, partial);
                 for (oi, (o, size)) in options.compatible_indexed(self.ctx, &node, pos, key) {
-                    for (q, link) in self.push(p, &node, pos, partial, o) {
+                    for (q, link) in self.push(stats, p, &node, pos, partial, o) {
                         let fresh = seen.len() as u32;
                         let at = *seen.entry(q.clone()).or_insert(fresh);
                         let li = *link_ids.entry(link.clone()).or_insert_with(|| {
@@ -685,9 +778,11 @@ impl<'a, C: Context> Engine<'a, C> {
             layers.push(next);
         }
         let n = steps.len();
-        let finished = layers[n].keys().map(|q| self.finish(p, &node, q)).collect();
-        let mut stats = self.stats.borrow_mut();
-        let ps = self.prod_stats(&mut stats, p);
+        let finished = layers[n]
+            .keys()
+            .map(|q| self.finish(stats, p, &node, q))
+            .collect();
+        let ps = prod_stats(self.cfg, stats, p);
         ps.scans += 1;
         ps.nanos += began.elapsed().as_nanos() as u64;
         for l in &layers {
@@ -707,6 +802,22 @@ impl<'a, C: Context> Engine<'a, C> {
         )
     }
 
+    /// For each label `p` gives, the complete partial label of its smallest instance and the
+    /// finishing link, read off the graph's finishes.
+    fn ends(&self, layers: &Layers<C::Label>, g: &Graph<C::Label>) -> Ends<C::Label> {
+        let mut out: Ends<C::Label> = BTreeMap::new();
+        for ((q, (cost, _)), finished) in layers.last().unwrap().iter().zip(&g.finished) {
+            for (l, link) in finished {
+                if out.get(l).is_none_or(|(c, _, _)| cost < c) {
+                    out.insert(l.clone(), (*cost, q.clone(), link.clone()));
+                }
+            }
+        }
+        out
+    }
+}
+
+impl<'a, C: Context> Engine<'a, C> {
     /// Per partial label after each position, by index: the cost of its cheapest completion
     /// to a finished label `target` takes, and how (the step's index, or at the end the
     /// finish's); the first cheapest in the scan's order, as [`Engine::ahead`] keeps it.

@@ -19,8 +19,8 @@ pub struct Step<'a, L> {
 }
 
 /// A rule that runs under `A` and holds no slots of its own.
-pub trait Under<A: Context> {
-    type Label: Clone + Ord + Debug;
+pub trait Under<A: Context>: Sync {
+    type Label: Clone + Ord + Debug + Send + Sync;
     fn name(&self) -> &str;
     /// The partial label of `node` before its first child, given `A`'s.
     fn empty(&self, node: &Node, a: &A::Label) -> Self::Label;
