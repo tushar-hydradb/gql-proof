@@ -1274,8 +1274,8 @@ impl Rule for StatementKinds {
                 let sel = s.has(SEL);
                 s.without(SEL).with(if sel { SEL_Q } else { NSEL_Q })
             }
-            // 14.12 SR 1, 27: a SELECT is judged as its replacement, which is ambient (a RETURN,
-            // or its body's CALL followed by RETURNs).
+            // A SELECT is focused as written and ambient as replaced (14.12 SR 1, 27): read
+            // strictly as both, it stands beside no other focused or ambient statement.
             "focused linear query statement" if s.has(SEL) => s.with(SEL_FOCUS),
             "focused linear query statement" | "focused linear data-modifying statement" => {
                 s.with(FOC)
@@ -1289,6 +1289,7 @@ impl Rule for StatementKinds {
             "composite query expression" => {
                 if CONJ.iter().filter(|f| s.has(**f)).count() > 1
                     || (s.has(FOC) && (s.has(AMB) || s.has(SEL_FOCUS)))
+                    || (s.has(SEL_FOCUS) && s.has(AMB))
                     || (s.has(SEL_Q) && s.has(NSEL_Q))
                 {
                     return None;
@@ -1311,6 +1312,7 @@ impl Rule for StatementKinds {
             "statement block" => {
                 if (s.has(K_CAT) && s.has(HAS_NEXT))
                     || (s.has(FOC) && (s.has(AMB) || s.has(SEL_FOCUS)))
+                    || (s.has(SEL_FOCUS) && s.has(AMB))
                     || (s.has(SEL_Q) && s.has(NSEL_Q))
                 {
                     return None;
@@ -1868,58 +1870,34 @@ impl Rule for NoElementWhen {
     }
 }
 
-/// 12.4 SR 3, 12.5 SR 2, 12.6 SR 2, 12.7 SR 2: the parent of a graph or graph type a CREATE or
-/// DROP names identifies a GQL-schema. A parent with an object name (`/ a . a`) identifies a
-/// catalog object (17.6 SR 5 b), which is no schema, so no environment meets it: refused.
+/// 4.2.5.3 with 17.6 SR 5 b and 12.4 SR 3, 12.5 SR 2, 12.6 SR 2, 12.7 SR 2, 17.2 to 17.5: a
+/// parent reference with an object name (`/ a . a`) identifies a catalog object, and no catalog
+/// object holds catalog objects (only directories and schemas hold anything), so whatever the
+/// sentence wants in that parent is met by no environment: refused everywhere (reading).
 pub struct SchemaParents;
-
-const IN_SCHEMA_PARENT: Fact = 85;
-const SCHEMA_STATEMENTS: [&str; 4] = [
-    "create graph statement",
-    "drop graph statement",
-    "create graph type statement",
-    "drop graph type statement",
-];
 
 impl Rule for SchemaParents {
     fn name(&self) -> &str {
-        "a CREATE or DROP parent is a schema"
+        "no object name in a parent reference"
     }
 
     fn cite(&self) -> &str {
-        "12.4 SR 3, 12.5 SR 2, 12.6 SR 2, 12.7 SR 2: the parent identifies a GQL-schema, which a parent with an object name never does"
+        "4.2.5.3, 17.6 SR 5 b: a parent with an object name is a catalog object, which holds nothing"
     }
 
     fn labels(&self) -> Vec<(Fact, String)> {
-        labels(&[(IN_SCHEMA_PARENT, "in-schema-parent")])
+        Vec::new()
     }
 
     fn bookkeeping(&self) -> bool {
         true
     }
 
-    fn down(&self, node: &Node, inh: &State, _pos: usize, _left: &[State], out: &mut State) {
-        let owner = node.def.split('/').next().unwrap_or(node.def);
-        // From the statement down its parent-and-name and the parent reference, groups
-        // included; into nothing else (a name's own subtree has no parent reference).
-        let on_path = SCHEMA_STATEMENTS.contains(&owner)
-            || (inh.has(IN_SCHEMA_PARENT)
-                && matches!(
-                    owner,
-                    "catalog graph parent and name"
-                        | "catalog graph type parent and name"
-                        | "catalog object parent reference"
-                ));
-        if on_path {
-            out.set(IN_SCHEMA_PARENT, true);
-        }
-    }
+    fn down(&self, _node: &Node, _inh: &State, _pos: usize, _left: &[State], _out: &mut State) {}
 
-    fn rejects(&self, node: &Node, inh: &State) -> bool {
+    fn rejects(&self, node: &Node, _inh: &State) -> bool {
         let owner = node.def.split('/').next().unwrap_or(node.def);
-        inh.has(IN_SCHEMA_PARENT)
-            && owner == "catalog object parent reference"
-            && node.items.contains(&Item::Def("object name"))
+        owner == "catalog object parent reference" && node.items.contains(&Item::Def("object name"))
     }
 
     fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {

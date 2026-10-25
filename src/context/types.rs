@@ -555,6 +555,18 @@ const CASE_FAMILY: &[&str] = &[
 /// element ALL_DIFFERENT and SAME compare.
 const CHOOSE: &[&str] = &["element variable reference"];
 
+/// The categories over a bare primary, each fixing the class of what it holds.
+const CATEGORY_SITES: &[&str] = &[
+    "numeric primary",
+    "character string primary",
+    "byte string primary",
+    "datetime primary",
+    "duration primary",
+    "list primary",
+    "path value primary",
+    "boolean predicand",
+];
+
 pub struct Types {
     /// Definitions and groups of the expression grammar, where classes flow up.
     expressions: HashSet<String>,
@@ -992,9 +1004,10 @@ impl Types {
             "datetime value expression" if classed.len() == 2 => {
                 let instant = at("datetime primary").or(at("datetime value expression"));
                 let duration = at("duration value expression").or(at("duration term"));
+                // a dynamic instant still gives a datetime (20.26 SR 1), never a dynamic value
+                // (the eighth review); read as local, which compares with fewer
                 let result = match instant {
                     Some(ZonedDatetime) => Some(ZonedDatetime),
-                    Some(Dynamic) => instant,
                     _ => Some(LocalDatetime),
                 };
                 check(
@@ -1012,14 +1025,23 @@ impl Types {
                 // The operator types the result: of a null operand, the other's kind; of two,
                 // no kind to give (reading: refused).
                 let result = if a == Some(Null) { b } else { a };
-                check(ok && result != Some(Null), result)
+                // nor a dynamic result: an operator's value is a duration, which the cure would
+                // make of it, never a value a graph or table site could take (the eighth review)
+                check(ok && !matches!(result, Some(Null | Dynamic)), result)
             }
+            // 20.28 SR 2 a: the result has the duration operand's type, whatever the number's
+            // (the eighth review: `$b * + NULL` was typed dynamic from $b, so a graph site took
+            // it). A null duration operand gives the null type, which no category wants
+            // (reading: refused, as for an addition of nulls).
             "duration term" if classed.len() == 2 => {
-                let duration = classed.iter().find(|c| c.duration()).copied();
-                let dynamic = classed.contains(&Dynamic).then_some(Dynamic);
+                let duration = at("duration factor").or(at("duration term 2"));
+                let number = at("term").or(at("factor"));
                 check(
-                    typed && duration.or(dynamic).is_some(),
-                    duration.or(dynamic),
+                    typed
+                        && fits(duration, Class::duration)
+                        && fits(number, Class::numeric)
+                        && !matches!(duration, Some(Null | Dynamic)),
+                    duration,
                 )
             }
             // 20.28 SR 3, 4.16.5: DURATION_BETWEEN takes two instants of one class.
@@ -1428,6 +1450,11 @@ impl Types {
         if matches!(own, "component type list" | "field type list" | "field types specification") {
             out.facts |= acc.facts & (fact::BOUNDED_STR | fact::IMMATERIAL);
         }
+        // A NOT NULL inside a record's field types rises too (a list's element type is a
+        // " type" node already): the checker follows nullability at the top only (reading)
+        if matches!(own, "field type list" | "field types specification" | "field type") {
+            out.facts |= acc.facts & fact::NOT_NULL;
+        }
         // The node a carried fact is for consumes it.
         if matches!(
             def,
@@ -1449,10 +1476,17 @@ impl Types {
     fn finish_node(&self, node: &Node, acc: &Label, a: &Scoped) -> Vec<Label> {
         let def = node.def;
         let mut kids = acc.kids.clone();
+        let mut vars = acc.vars.clone();
         if !self.reads(def) {
             kids.clear();
         }
-        let mut vars = acc.vars.clone();
+        // 20.21 SR 3, 20.23 SR 2, 4 and the other category sites, on the printed tree (H3): an
+        // opaque value (a graph, a table, a VALUE subquery, ...) is no value of the category, so
+        // it stops here. A deferred variable (`Ty::Slot`) still goes on, its class chosen by the
+        // site (found by the seventh review: `( GRAPH g )` was printed as a numeric primary).
+        if CATEGORY_SITES.contains(&def) && kids.iter().any(|k| *k == Some(Ty::Is(Opaque))) {
+            return vec![];
+        }
         // 20.12 SR 8: a reference is its variable's, whatever that is.
         if def == "binding variable reference" {
             return vec![Label {
@@ -1636,8 +1670,17 @@ impl Under<Scope> for Types {
             };
         }
         let class = child.and_then(|c| r.ty(partial.vars.len(), c.class));
-        out.kids
-            .push(if self.reads(node.def) { class } else { None });
+        let reads = self.reads(node.def);
+        // A deferred class this node does not read is settled on its variable as far as the
+        // sites below narrowed it, never dropped (the seventh review: `RETURN x`, x a node, was
+        // printed on the tree reading x as a path value primary).
+        if !reads && let Some(Ty::Slot(s, m)) = class {
+            match meet(out.vars[s as usize], Allow(m)) {
+                Some(e) => out.vars[s as usize] = e,
+                None => return vec![],
+            }
+        }
+        out.kids.push(if reads { class } else { None });
         if !self.case_operand_fits(node, &out.kids, out.operand) {
             return vec![];
         }

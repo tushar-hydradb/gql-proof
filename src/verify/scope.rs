@@ -1809,6 +1809,16 @@ impl<'t> Checker<'t> {
                 find(node, "element variable reference", &mut refs);
                 for r in refs {
                     self.singleton(r, env, at, rule);
+                    // 16.10 SR 3: an element variable reference names a node or edge variable.
+                    // A value variable does not, whatever its type (null, dynamic): the 4.14.4
+                    // cure replaces value expressions, and this is a bare reference (the eighth
+                    // review: `LET y = x . a FILTER y IS DIRECTED` passed)
+                    if let Some(n) = bare(r)
+                        && let Some(v) = lookup(env, false, &n)
+                        && !matches!(v.kind, Kind::Node | Kind::Edge)
+                    {
+                        self.report(r, "16.10 SR 3", format!("{n} is a {:?} variable, not an element variable", v.kind));
+                    }
                 }
                 kids(node).into_iter().for_each(|k| self.expr(k, env, at));
             }
@@ -2143,8 +2153,11 @@ fn optional(mut var: Var) -> Var {
 }
 
 /// Equality of the joined names (16.3 SR 20) needs comparable kinds.
+/// 16.3 SR 20 with 22.13 (reading, stricter): an incoming variable joins a pattern variable of
+/// its own kind only; a value column (any value type) joins nothing (the eighth review: a date
+/// column joined with a node passed).
 fn joinable(a: Kind, b: Kind) -> bool {
-    a == b || a == Kind::Value || b == Kind::Value
+    a == b && a != Kind::Value
 }
 
 /// The <binding variable> a variable definition defines, and its <value expression>.

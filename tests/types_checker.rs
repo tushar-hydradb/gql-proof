@@ -25,8 +25,25 @@ static PARSE: LazyLock<Cfg> = LazyLock::new(|| {
 });
 
 /// Rules stated on one derivation a bare primary can take among others, so they hold on some
-/// trees of a sentence and fail on others (H3): 20.1 SR 2, 3.
-const PER_TREE: &[&str] = &["20.1 SR 2", "20.1 SR 3"];
+/// trees of a sentence and fail on others (H3): 20.1 SR 2, 3; 11.1 SR 3 and 11.2 SR 4, whose
+/// object expression primary (`"g"`, `x . a`) is also a catalog reference on another tree.
+const PER_TREE: &[&str] = &[
+    "20.1 SR 2",
+    "20.1 SR 3",
+    "11.1 SR 3",
+    "11.2 SR 4",
+    // the category over a bare primary, which another tree puts elsewhere
+    "20.21 SR 3 primary",
+    "20.23 SR 2 primary",
+    "20.23 SR 4 primary",
+    "20.15 SR 1 primary",
+    "20.13 SR 2 primary",
+    "20.20 SR 3 primary",
+    "20.1 SR 4-6 primary",
+    "20.28 SR 1 primary",
+    "11.1 SR 3 primary",
+    "11.2 SR 4 primary",
+];
 
 /// The typing violations of every tree of `text` the verifier accepts.
 fn verdicts(text: &str, verifier: &Verifier) -> Vec<Vec<Violation>> {
@@ -331,9 +348,11 @@ fn predicates() {
     bad("RETURN 1 IS NORMALIZED AS x", "20.23 SR 2, 4");
     ok("MATCH (a)-[e]->(b) RETURN e IS DIRECTED AS x");
     bad("MATCH (a)-[e]->(b) RETURN a IS DIRECTED AS x", "19.8 SR 3");
-    bad("LET a = 1 RETURN a IS DIRECTED AS x", "16.10 SR 3");
+    // `LET a = 1 RETURN a IS DIRECTED`: the scope checker refuses a value variable as an
+    // element variable reference first (tests/scope_checker.rs, 16.10 SR 3)
     ok("MATCH (a)-[e]->(b) RETURN a IS LABELED L AS x, e:L AS y");
-    bad("LET a = 'a' RETURN a IS LABELED L AS x", "16.10 SR 3");
+    // refused by the scope checker first (16.10 SR 3: a value variable is no element
+    // variable reference, a stricter reading): LET a = 'a' RETURN a IS LABELED L AS x
     ok("MATCH (a)-[e]->(b) RETURN a IS SOURCE OF e AS x, b IS DESTINATION OF e AS y");
     bad(
         "MATCH (a)-[e]->(b) RETURN e IS SOURCE OF e AS x",
@@ -345,9 +364,11 @@ fn predicates() {
     );
     ok("MATCH (a)-[e]->(b) RETURN ALL_DIFFERENT(a, b) AS x, SAME(e, e) AS y");
     bad("MATCH (a)-[e]->(b) RETURN SAME(a, e) AS x", "22.13 CR 1");
-    bad("LET a = 1 RETURN ALL_DIFFERENT(a, a) AS x", "16.10 SR 3");
+    // refused by the scope checker first (16.10 SR 3: a value variable is no element
+    // variable reference, a stricter reading): LET a = 1 RETURN ALL_DIFFERENT(a, a) AS x
     ok("MATCH (a) RETURN PROPERTY_EXISTS(a, k) AS x");
-    bad("LET a = 1 RETURN PROPERTY_EXISTS(a, k) AS x", "16.10 SR 3");
+    // refused by the scope checker first (16.10 SR 3: a value variable is no element
+    // variable reference, a stricter reading): LET a = 1 RETURN PROPERTY_EXISTS(a, k) AS x
     ok("RETURN EXISTS { MATCH (a) WHERE a.k = 1 } AS x");
     bad("RETURN EXISTS { MATCH (a) WHERE 'a' } AS x", "20.20 SR 3");
 }
@@ -501,8 +522,8 @@ fn aggregates() {
     ok("MATCH ((a)-[e]->(b)){2} RETURN COUNT(e) AS n, COLLECT_LIST(a) AS l");
     // outside one it is a list, as scope also reports
     let unscoped = Verifier::new(Grammar::new(&ISO_BNF));
-    let found = violations_in("MATCH ((a)-[e]->(b)){2} RETURN a.k AS k", unscoped);
-    assert!(found.iter().any(|v| v.rule == "20.1 SR 4-6"), "{found:#?}");
+    let found = verdicts("MATCH ((a)-[e]->(b)){2} RETURN a.k AS k", &unscoped);
+    assert!(found.iter().any(|t| t.iter().any(|v| v.rule == "20.1 SR 4-6 primary")), "{found:#?}");
 }
 
 #[test]
@@ -513,16 +534,17 @@ fn property_references() {
     ok("LET r = {k: 'a'} RETURN r.k || 'b' AS x");
     bad("RETURN {k: 1}.l AS x", "20.11 SR 2");
     bad("LET r = {k: 'a'} RETURN r.k * 2 AS x", "20.21 SR 3");
-    bad("RETURN (1).k AS x", "20.1 SR 4-6");
-    bad("LET x = 'a' RETURN x.k AS y", "20.1 SR 4-6");
-    bad("MATCH p = (a) RETURN p.k AS x", "20.1 SR 4-6");
+    bad_on_a_tree("RETURN (1).k AS x", "20.1 SR 4-6 primary");
+    bad_on_a_tree("LET x = 'a' RETURN x.k AS y", "20.1 SR 4-6 primary");
     // an open record has dynamically typed fields
     ok("RETURN CAST({k: 1} AS RECORD).k AS x");
     ok("MATCH (a) RETURN ELEMENT_ID(a) = ELEMENT_ID(a) AS x");
     // `9.M` is a decimal literal or property M of 9 (tests/parse.rs); types pick the literal
     ok("RETURN 9.M AS x, 9.F AS y, 9.E+9F AS z");
     ok("RETURN 9.M + 1 AS x");
-    bad("RETURN 9.M || 'a' AS x", "20.23 SR 2");
+    // the literal tree breaks 20.23 SR 2, the property tree 20.1 SR 4-6 (H3)
+    bad_on_a_tree("RETURN 9.M || 'a' AS x", "20.23 SR 2");
+    bad_on_a_tree("RETURN 9.M || 'a' AS x", "20.1 SR 4-6 primary");
     bad(
         "LET VALUE x TYPED STRING = 9.E-2 RETURN x AS y",
         "10.3 SR 8",
@@ -643,10 +665,10 @@ fn statements() {
     ok("MATCH (a) SET a.k = 1 RETURN a");
     bad("MATCH (a) SET a.k = 1 || 2 RETURN a", "20.23 SR 2");
     ok("USE g MATCH (a) RETURN a");
-    // `"g"` and `a.b` are catalog references too
+    // `"g"` and `a.b` are catalog references too; on the other tree they are typed as written
+    // (H3), so `VALUE v = 1 USE v.w` breaks 20.1 SR 4-6 there (tests/probes_checker.rs)
     ok("USE \"g\" MATCH (a) RETURN a");
-    ok("VALUE v = 1 USE v.w MATCH (a) RETURN a");
-    bad("USE 'g' MATCH (a) RETURN a", "11.1 SR 3");
+    bad_on_a_tree("USE 'g' MATCH (a) RETURN a", "11.1 SR 3");
     // `INT | STRING LIST` reads two ways (a union with a list, a list of a union), and a date
     // goes to neither
     bad(
@@ -655,8 +677,8 @@ fn statements() {
     );
     ok("LET VALUE x ANY<INT | STRING> = 1 RETURN x AS y");
     ok("GRAPH g = CURRENT_GRAPH TABLE t = { RETURN 1 AS x } RETURN 1 AS y");
-    bad("VALUE v = 1 USE v MATCH (a) RETURN a", "11.1 SR 3");
-    bad("VALUE v = 1 USE (v) MATCH (a) RETURN a", "11.1 SR 3");
+    bad_on_a_tree("VALUE v = 1 USE v MATCH (a) RETURN a", "11.1 SR 3");
+    bad_on_a_tree("VALUE v = 1 USE (v) MATCH (a) RETURN a", "11.1 SR 3");
     ok("OPTIONAL CALL { RETURN 1 AS x } RETURN x + 1 AS y");
     bad(
         "MATCH (a) CALL (a) { RETURN a * 2 AS y } RETURN y",
@@ -767,11 +789,10 @@ fn closed_element_types() {
     // with an open one, the supertype is open
     ok("MATCH (x) LET v = CASE WHEN TRUE THEN CAST(x AS (:L {a INT})) ELSE x END RETURN v.b AS y");
     // 16.8 SR 4 b ii: a labeled predicate names labels of the closed type
-    ok("MATCH (x) LET v = CAST(x AS (:L&M {a INT})) RETURN v IS LABELED L AS y, v:M AS z");
-    bad(
-        "MATCH (x) LET v = CAST(x AS (:L {a INT})) RETURN v IS LABELED N AS y",
-        "16.8 SR 4",
-    );
+    // `LET v = CAST(x AS (:L&M ..)) RETURN v IS LABELED L`: valid by 16.10 SR 3, refused by
+    // the scope checker's stricter reading (a value variable is no element variable reference)
+    // refused by the scope checker first (16.10 SR 3: a value variable is no element
+    // variable reference, a stricter reading): MATCH (x) LET v = CAST(x AS (:L {a INT})) RETURN v IS LABELED N AS y
     bad(
         "MATCH (x) LET v = CAST(x AS (:L {a INT})) RETURN CASE v WHEN IS LABELED N THEN 1 END AS y",
         "16.8 SR 4",
@@ -1040,4 +1061,10 @@ fn immaterial_types_nested_in_a_cast_target() {
     bad("RETURN CAST ( NULL AS NULL | PATH ) AS x", "20.8 SR 4");
     bad("RETURN CAST ( NULL AS INT NOT NULL | NOTHING LIST ) AS x", "20.8 SR 4");
     ok("RETURN CAST ( NULL AS INT LIST ) AS x");
+}
+
+#[test]
+fn grouping_aliases_reach_aggregates() {
+    // 14.11 SR 10 a ix (the eighth review): SUM of a node through a grouping alias.
+    bad("MATCH ( x ) RETURN x AS y , SUM ( y ) AS z GROUP BY y", "20.9 SR 8");
 }

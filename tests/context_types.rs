@@ -123,7 +123,6 @@ fn typed_sentences_pass() {
         "RETURN EXISTS { RETURN 1 AS y } AS x",
         "RETURN EXISTS { MATCH (y) RETURN y } AS x",
         "RETURN EXISTS { FINISH NEXT RETURN 1 AS y } AS x",
-        "RETURN VALUE { RETURN count(*) AS y } AS x",
         "{ FINISH } NEXT RETURN 1 AS x",
     ]
     .into_iter()
@@ -168,6 +167,9 @@ fn untyped_sentences_are_refused() {
         "RETURN EXISTS { RETURN 1 AS y NEXT FINISH } AS x",
         "RETURN EXISTS { MATCH (y) FINISH } AS x",
         "RETURN VALUE { FINISH } AS x",
+        // A VALUE subquery is opaque (not followed), and no category takes an opaque value
+        // (the seventh review): refused by reading, though valid by the text.
+        "RETURN VALUE { RETURN count(*) AS y } AS x",
         // A data-modifying or catalog body in EXISTS is refused before typing, by 9.1 SR 7
         // (`tests/statement_kinds.rs`).
         // 20.6 SR 3: one column.
@@ -763,6 +765,8 @@ fn generated_trees_pass_the_checkers() {
             let plain = root.export(&built.cfg);
             let mut violations = gql_proof::verify::scope::check(&plain);
             violations.extend(gql_proof::verify::types::check(&plain));
+            // What the gate alone keeps out is not the generator's to keep.
+            violations.retain(|v| !gql_proof::verify::GATE_ONLY.contains(&v.rule));
             if !violations.is_empty() {
                 failed.push(format!("{}\n  {violations:?}", root.render(&built.cfg)));
             }

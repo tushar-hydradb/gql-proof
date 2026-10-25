@@ -84,6 +84,13 @@ def load(paths):
     # a flag on them withholds a tree instead of stopping a run.
     m = re.search(r"pub const GATE_ONLY: &\[&str\] = &\[(.*?)\];", open("src/verify.rs").read(), re.S)
     gate = set(re.findall(r'"([^"]+)"', m.group(1))) if m else set()
+    # A row the generator is said to keep must quote a string the run counts as a generator
+    # bug when flagged; a gate-only string is withheld silently, so it would not test that.
+    for r in rows:
+        if r["status"] in ("generated", "reading", "permission"):
+            qs = re.findall(r'"([0-9][0-9.]* SR [^"]+)"', r["check"])
+            if qs and all(q in gate for q in qs):
+                errors.append(f"{r['clause']} SR {r['sr']} {r['item']}: {r['status']}, but {', '.join(qs)} gate-only (a generator miss is not counted): status checked")
     for r in rows:
         if r["status"] == "checked":
             for q in re.findall(r'"([0-9][0-9.]* SR [^"]+)"', r["check"]):

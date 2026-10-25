@@ -358,3 +358,102 @@ fn catalog_root_is_one_thing() {
     fine("CREATE SCHEMA / a NEXT DROP GRAPH / a / b", "17.1 SR 2");
     fine("DROP GRAPH / b", "17.1 SR 2");
 }
+
+#[test]
+fn sixth_review_findings() {
+    // 17.6 SR 5 (reading): a parent with an object name, in any reference.
+    bad("CALL / a . a ( )", "17.6 SR 5");
+    bad("SESSION SET GRAPH / a . a . a", "17.6 SR 5");
+    fine("CALL / a ( )", "17.6 SR 5");
+    // H3: the object expression primary tree of `GRAPH x . a` and `VARIABLE "x"` is typed.
+    bad_on_some_parse("VALUE x ( ) = NULL RETURN COUNT ( ( GRAPH x . a ) IS NULL ) AS y", "20.11 SR 3");
+    bad_on_some_parse("SESSION SET GRAPH VARIABLE \"x\"", "11.1 SR 3");
+    // 16.8 SR 4 a ii (reading): no value given a closed graph type.
+    bad("USE CAST ( $b AS GRAPH { ( ) } NOT NULL ) MATCH ( IS a ) FINISH", "16.8 SR 4");
+    bad("VALUE x GRAPH { ( ) } = NULL FINISH", "16.8 SR 4");
+    fine("RETURN COUNT ( CAST ( NULL AS GRAPH { ( ) } LIST ) ) AS x", "16.8 SR 4");
+    fine("USE CAST ( $b AS ANY GRAPH ) MATCH ( IS a ) FINISH", "16.8 SR 4");
+    // 12.6 SR 5: a delimited name is its representative form.
+    bad("CREATE GRAPH TYPE \"a\" COPY OF / a", "12.6 SR 5");
+    // 17.2 SR 2 with H1: one name, one kind of object.
+    bad("CREATE GRAPH / a TYPED / a", "17.2 SR 2");
+    fine("CREATE GRAPH / a TYPED / b", "17.2 SR 2");
+}
+
+#[test]
+fn category_sites_on_the_printed_tree() {
+    // The seventh review: an opaque value under a category, on some tree of the text.
+    let g = "RETURN COUNT ( ( ( GRAPH CURRENT_PROPERTY_GRAPH ) ) IS NULL ) AS x";
+    bad_on_some_parse(g, "20.21 SR 3 primary");
+    bad_on_some_parse(g, "20.23 SR 2 primary");
+    bad_on_some_parse(g, "20.23 SR 4 primary");
+    bad_on_some_parse("FILTER 1 FINISH", "20.20 SR 3 primary");
+    bad_on_some_parse("RETURN COUNT ( ( 1 ) IS NULL ) AS x", "20.15 SR 1 primary");
+    bad_on_some_parse("RETURN COUNT ( ( 1 ) IS NULL ) AS x", "20.13 SR 2 primary");
+    // a numeric term or factor over a duration, on its numeric tree
+    bad_on_some_parse("RETURN 2 * DURATION 'P1Y' AS x", "20.21 SR 3 primary");
+    bad_on_some_parse("RETURN - DURATION 'P1Y' AS x", "20.21 SR 3 primary");
+    bad_on_some_parse("RETURN COUNT ( ( 1 ) IS NULL ) AS x", "20.1 SR 4-6 primary");
+    // a literal of the category passes on its own tree
+    fine("RETURN 1 + 1 AS x", "20.21 SR 3 primary");
+}
+
+#[test]
+fn eighth_review_findings() {
+    // 11.1 SR 3 a ii: `$b * + NULL` as a duration term has the null type, no material graph type.
+    bad_on_some_parse("SESSION SET GRAPH ( $b * + NULL )", "11.1 SR 3 primary");
+    bad_on_some_parse("RETURN GRAPH MAX ( $b ) AS x", "11.1 SR 3 primary");
+    bad_on_some_parse("RETURN TABLE ( 1 + 1 ) AS x", "11.2 SR 4 primary");
+    // ID076: no category takes ELEMENT_ID.
+    bad_on_some_parse("MATCH ( x ) WHERE ELEMENT_ID ( x ) RETURN x", "20.20 SR 3 primary");
+    // 20.28 SR 1 a on the duration addition tree.
+    bad_on_some_parse("RETURN 1 + 1 AS x", "20.28 SR 1 primary");
+    fine("RETURN DURATION 'P1Y' + DURATION 'P1Y' AS x", "20.28 SR 1 primary");
+}
+
+#[test]
+fn ninth_review_findings() {
+    // a dynamic or null operand's type kept through a sign and a string function (22.19 SR 2)
+    bad("MATCH ( x ) RETURN [ - x . a , 1 ] AS y", "22.19 SR 2");
+    bad("MATCH ( x ) RETURN [ UPPER ( x . a ) , 'a' ] AS y", "22.19 SR 2");
+    // the null type at a property site
+    bad("INSERT ( { a : - NULL } )", "16.5 SR 6");
+    // nested NOT NULL
+    bad("VALUE x INT NOT NULL LIST = [ NULL ] FINISH", "10.3 SR 8");
+    bad("RETURN CAST ( [ 1 ] AS ANY NOT NULL LIST ) AS x", "20.8 SR 11 d");
+    // ELEMENT_ID only as an item
+    bad("MATCH ( x ) RETURN COALESCE ( ELEMENT_ID ( x ) , 1 ) AS y", "20.10 SR 3");
+    fine("MATCH ( x ) RETURN ELEMENT_ID ( x ) AS y", "20.10 SR 3");
+    // ID004: no cast of [ ], and no [ ] in a combination
+    bad("RETURN CAST ( [ ] AS INT LIST ) AS x", "20.8 SR 11 d");
+    bad("FILTER [ [ ] ] IS NULL FINISH", "22.19 SR 2");
+    // 22.1 SR 5 d i: a parameter an earlier SESSION SET set has that type
+    bad_on_some_parse("SESSION SET VALUE $b = TRUE SESSION SET GRAPH $c = VARIABLE $b", "11.1 SR 3");
+}
+
+#[test]
+fn tenth_review_findings() {
+    // 9.2 SR 5: a SELECT is focused as written, ambient as replaced: beside neither.
+    bad("INSERT ( ) NEXT SELECT CURRENT_DATE AS x", "9.2 SR 5");
+    bad("SELECT CURRENT_DATE AS x NEXT INSERT ( )", "9.2 SR 5");
+    fine("SELECT CURRENT_DATE AS x NEXT SELECT x AS y", "9.2 SR 5");
+}
+
+#[test]
+fn eleventh_review_findings() {
+    // 17.1: a root schema and a `..` step
+    bad("SESSION SET SCHEMA / SESSION SET SCHEMA .. / a", "17.1 SR 2");
+    // one object per name: bare names and directories
+    bad_on_some_parse("CREATE GRAPH / ab TYPED / a AS COPY OF a", "17.2 SR 2");
+    bad("SESSION SET SCHEMA / a SESSION SET SCHEMA / a / b", "17.2 SR 2");
+    // 12.6 SR 7 b iv: a LIKE source with a constraining graph type
+    bad("CREATE GRAPH TYPE / ab LIKE CAST ( NULL AS PROPERTY GRAPH )", "12.6 SR 7");
+    fine("CREATE GRAPH TYPE / ab LIKE CURRENT_PROPERTY_GRAPH", "12.6 SR 7");
+    // 20.8 SR 5: an operand holding NULL
+    bad("RETURN CAST ( NULL AS BOOL NOT NULL ) AS x", "20.8 SR 5");
+    bad_on_some_parse("RETURN CAST ( 1 IS NULL AS BOOL NOT NULL ) AS x", "20.8 SR 5 contains");
+    fine("RETURN CAST ( CAST ( CURRENT_DATE AS DATE NOT NULL ) AS DATE NOT NULL ) AS x", "20.8 SR 5 contains");
+    // 16.6 SR 8 (reading): no subquery in a selective path pattern
+    bad("MATCH ANY ( { a : EXISTS { <- } } ) FINISH", "16.6 SR 8");
+    fine("MATCH ( { a : EXISTS { <- } } ) FINISH", "16.6 SR 8");
+}

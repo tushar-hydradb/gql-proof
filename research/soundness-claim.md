@@ -30,9 +30,14 @@ property of every printed sentence, by the gate in step 1
   is spelled like another name in S (the `same text` rows of 12.2 SR 5, 12.4
   SR 6, 12.6 SR 5, reported by the checker). a parent reference that cannot
   identify a schema in any environment (one holding an object name, 4.2.5.3) is
-  not left to H1: the `object name` rows of 12.5 SR 2 and 12.7 SR 2 are
-  checked; nor is a root used both as a schema and as a directory (17.1 SR 2 a
-  i against SR 5, checked). H1 is one environment, and every syntax rule is
+  not left to H1: no parent reference holds an object name (17.6 SR 5; a
+  reading, the stricter side: the text lets a primary catalog object hold
+  objects, 4.2.5.3, but S never relies on one doing so), no root is used both as a
+  schema and as a directory, absolute or `..` (17.1 SR 2 a i against SR 5,
+  6), no name is used for two kinds of object, bare names in graph and table
+  expressions and directory names included (17.2 SR 2, a schema holds one
+  object per name, a directory one schema or directory per name), and no
+  LIKE source may have an open type (12.6 SR 7 b iv), all checked. H1 is one environment, and every syntax rule is
   judged against it before execution (`DROP GRAPH a NEXT DROP GRAPH a` needs
   graph a at both, as the text applies syntax rules to the whole program
   first). a parameter has the type the request gives it; one used at two
@@ -52,9 +57,16 @@ property of every printed sentence, by the gate in step 1
   checker lets such an operand meet the requirement on that assumption; rows
   resting on it: 20.1 SR 2-6, 11.1 SR 3, 20.20 SR 3, 20.21 SR 3, 20.23 SR 2, 4,
   16.5 SR 6 c and 13.3 SR 3 a iv, b iii 2 (a dynamic property value inserted or
-  set), and the dynamic element of a path constructor (`PATH [ x . a ]`). a
-  combination (22.19 SR 2: CASE, COALESCE, NULLIF, a list constructor) is not
-  cured: the checker refuses a dynamic input there.
+  set), 10.3 SR 8, 7.1 SR 6, 10.1 SR 8 and 10.2 SR 8 (a dynamic initializer
+  assigned to a declared type), and the dynamic element of a path constructor
+  (`PATH [ x . a ]`). a combination (22.19 SR 2: CASE, COALESCE, NULLIF, a list
+  constructor) is not cured: the checker refuses an input it types dynamic
+  (a sign, ABS, MOD, LEFT, RIGHT, TRIM, UPPER, LOWER, NORMALIZE, arithmetic
+  over a dynamic operand, ELEMENTS, an empty list and an unwritten list
+  element type keep a dynamic type dynamic); an input of unknown type, an
+  environment's (H1), passes. the
+  cure never makes an operator's value a graph or a table: an operator, a
+  function or a literal at a graph or table expression is refused on its tree
   the generator could avoid every dynamic operand at a large cost in coverage;
   this is the hypothesis that it need not. without the cure these sentences
   are invalid. the cure can turn an operand into a run-time exception when no
@@ -63,9 +75,13 @@ property of every printed sentence, by the gate in step 1
   sentence is valid in the weak sense that it raises no syntax error
 - **H2''', the claim's features.** a sentence that uses a feature-dependent
   form holds for an engine claiming that feature (the conformance rules of the
-  claim keep the others out). one syntax rule turns on a feature: 18.2 SR 9 a
+  claim keep the others out). syntax rules that turn on a feature: 18.2 SR 9 a
   (an omitted key label set needs GG22); the sets that print graph type bodies
-  claim every feature, and a claim with GG23 but not GG22 is outside the theorem
+  claim every feature, and a claim with GG23 but not GG22 is outside the
+  theorem. 22.18 SR 2 (GV65), 22.18 SR 9 c (GV66, GV67) and 20.17 SR 3 b
+  (GV72) turn on features too; the checker reads each as without the feature
+  (static combination, no empty list typed NOTHING), the stricter side, so
+  they need nothing of the claim
 - **H2'', ID086.** the sets are printed for an implementation whose default
   match mode is the one passed as `--match-mode-default` (the turbolay and
   whole grammar sets: DIFFERENT EDGES); 16.4 SR 14 d and 16.4 SR 12 read it
@@ -78,10 +94,8 @@ property of every printed sentence, by the gate in step 1
   `LIST < GRAPH NOT NULL | NOTHING >` and breaks 18.9 SR 88 as the union of
   `GRAPH NOT NULL` and `NOTHING LIST`; the text has no rule choosing. a
   stronger claim (every tree of S valid) needs every tree checked, not built.
-  one known exception in the checker: in a graph or binding table expression it
-  types `x . a` as a catalog reference even where the tree holds a property
-  reference; both are dynamic or opaque there and pass the same rules, so no
-  verdict changes
+  the checkers judge the tree as printed, `GRAPH x . a` and `VARIABLE "x"`
+  included (the sixth review found them skipped)
 
 ## the trusted base (what the argument assumes correct, and how it is tested)
 
@@ -136,7 +150,8 @@ property of every printed sentence, by the gate in step 1
 4. **what the checker does not report** is one of:
    - `grammar`: no derivation can break it (the row says why)
    - `hypothesis`: holds under H1 (an environment object, or a parameter's
-     type, which is the request's) or H2' (the 4.14.4 cure)
+     type, which is the request's), H2 (a named implementation choice, as
+     IW014 for 6 SR 4) or H2' (the 4.14.4 cure)
    - `n/a`: a definition (no `shall`), or an implementation rule, H2
    - `permission`: a reading that lets in more than the text, so it holds
      under H4 and only there. the checker reports it under that reading;
@@ -161,6 +176,10 @@ checker and the table
   has a closed row)
 - a cover run's `withheld` line: the targets lost to the gate, which are lost
   coverage, never lost soundness
+- not a check: `gql-proof cover FILE` verifies sentences from elsewhere with
+  the ISO grammar and the rendering only (no syntax rules, scope or types),
+  and accepts a sentence when any tree passes; it says nothing about this
+  theorem
 
 ## the readings
 
@@ -177,8 +196,13 @@ review moved nine rows from `reading` to `permission`)
 - IL001-IL003, IL011, IL013, IL015: the implementation's minimum label, key
   label and property counts at most what S uses, and the maxima at least: S
   declares node and edge types with no label at all (`( )`), so the minima are
-  0 (18.2 SR 10, 12; 18.3 SR 11, 13), and uses one or two labels and properties,
-  lengths and precisions under 256
+  0 (18.2 SR 10, 12; 18.3 SR 11, 13), and uses one or two labels and properties.
+  lengths and precisions are spelled from the leaf digits: S writes string and
+  byte lengths up to 888 (18.9 SR 25 guarantees 65,534), exact precisions
+  up to 8, an approximate precision up to 88 bits (FLOAT128 has 113), and an
+  approximate exponent scale of at most 8, FLOAT32's (`tree.rs` settles it;
+  the sixth review found `FLOAT ( 8 , 88 )`). the implementation's maximum
+  lengths and precisions are at least these
 - exact types of 18 decimal digits, an approximate literal type with the range
   of a 32 bit float (21.2 SR 18, 20; the checker reports past that)
 - IW014: names are confusable only as UTS #39's ASCII confusables are (`rn`
@@ -187,6 +211,20 @@ review moved nine rows from `reading` to `permission`)
 - ID061: SESSION_USER's character string type is assignable to every
   character string type S declares for it; S declares no length-bounded one
   (10.3 SR 8 reading, at any depth of the declared type)
+- IE001: an external object reference (`COPY OF urn:example:graph`)
+  identifies a graph or graph type of the kind the statement wants (17.8 SR
+  4, 5); an external object is no catalog object, so H1 does not cover it
+- ID004 (without GV72): an empty list's element type is the implementation's,
+  one choice for every sentence, so nothing may rest on it: the checker types
+  `[ ]`'s element as the open dynamic union and refuses a cast of `[ ]` and
+  `[ ]` in a combination (the ninth review found casts to lists of GRAPH NOT
+  NULL and of ANY NOT NULL, each holding only for its own choice)
+- ID005: ELEMENTS' element type is the implementation's; the checker types it
+  the open dynamic union, so 22.19 SR 2 refuses it in a combination
+- ID076: ELEMENT_ID's type is whatever the implementation defines; the
+  checker refuses it anywhere but directly as a RETURN or SELECT item or an
+  IS NULL operand, where any type is taken, or in an equality of two of them
+  (20.10 SR 3 gives its type an equality)
 - IA014: a NULL whose context fixes no type does not raise a syntax error (21.2
   SR 67 b); S holds many (`NULL + NULL`)
 - ID022, the default collation: two names compare equal only when their
@@ -198,9 +236,10 @@ review moved nine rows from `reading` to `permission`)
   absolute paths of a few directories and `..` steps)
 - IA023: the line feed ends a line (comments, byte string separators)
 - IV023: truncating whitespace is the space
-- the supported property value types include the predefined scalar types S
-  casts a property to (20.8 SR 10); no reference value type is assumed
-  supported
+- the supported property value types include the predefined types S
+  inserts, sets, assigns to a property value type or casts a property to
+  (16.5 SR 6 c, 13.3 SR 3, 10.3 SR 8, 20.8 SR 10): the predefined scalars,
+  DATE among them; no reference value type is assumed supported
 - `$$` substitution (22.1 SR 3): the substituted text decides validity (17.7
   SR 4), and no engine is told it, so no hypothesis carries it: the generator
   prints no `$$` (`refine::NoSubstitution`), the checker reports one
@@ -226,6 +265,30 @@ each line names its audit rows (status `permission`)
   literally, demands an undirected shape of every edge type pattern written
   with no edge kind, `( ) -[ { } ]-> ( )` included; it is read as applying
   only when UNDIRECTED is written. row: 18.3 SR 4 b
+- **the minimum node count counts touching node patterns.** 16.7 SR 15 c i
+  takes 1 off when two successive element patterns "contained in" a path
+  concatenation are node patterns; read literally, through parentheses and
+  quantifiers, `( ) <- *` (after SR 14 adds `( () <-[ ]- () ) {0,}`) counts 0
+  and breaks SR 16, and `( () <- () ) ? ( () <- () ) ?` counts below 0, a
+  defect. it is read as two node patterns touching at the same level of the
+  path term. rows: 16.7 SR 16, 16.7 SR 20
+- **an inline procedure's kind is read through its specification.** 12.8,
+  13.6 and 14.5 SR 2 ask the nested procedure specification to *immediately*
+  contain a catalog-modifying, data-modifying or query specification; by
+  5.3.2.1 it immediately contains only a <procedure specification>, so read
+  literally no inline CALL is ever valid (and with it every OPTIONAL and LET,
+  rewritten into one by 14.4 SR 4 and cor 1's 14.7 SR 12). read as one level
+  further down. rows: 12.8 SR 2, 13.6 SR 2, 14.5 SR 2
+- **a statement sequence contains what its elements contain.** 13.1 SR 5:
+  "STMSEQ shall contain at least one <simple data-modifying statement>" is
+  read with 5.3.2.1's containment, so a nested `{ INSERT ( ) }` standing alone
+  holds; read as "has one as an element" it does not. row: 13.1 SR 5
+- **an omitted fixed length is CHAR's and BINARY's.** 18.9 SR 11 makes a
+  fixed length of 1 implicit whenever one is omitted; read literally that
+  bounds STRING and VARCHAR too, and no declared string type would be known
+  to take a longer value (10.3 SR 8). it is read as applying to the forms
+  whose production holds a <fixed length>, CHAR and BINARY, which the checker
+  then refuses as declared types. row: 10.3 SR 8 b i 1
 - **a supported string supertype exists.** CASE, COALESCE and list
   constructors over character or byte strings need a supported string type
   that is a supertype of every input; S's strings are short and every

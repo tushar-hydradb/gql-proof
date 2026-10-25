@@ -265,6 +265,14 @@ fn settle_values(
             changed |= raise(cfg, holder, least, spell, rng);
         }
     }
+    // H2 asks the implementation for an exponent scale at least what S writes (18.9 SR 42, 43,
+    // IL011): kept to FLOAT32's 8, which every engine with FLOAT32 has (the sixth review found
+    // FLOAT ( 8 , 88 ), beyond FLOAT256).
+    if cfg.base(nt) == "approximate numeric type"
+        && let Some(holder) = through_groups(cfg, root, "scale")
+    {
+        changed |= lower(cfg, holder, 8, spell);
+    }
     for child in &mut root.children {
         changed |= settle_values(cfg, child, spell, rng);
     }
@@ -293,6 +301,36 @@ fn raise(
     }
     let Sym::Nt(nt) = int.sym else { return false };
     match spell(nt, &raised_bound(&text, least, rng)) {
+        Some(spelt) => {
+            *int = spelt;
+            true
+        }
+        None => false,
+    }
+}
+
+/// Re-spells the integer under `holder` to `most` in its own radix, if it is above.
+fn lower(
+    cfg: &Cfg,
+    holder: &mut Node,
+    most: u64,
+    spell: &impl Fn(NtId, &str) -> Option<Node>,
+) -> bool {
+    let Some(int) = integer_in(cfg, holder) else {
+        return false;
+    };
+    let text = int.render(cfg);
+    if crate::verify::unsigned_integer_value(&text) <= most {
+        return false;
+    }
+    let Sym::Nt(nt) = int.sym else { return false };
+    let lowered = match text.get(..2) {
+        Some("0x" | "0X") => format!("{}{most:x}", &text[..2]),
+        Some("0o" | "0O") => format!("{}{most:o}", &text[..2]),
+        Some("0b" | "0B") => format!("{}{most:b}", &text[..2]),
+        _ => most.to_string(),
+    };
+    match spell(nt, &lowered) {
         Some(spelt) => {
             *int = spelt;
             true
@@ -377,12 +415,29 @@ pub fn raised_bound(text: &str, lower: u64, rng: &mut ChaCha8Rng) -> String {
 /// a created name is re-spelled `ab`, `abb`, ... to the first spelling no other object name of
 /// the tree has, under its own definition.
 fn fresh_created_names(cfg: &Cfg, root: &mut Node, spell: &impl Fn(NtId, &str) -> Option<Node>) -> bool {
-    const NAMES: [&str; 5] = ["graph name", "graph type name", "binding table name", "procedure name", "schema name"];
+    const NAMES: [&str; 6] = [
+        "graph name",
+        "graph type name",
+        "binding table name",
+        "procedure name",
+        "schema name",
+        "object name or binding variable",
+    ];
+    // The representative form (21.3 SR 3, 4): a delimited name without its quotes, doubled
+    // quotes undoubled, so `"a"` and `a` are one name.
+    fn rep(s: &str) -> String {
+        match s.chars().next() {
+            Some(q @ ('"' | '`')) if s.len() >= 2 && s.ends_with(q) => {
+                s[1..s.len() - 1].replace(&format!("{q}{q}"), &q.to_string())
+            }
+            _ => s.to_string(),
+        }
+    }
     fn texts(cfg: &Cfg, n: &Node, out: &mut Vec<String>) {
         if let Sym::Nt(nt) = n.sym
             && NAMES.contains(&cfg.base(nt))
         {
-            out.push(n.render(cfg));
+            out.push(rep(&n.render(cfg)));
         }
         for c in &n.children {
             texts(cfg, c, out);
@@ -436,11 +491,11 @@ fn fresh_created_names(cfg: &Cfg, root: &mut Node, spell: &impl Fn(NtId, &str) -
                     } else {
                         format!("{old}{extra}")
                     };
-                    if !taken.contains(&fresh)
+                    if !taken.contains(&rep(&fresh))
                         && let Some(spelt) = spell(mnt, &fresh)
                     {
                         *m = spelt;
-                        taken.push(fresh);
+                        taken.push(rep(&fresh));
                         changed = true;
                         break;
                     }

@@ -4,11 +4,13 @@
 //! Every expression gets a declared type from its own operator and its operands, never from the
 //! category a parse put it in: the grammar derives a bare primary, `(e)`, `f(..)`, CASE and CAST
 //! as every typed category (a <numeric primary> and a <character string primary> alike), so a
-//! rule like 20.21 SR 3 ("a numeric primary shall be numeric") would hold on one tree of a
-//! sentence and fail on another. A category constrains its operand only where an operator or a
-//! function of that category is present, and then an operator accepts what any of its derivations
-//! accepts: `a + b` is 20.21, Table 1 (4.16.6.4) or 20.28 by the operand types. Slots with one
-//! derivation (a <search condition>, CHAR_LENGTH's argument) check their category directly.
+//! rule like 20.21 SR 3 ("a numeric primary shall be numeric") holds on one tree of a sentence
+//! and fails on another. An operator accepts what any of its derivations accepts (`a + b` is
+//! 20.21, Table 1 (4.16.6.4) or 20.28 by the operand types), and, the printed tree being what
+//! is judged (H3), each category over a bare primary and each numeric node checks its operand
+//! on the tree as well, under its own rule string (`20.21 SR 3 primary` and the like), so the
+//! tree-independent reports stay apart from the per-tree ones. Slots with one derivation (a
+//! <search condition>, CHAR_LENGTH's argument) check their category directly.
 //!
 //! Variables carry the types they are bound to through the statements (16.3, 14.7, 14.8, 14.10,
 //! 9.2, 15.1); a name nothing binds has the unknown type and scoping is `scope`'s concern. The
@@ -58,14 +60,14 @@
 //!   derivation of the same text always escapes, so it is no violation
 //! - texts with a second derivation that always types are read that way: `9.M`, `9.F`, `9.E+3`
 //!   are numeric literals, not properties of 9 (20.1 SR 4-6 rules those out); `"g"` and `a.b` in
-//!   a graph or binding table expression are catalog references, not values (11.1, 11.2)
+//!   a graph or binding table expression are typed as the tree holds them (H3)
 //!
 //! Unmodelled, typed unknown and checked for nothing about themselves:
 //! - dynamic parameters (`$x`): their types come from the request (20.4 SR 2, 22.1)
-//! - catalog-modifying statements, session commands, a <select statement> with a body, and the
-//!   result of a named procedure call
-//! - ELEMENT_ID (ID076), ELEMENTS' element type (ID005), the element type of an empty list
-//!   (ID004), and the graph types a catalog gives
+//! - catalog-modifying statements and session commands beyond their expressions, a <select
+//!   statement> with a body, and the result of a named procedure call
+//! - ELEMENT_ID (ID076), the element type of an empty list (ID004), and the graph types a
+//!   catalog gives
 //! - lengths, precisions and maximum cardinalities of string, number and list types (so a
 //!   subtype of a union's component is read by kind, 20.8 SR 9)
 //!
@@ -765,6 +767,7 @@ pub fn check(tree: &Plain) -> Vec<Violation> {
     let mut checker = Checker {
         parent: HashMap::new(),
         out: Vec::new(),
+        params: HashMap::new(),
     };
     checker.parents(tree);
     checker.root(tree);
@@ -775,6 +778,9 @@ pub fn check(tree: &Plain) -> Vec<Violation> {
 struct Checker<'t> {
     parent: HashMap<*const Plain, &'t Plain>,
     out: Vec<Violation>,
+    /// The session parameters earlier SESSION SET commands of the program set, with their
+    /// declared types (22.1 SR 5 d i).
+    params: HashMap<String, Ty>,
 }
 
 impl<'t> Checker<'t> {
@@ -932,7 +938,30 @@ impl<'t> Checker<'t> {
                 }
             }
             Some("session activity") => {
-                kids(node).into_iter().for_each(|k| self.root(k));
+                // in order: a later command sees the parameters earlier ones set (22.1 SR 5 d i)
+                for k in kids(node) {
+                    self.root(k);
+                    let mut clauses = Vec::new();
+                    find_any(
+                        k,
+                        &[
+                            "session set graph parameter clause",
+                            "session set binding table parameter clause",
+                            "session set value parameter clause",
+                        ],
+                        &mut clauses,
+                    );
+                    for c in clauses {
+                        let Some(sps) = first(c, "session parameter specification") else {
+                            continue;
+                        };
+                        let pn = first(sps, "parameter name").map_or_else(|| sps.text(), ident);
+                        if !self.params.contains_key(&pn) {
+                            let (pvt, _) = self.parameter_value_type(c);
+                            self.params.insert(pn, pvt.ty);
+                        }
+                    }
+                }
                 self.session_parameters(node);
             }
             Some("session set command" | "session set parameter clause") => {
@@ -1047,6 +1076,7 @@ impl<'t> Checker<'t> {
                             let mut quiet = Checker {
                                 parent: HashMap::new(),
                                 out: Vec::new(),
+                                params: self.params.clone(),
                             };
                             quiet.ty(ve, &env)
                         }
@@ -1150,7 +1180,7 @@ impl<'t> Checker<'t> {
                             Some(otgi) => self.graph_initializer(otgi, &env, "10.1 SR 8"),
                             None => self.walk(def, &env),
                         }
-                        own(def, "binding variable").map(|bv| (bv.text(), Ty::Graph))
+                        own(def, "binding variable").map(|bv| (ident(bv), Ty::Graph))
                     }
                     Some("binding table variable definition") => {
                         match own(def, "opt typed binding table initializer") {
@@ -1161,7 +1191,7 @@ impl<'t> Checker<'t> {
                             }
                             _ => self.walk(def, &env),
                         }
-                        own(def, "binding variable").map(|bv| (bv.text(), Ty::Table))
+                        own(def, "binding variable").map(|bv| (ident(bv), Ty::Table))
                     }
                     _ => self.value_definition(def, &env),
                 };
@@ -1392,7 +1422,7 @@ impl<'t> Checker<'t> {
             Some(yc) => {
                 let mut refs = Vec::new();
                 find(yc, "binding variable reference", &mut refs);
-                refs.into_iter().map(Plain::text).collect()
+                refs.into_iter().map(ident).collect()
             }
             None => vars.keys().cloned().collect(),
         };
@@ -1447,7 +1477,7 @@ impl<'t> Checker<'t> {
         if let Some(inner) = own(def, "value variable definition") {
             return self.value_definition(inner, env);
         }
-        let n = own(def, "binding variable")?.text();
+        let n = ident(own(def, "binding variable")?);
         if let Some(ve) = own(def, "value expression") {
             return Some((n, self.ty(ve, env)));
         }
@@ -1470,6 +1500,13 @@ impl<'t> Checker<'t> {
         // SR 8 b i 1, by 4.16.x a type is assignable when every value of it is: a character or
         // byte string type bounded in length (CHAR, BINARY, any written length) is not known
         // to take every value of the initializer, whose length is not followed (reading).
+        if nested_not_null(vt) {
+            self.report(
+                def,
+                "10.3 SR 8",
+                "(reading) a NOT NULL inside a list or record type is not followed".into(),
+            );
+        }
         if bounded_string(vt) {
             self.report(
                 def,
@@ -1514,13 +1551,13 @@ impl<'t> Checker<'t> {
             None => Ty::Any,
         };
         if let Some(bv) = own(item, "for item alias").and_then(|a| own(a, "binding variable")) {
-            scope.table.insert(bv.text(), element);
+            scope.table.insert(ident(bv), element);
         }
         if let Some(bv) =
             own(fs, "for ordinality or offset").and_then(|f| own(f, "binding variable"))
         {
             // SR 10 c i 3 (ID057, ID058)
-            scope.table.insert(bv.text(), Ty::Exact { int: true });
+            scope.table.insert(ident(bv), Ty::Exact { int: true });
         }
         scope
     }
@@ -1538,7 +1575,7 @@ impl<'t> Checker<'t> {
                         let mut refs = Vec::new();
                         find(vsc, "binding variable reference", &mut refs);
                         refs.iter()
-                            .filter_map(|r| incoming.get(&r.text()).map(|t| (r.text(), t.clone())))
+                            .filter_map(|r| incoming.get(&ident(r)).map(|t| (ident(r), t.clone())))
                             .collect()
                     }
                     None => incoming.clone(),
@@ -1673,8 +1710,8 @@ impl<'t> Checker<'t> {
                 Some("insert edge pattern") => Ty::Edge(Elem::Open),
                 _ => Ty::Node(Elem::Open),
             };
-            if !incoming.contains_key(&bv.text()) {
-                scope.table.insert(bv.text(), t);
+            if !incoming.contains_key(&ident(bv)) {
+                scope.table.insert(ident(bv), t);
             }
         }
         scope
@@ -1722,7 +1759,7 @@ impl<'t> Checker<'t> {
             let t = self.ty(ave, &env);
             let alias = own(item, "select item alias")
                 .and_then(|a| own(a, "identifier"))
-                .map(Plain::text);
+                .map(ident);
             if let Some(n) = alias.or_else(|| bare(ave)) {
                 cols.insert(n, t);
             }
@@ -1741,18 +1778,50 @@ impl<'t> Checker<'t> {
             if own(body, "asterisk").is_some() {
                 cols = scope.table.clone();
             }
-            for item in own(body, "return item list")
+            let items: Vec<&'t Plain> = own(body, "return item list")
                 .map(|l| owns(l, "return item"))
-                .unwrap_or_default()
-            {
+                .unwrap_or_default();
+            let name_of = |item: &'t Plain, ave: &'t Plain| {
+                own(item, "return item alias")
+                    .and_then(|a| own(a, "identifier"))
+                    .map(ident)
+                    .or_else(|| bare(ave))
+            };
+            // 14.11 SR 10 a ix: with GROUP BY, an aggregating item sees the grouping items'
+            // aliases (the eighth review: `RETURN x AS y, SUM(y) AS z GROUP BY y` typed y
+            // unknown). The grouping items are typed first, in the incoming record.
+            let mut grouping_names: Vec<String> = Vec::new();
+            if let Some(gbc) = own(body, "group by clause") {
+                let mut refs = Vec::new();
+                find(gbc, "binding variable reference", &mut refs);
+                grouping_names = refs.into_iter().map(ident).collect();
+            }
+            let mut typed: Vec<Option<Ty>> = vec![None; items.len()];
+            let mut agg_vars = incoming.clone();
+            for (i, item) in items.iter().enumerate() {
                 let Some(ave) = own(item, "aggregating value expression") else {
                     continue;
                 };
-                let t = self.ty(ave, &env);
-                let alias = own(item, "return item alias")
-                    .and_then(|a| own(a, "identifier"))
-                    .map(Plain::text);
-                if let Some(n) = alias.or_else(|| bare(ave)) {
+                if let Some(n) = name_of(item, ave)
+                    && grouping_names.contains(&n)
+                    && !contains(ave, "aggregate function")
+                {
+                    let t = self.ty(ave, &env);
+                    agg_vars.insert(n, t.clone());
+                    typed[i] = Some(t);
+                }
+            }
+            let agg_env = Env::new(agg_vars);
+            for (i, item) in items.iter().enumerate() {
+                let Some(ave) = own(item, "aggregating value expression") else {
+                    continue;
+                };
+                let t = match typed[i].take() {
+                    Some(t) => t,
+                    None if !grouping_names.is_empty() => self.ty(ave, &agg_env),
+                    None => self.ty(ave, &env),
+                };
+                if let Some(n) = name_of(item, ave) {
                     cols.insert(n, t);
                 }
             }
@@ -1762,7 +1831,7 @@ impl<'t> Checker<'t> {
                 // grouping element) and aggregating
                 let mut refs = Vec::new();
                 find(gbc, "binding variable reference", &mut refs);
-                let grouping: Vec<String> = refs.into_iter().map(Plain::text).collect();
+                let grouping: Vec<String> = refs.into_iter().map(ident).collect();
                 for item in own(body, "return item list")
                     .map(|l| owns(l, "return item"))
                     .unwrap_or_default()
@@ -1880,13 +1949,20 @@ impl<'t> Checker<'t> {
             "general value specification" => {
                 if k.iter().any(|c| keyword(c, "SESSION_USER")) {
                     Ty::Char
+                } else if let Some(dps) = own(node, "dynamic parameter specification") {
+                    self.ty(dps, env)
                 } else {
                     Ty::Any
                 }
             }
-            "dynamic parameter specification" => Ty::Any,
+            // 22.1 SR 5 d i: a parameter an earlier SESSION SET of the program set has that
+            // command's type (the ninth review); otherwise the request's (H4)
+            "dynamic parameter specification" => {
+                let name = first(node, "parameter name").map_or_else(|| node.text(), ident);
+                self.params.get(&name).cloned().unwrap_or(Ty::Any)
+            }
             // 20.12 SR 9
-            "binding variable reference" => match env.vars.get(&node.text()) {
+            "binding variable reference" => match env.vars.get(&ident(node)) {
                 Some(Ty::List { elem, group: true }) if env.agg => (**elem).clone(),
                 Some(t) => t.clone(),
                 None => Ty::Any,
@@ -1908,11 +1984,31 @@ impl<'t> Checker<'t> {
             | "duration term"
                 if k.len() == 3 =>
             {
-                self.arithmetic(node, k[0], k[1], k[2], env)
+                let (t, l, r) = self.arithmetic(node, k[0], k[1], k[2], env);
+                // On this tree (H3): a numeric node's operands are numbers (the seventh review:
+                // `x * INTERVAL '1' DAY` read as a numeric <term> passed by the (N, D) row), a
+                // duration addition's are durations (20.28 SR 1 a, the eighth review)
+                match n {
+                    "numeric value expression" | "term" => {
+                        self.expect(node, &t, &[Class::Numeric], "20.21 SR 3 primary");
+                    }
+                    "duration addition and subtraction" => {
+                        self.expect(k[0], &l, &[Class::Duration], "20.28 SR 1 primary");
+                        self.expect(k[2], &r, &[Class::Duration], "20.28 SR 1 primary");
+                    }
+                    _ => {}
+                }
+                t
             }
             "factor" | "duration factor" if k.len() == 2 => {
                 let t = self.ty(k[1], env);
+                if n == "factor" {
+                    self.expect(node, &t, &[Class::Numeric], "20.21 SR 3 primary");
+                }
                 match t {
+                    // 20.21 SR 2: the primary's type, a dynamic or null one kept (the ninth
+                    // review: `- x . a` was typed unknown, so 22.19 SR 2 missed it)
+                    Ty::Dyn(_) | Ty::Null => t,
                     _ if t.wild() => Ty::Any,
                     Ty::Duration(_) => t,
                     _ if t.class() == Some(Class::Numeric) => t,
@@ -2031,6 +2127,44 @@ impl<'t> Checker<'t> {
                 if let Some(evr) = own(node, "element variable reference") {
                     self.element(evr, env, ELEMENT, "16.10 SR 3");
                 }
+                // ID076 (reading, H2): its type is the implementation's, so it is taken only
+                // where any type is, a RETURN or SELECT item (the ninth review:
+                // `COALESCE ( ELEMENT_ID ( x ) , 1 )` passed)
+                // also as an IS NULL operand (any type), and in an equality of two of them
+                // (20.10 SR 3 gives the type an equality)
+                let mut at: &Plain = node;
+                let mut item = false;
+                while let Some(&p) = self.parent.get(&(at as *const Plain)) {
+                    match name(p) {
+                        Some("return item" | "select item" | "null predicate") => {
+                            item = true;
+                            break;
+                        }
+                        Some("comparison predicate part 2" | "comparison predicate") => {
+                            let cp = if name(p) == Some("comparison predicate") {
+                                Some(p)
+                            } else {
+                                self.parent.get(&(p as *const Plain)).copied()
+                            };
+                            item = cp.is_some_and(|cp| {
+                                let equality = first(cp, "comp op").is_some_and(|op| {
+                                    contains(op, "equals operator") || contains(op, "not equals operator")
+                                });
+                                let mut sides = Vec::new();
+                                find(cp, "comparison predicand", &mut sides);
+                                equality
+                                    && sides.len() == 2
+                                    && sides.iter().all(|s| reaches(s, "element_id function"))
+                            });
+                            break;
+                        }
+                        _ if kids(p).len() == 1 => at = p,
+                        _ => break,
+                    }
+                }
+                if !item {
+                    self.report(node, "20.10 SR 3", "(reading, ID076) ELEMENT_ID is taken only as a RETURN or SELECT item".into());
+                }
                 Ty::Any
             }
             "let value expression" => {
@@ -2053,9 +2187,12 @@ impl<'t> Checker<'t> {
                     .map(|l| owns(l, "list element"))
                     .unwrap_or_default();
                 let types: Vec<Ty> = elems.iter().map(|e| self.ty(e, env)).collect();
-                // 20.17 SR 3 b: ID004 or the empty type
+                // 20.17 SR 3 b: ID004 or the empty type. Read as the open dynamic union, ANY: no
+                // one implementation's choice suits every use (the ninth review: casts of `[ ]`
+                // to lists of GRAPH NOT NULL and of ANY NOT NULL each held only for their own
+                // choice), so 22.19 SR 2 refuses it in a combination and a cast of it is refused
                 let elem = if types.is_empty() {
-                    Ty::Any
+                    Ty::Dyn(Union::Open)
                 } else {
                     self.combined(node, &types, "20.17 SR 3")
                 };
@@ -2127,7 +2264,8 @@ impl<'t> Checker<'t> {
             // 20.22 SR 4 and 20.29: ABS of a number or of a duration
             "absolute value expression" | "duration absolute value function" => {
                 let t = self.argument(node, env, &[Class::Numeric, Class::Duration], "20.21 SR 3");
-                if t.wild() { Ty::Any } else { t }
+                // the operand's type, a dynamic one kept (the eighth review)
+                if t.wild() && !matches!(t, Ty::Dyn(_)) { Ty::Any } else { t }
             }
             // 20.22 SR 5
             "modulus expression" => {
@@ -2136,7 +2274,7 @@ impl<'t> Checker<'t> {
                     last = self.ty(a, env);
                     self.expect(a, &last, &[Class::Numeric], "20.21 SR 3");
                 }
-                if last.wild() { Ty::Number } else { last }
+                if last.wild() && !matches!(last, Ty::Dyn(_)) { Ty::Number } else { last }
             }
             // 20.22 SR 6-10, 12-13
             "trigonometric function"
@@ -2177,12 +2315,16 @@ impl<'t> Checker<'t> {
                     let lt = self.ty(len, env);
                     self.expect(len, &lt, &[Class::Numeric], "20.21 SR 3");
                 }
-                if t.wild() { Ty::Any } else { t }
+                kept(t)
             }
             // 20.24 SR 2, 5
+            // the source's type (20.24 SR 2, 5 a), a dynamic or null one kept
             "fold" | "normalize function" => {
-                self.argument(node, env, &[Class::Char], "20.23 SR 2");
-                Ty::Char
+                let t = self.argument(node, env, &[Class::Char], "20.23 SR 2");
+                match t {
+                    Ty::Dyn(_) | Ty::Null => t,
+                    _ => Ty::Char,
+                }
             }
             // 20.24 SR 3-4, 20.25 SR 2
             "single-character trim function"
@@ -2211,14 +2353,17 @@ impl<'t> Checker<'t> {
                 }
                 match t {
                     Ty::List { elem, .. } => Ty::List { elem, group: false },
+                    Ty::Dyn(_) | Ty::Null => t,
                     _ => Ty::Any,
                 }
             }
             // 20.16 SR 2 (ID005)
             "elements function" => {
                 self.argument(node, env, &[Class::Path], "20.13 SR 2");
+                // its element type includes every node and edge reference value: a dynamic
+                // union (the eighth review)
                 Ty::List {
-                    elem: Box::new(Ty::Any),
+                    elem: Box::new(Ty::Dyn(Union::Open)),
                     group: false,
                 }
             }
@@ -2275,18 +2420,28 @@ impl<'t> Checker<'t> {
                     (Class::Table, "11.2 SR 4", Ty::Table)
                 };
                 if let Some(oep) = own(node, "object expression primary") {
-                    // reading: `"g"` and `a.b` derive as a catalog reference too (a delimited
-                    // name, a parent and a name), which always types
-                    if !double_quoted(oep) && !dotted(oep) {
-                        let inner = kids(oep)
-                            .into_iter()
-                            .find(|c| matches!(c, Plain::Def { .. }))
-                            .map_or(Ty::Any, |v| self.ty(v, env));
-                        self.expect(oep, &inner, &[want], rule);
+                    // H3: the printed tree is judged. `"g"` and `a.b` also derive as a catalog
+                    // reference (a delimited name, a parent and a name), but where the tree holds
+                    // an object expression primary it is typed as one (found by the sixth review:
+                    // these were skipped)
+                    let inner = kids(oep)
+                        .into_iter()
+                        .find(|c| matches!(c, Plain::Def { .. }))
+                        .map_or(Ty::Any, |v| self.ty(v, env));
+                    self.expect(oep, &inner, &[want], rule);
+                    // SR 3 a ii, SR 4 b ii: a *material* reference type; the null or the empty
+                    // type is none, and H4's permission is for sites fixing a nullable type.
+                    // And on this tree an operator, a function, a concatenation or a literal
+                    // gives a number, a temporal value, a string, a list, a path, a boolean or
+                    // the null type, never a graph or a table, whatever its operands' types (the
+                    // eighth review: `( $b * + NULL )` is a duration term of the null type)
+                    if matches!(inner, Ty::Null | Ty::Nothing) || computed(oep) {
+                        let rule = if n == "graph expression" { "11.1 SR 3 primary" } else { "11.2 SR 4 primary" };
+                        self.report(oep, rule, format!("{} is no material {:?} reference on this tree", oep.text(), want));
                     }
                 } else if let Some(onbv) = own(node, "object name or binding variable") {
                     // SR 2 a: a bound name is a variable reference, otherwise a catalog name
-                    if let Some(t) = env.vars.get(&onbv.text()) {
+                    if let Some(t) = env.vars.get(&ident(onbv)) {
                         let t = t.clone();
                         self.expect(onbv, &t, &[want], rule);
                     }
@@ -2306,6 +2461,53 @@ impl<'t> Checker<'t> {
                     );
                 }
                 Ty::Table
+            }
+            // The category over a bare primary, on this tree (H3): 20.21 SR 3, 20.23 SR 2, 4,
+            // 20.15 SR 1, 20.13 SR 2, 20.20 SR 3. Another tree of the same text may put the
+            // primary in another category, so these are reported apart (`.. primary`); null,
+            // dynamic and unknown operands pass (H4, H2', H1). Found by the seventh review:
+            // `( GRAPH g )` was a numeric primary and nothing looked.
+            "numeric primary"
+            | "character string primary"
+            | "byte string primary"
+            | "list primary"
+            | "path value primary"
+            | "boolean predicand"
+            | "node reference value expression"
+            | "edge reference value expression"
+            | "record expression" => {
+                let defs: Vec<&'t Plain> = k
+                    .iter()
+                    .copied()
+                    .filter(|c| matches!(c, Plain::Def { .. }))
+                    .collect();
+                let t = match defs.as_slice() {
+                    [one] => self.ty(one, env),
+                    _ => {
+                        for d in defs {
+                            self.ty(d, env);
+                        }
+                        return Ty::Any;
+                    }
+                };
+                let (classes, rule): (&[Class], &'static str) = match n {
+                    "numeric primary" => (&[Class::Numeric], "20.21 SR 3 primary"),
+                    "character string primary" => (&[Class::Char], "20.23 SR 2 primary"),
+                    "byte string primary" => (&[Class::Bytes], "20.23 SR 4 primary"),
+                    "list primary" => (&[Class::List], "20.15 SR 1 primary"),
+                    "path value primary" => (&[Class::Path], "20.13 SR 2 primary"),
+                    "node reference value expression" => (&[Class::Node], "20.1 SR 4-6 primary"),
+                    "edge reference value expression" => (&[Class::Edge], "20.1 SR 4-6 primary"),
+                    "record expression" => (&[Class::Record], "20.1 SR 4-6 primary"),
+                    _ => (&[Class::Bool], "20.20 SR 3 primary"),
+                };
+                self.expect(node, &t, classes, rule);
+                // ID076: ELEMENT_ID's type is the implementation's, so no category is known
+                // to take it (typed unknown, it would pass every one)
+                if reaches(node, "element_id function") {
+                    self.report(node, rule, "ELEMENT_ID's type is implementation-defined (ID076): no category is known to take it".into());
+                }
+                t
             }
             _ => {
                 let defs: Vec<&'t Plain> = k
@@ -2361,10 +2563,16 @@ impl<'t> Checker<'t> {
         op: &'t Plain,
         right: &'t Plain,
         env: &Env,
-    ) -> Ty {
-        use Class::{Duration as D, Instant as I, Numeric as N};
+    ) -> (Ty, Ty, Ty) {
         let l = self.ty(left, env);
         let r = self.ty(right, env);
+        let t = self.arithmetic_of(node, &l, op, &r);
+        (t, l, r)
+    }
+
+    fn arithmetic_of(&mut self, node: &'t Plain, l: &Ty, op: &'t Plain, r: &Ty) -> Ty {
+        let (l, r) = (l.clone(), r.clone());
+        use Class::{Duration as D, Instant as I, Numeric as N};
         let op = op.text();
         let rows: &[(Class, Class)] = match op.as_str() {
             "+" => &[(N, N), (I, D), (D, I), (D, D)],
@@ -2380,6 +2588,7 @@ impl<'t> Checker<'t> {
         let temporal = [&l, &r].iter().any(|t| matches!(t.class(), Some(I | D)));
         match hits.as_slice() {
             [] => {
+                let _ = node;
                 let rule = if temporal { "4.16.6.4" } else { "20.21 SR 3" };
                 self.report(node, rule, format!("no operator {l} {op} {r}"));
                 Ty::Any
@@ -2417,7 +2626,26 @@ impl<'t> Checker<'t> {
             },
             [(D, N)] => l,
             [(N, D)] => r,
-            _ => Ty::Any,
+            // several rows fit (null or unknown operands): the node on this tree fixes the
+            // result's category (20.21 SR 1, 20.26 SR 1, 20.28 SR 1 b, 2 a; the ninth review),
+            // a dynamic operand keeping it dynamic
+            _ if [&l, &r].iter().any(|t| matches!(t, Ty::Dyn(_))) => Ty::Dyn(Union::Open),
+            // two operands the environment types (parameters, H1): their result is the
+            // environment's too
+            _ if matches!(l, Ty::Any) || matches!(r, Ty::Any) => Ty::Any,
+            _ => match name(node) {
+                Some("numeric value expression" | "term") => Ty::Number,
+                Some("datetime value expression") => Ty::LocalDatetime,
+                Some("duration addition and subtraction" | "duration term") => {
+                    match (&l, &r) {
+                        (Ty::Duration(_), _) => l.clone(),
+                        (_, Ty::Duration(_)) => r.clone(),
+                        (Ty::Null, Ty::Null) => Ty::Null,
+                        _ => Ty::Duration(None),
+                    }
+                }
+                _ => Ty::Any,
+            },
         }
     }
 
@@ -2460,7 +2688,18 @@ impl<'t> Checker<'t> {
             Some(Class::Char) => Ty::Char,
             Some(Class::Bytes) => Ty::Bytes,
             Some(Class::Path) => Ty::Path,
-            _ => Ty::Any,
+            // two unknown or null operands: the tree's own concatenation fixes the category
+            // (H3, the eighth review)
+            _ => match name(node) {
+                Some("character string concatenation") => Ty::Char,
+                Some("byte string concatenation") => Ty::Bytes,
+                Some("list concatenation") => Ty::List {
+                    elem: Box::new(Ty::Any),
+                    group: false,
+                },
+                Some("path value concatenation") => Ty::Path,
+                _ => Ty::Any,
+            },
         }
     }
 
@@ -2687,6 +2926,16 @@ impl<'t> Checker<'t> {
         let td = value_type(target);
         // SR 4, read strictly: TD specifies every type it contains, so no immaterial type
         // anywhere in it (`NOTHING LIST`, `NULL | PATH`)
+        // ID004 (reading): the empty list's element type is the implementation's, so no cast
+        // of `[ ]` is known to be valid
+        if own(cs, "cast operand").is_some_and(|co| reaches(co, "list value constructor by enumeration") && first(co, "list element").is_none()) {
+            self.report(cs, "20.8 SR 11 d", "(reading, ID004) the element type of [ ] is the implementation's: its cast is not followed".into());
+        }
+        // reading: a NOT NULL inside a list or record target is not followed (20.8 SR 11 d,
+        // the ninth review: `CAST ( [ 1 ] AS ANY NOT NULL LIST )` passed)
+        if nested_not_null(target) {
+            self.report(target, "20.8 SR 11 d", "(reading) a NOT NULL inside a list or record target is not followed".into());
+        }
         if matches!(td.ty, Ty::Null | Ty::Nothing) || contains(target, "immaterial value type") {
             self.report(
                 target,
@@ -2709,6 +2958,13 @@ impl<'t> Checker<'t> {
                 self.report(cs, "20.8 SR 5", format!("NULL cast to {td}"));
             }
             return td.ty;
+        }
+        // SR 5's "CO specifies NULL", read with 5.3.2.1 (specify is contain): an operand
+        // holding a NULL anywhere needs a nullable target (the eleventh review)
+        if !td.nullable
+            && (contains(co, "null literal") || has_keyword(co, "NULL"))
+        {
+            self.report(cs, "20.8 SR 5 contains", format!("an operand holding NULL cast to {td} (reading)"));
         }
         if matches!(td.ty, Ty::Dyn(_)) && !td.nullable {
             // SR 9 with nullability (4.17.4.2): a material union has only material subtypes, and
@@ -2805,11 +3061,9 @@ impl<'t> Checker<'t> {
             return Ty::Any;
         };
         let pn = own(pr, "property name").map(ident).unwrap_or_default();
-        // reading: `9.M`, `9.F`, `9.E3` and `9.E+3` derive as a property of 9 and as a numeric
-        // literal (21.2); no number has properties (20.1 SR 4-6), so the types pick the literal
-        if let Some(t) = literal_continuation(source, &pn) {
-            return t;
-        }
+        // `9.M`, `9.F`, `9.E3` and `9.E+3` derive as a property of 9 and as a numeric literal
+        // (21.2); on the property tree the source is judged as printed (H3; the eighth review
+        // found the source skipped here)
         let psd = self.ty(source, env);
         match &psd {
             // SR 2 a
@@ -2858,11 +3112,12 @@ impl<'t> Checker<'t> {
                 Ty::Any
             }
             _ if psd.wild() => Ty::Any,
-            // 20.1 SR 4-6 on the three derivations of <property source>
+            // 20.1 SR 4-6 on the three derivations of <property source>, on this tree (a
+            // number's `9.M` is also a literal on another tree, H3)
             _ => {
                 self.report(
                     source,
-                    "20.1 SR 4-6",
+                    "20.1 SR 4-6 primary",
                     format!(
                         "{} has type {psd}, not a node, edge or record",
                         source.text()
@@ -2911,7 +3166,7 @@ impl<'t> Checker<'t> {
                 );
             }
         }
-        if source.wild() { Ty::Any } else { source }
+        kept(source)
     }
 
     /// 20.28 SR 3: DURATION_BETWEEN.
@@ -3063,7 +3318,8 @@ fn value_type(node: &Plain) -> Declared {
         Some("dynamic property value type") => Ty::Dyn(Union::Property),
         Some("path value type") => Ty::Path,
         Some("list value type") => Ty::List {
-            elem: Box::new(own(node, "value type").map_or(Ty::Any, |v| value_type(v).ty)),
+            // SR 73 a ii: no element type written is ANY
+            elem: Box::new(own(node, "value type").map_or(Ty::Dyn(Union::Open), |v| value_type(v).ty)),
             group: own(node, "list value type name")
                 .is_some_and(|n| kids(n).iter().any(|k| keyword(k, "GROUP"))),
         },
@@ -3294,12 +3550,12 @@ fn pattern_vars(node: &Plain, kind: Option<Ty>, group: bool, out: &mut Fields) {
                 } else {
                     t
                 };
-                out.entry(bv.text()).or_insert(t);
+                out.entry(ident(bv)).or_insert(t);
             }
         }
         Some("path variable declaration") => {
             if let Some(bv) = first(node, "binding variable") {
-                out.entry(bv.text()).or_insert(Ty::Path);
+                out.entry(ident(bv)).or_insert(Ty::Path);
             }
         }
         // a subpath variable is not referenceable (4.11.5)
@@ -3356,70 +3612,6 @@ fn find_fields<'t>(node: &'t Plain, out: &mut Vec<&'t Plain>) {
             Some("field") => out.push(k),
             Some("fields specification" | "field list") => find_fields(k, out),
             _ => {}
-        }
-    }
-}
-
-/// The type of the numeric literal that `<integer>.<name>` spells, with an exponent's sign and
-/// digits left to the enclosing `+` or `-`.
-fn literal_continuation(source: &Plain, property: &str) -> Option<Ty> {
-    let mut at = source;
-    while name(at) != Some("unsigned numeric literal") {
-        match kids(at).as_slice() {
-            [only @ Plain::Def { .. }] => at = only,
-            _ => return None,
-        }
-    }
-    let digits = at.text();
-    if digits.is_empty() || !digits.chars().all(|c| c.is_numeric() || c == '_') {
-        return None;
-    }
-    let upper = property.to_uppercase();
-    let exponent = upper.strip_prefix('E').map(|e| {
-        let e = e.strip_suffix(['F', 'D', 'M']).unwrap_or(e);
-        e.chars().all(|c| c.is_numeric() || c == '_')
-    });
-    match upper.as_str() {
-        "M" => Some(Ty::Exact { int: true }),
-        "F" | "D" => Some(Ty::Approx),
-        _ if exponent == Some(true) => Some(if upper.ends_with('M') {
-            Ty::Exact { int: false }
-        } else {
-            Ty::Approx
-        }),
-        _ => None,
-    }
-}
-
-/// A <property reference> chain over a name, which reads as a catalog object parent and name.
-fn dotted(node: &Plain) -> bool {
-    let mut at = node;
-    loop {
-        match name(at) {
-            Some("binding variable reference") => return true,
-            Some("property reference") => match own(at, "property source") {
-                Some(source) => at = source,
-                None => return false,
-            },
-            _ => match kids(at).as_slice() {
-                [only @ Plain::Def { .. }] => at = only,
-                _ => return false,
-            },
-        }
-    }
-}
-
-/// A double-quoted <character string literal> and nothing else, which reads as a <delimited
-/// identifier> as well (21.3).
-fn double_quoted(node: &Plain) -> bool {
-    let mut at = node;
-    loop {
-        if name(at) == Some("character string literal") {
-            return contains(at, "double quoted character sequence");
-        }
-        match kids(at).as_slice() {
-            [only @ Plain::Def { .. }] => at = only,
-            _ => return false,
         }
     }
 }
@@ -3505,16 +3697,122 @@ fn keyword(node: &Plain, kw: &str) -> bool {
     matches!(node, Plain::Kw(t) if t.eq_ignore_ascii_case(kw))
 }
 
+/// Whether `node` holds the keyword `kw` anywhere, a type's `NOT NULL` aside (it specifies
+/// a nullability, not the null value).
+fn has_keyword(node: &Plain, kw: &str) -> bool {
+    keyword(node, kw)
+        || match node {
+            Plain::Def { name, .. } if name == "not null" => false,
+            Plain::Def { children, .. } => children.iter().any(|c| has_keyword(c, kw)),
+            _ => false,
+        }
+}
+
 /// The name `node` references when it is nothing but a <binding variable reference>.
 fn bare(node: &Plain) -> Option<String> {
     let mut at = node;
     loop {
         if name(at) == Some("binding variable reference") {
-            return Some(at.text());
+            // the representative form (21.3 SR 3, 4), as scope keys names (the ninth review)
+            return Some(ident(at));
         }
         match kids(at).as_slice() {
             [only @ Plain::Def { .. }] => at = only,
             _ => return None,
+        }
+    }
+}
+
+/// A NOT NULL inside a list's element type or a record's field type: the checker follows
+/// nullability at the top only, so such a type is not known to take a value (reading; the
+/// ninth review: `VALUE x INT NOT NULL LIST = [ NULL ]` passed).
+fn nested_not_null(vt: &Plain) -> bool {
+    let mut inner = Vec::new();
+    find_any(vt, &["list value type", "field type"], &mut inner);
+    inner.iter().any(|t| {
+        own(t, "value type").is_some_and(|v| contains(v, "not null"))
+    })
+}
+
+/// An operand's type passed on by an operation that gives its operand's type: a dynamic or a
+/// null one kept (22.19 SR 2 and the property sites see it), an unknown one unknown.
+fn kept(t: Ty) -> Ty {
+    match t {
+        Ty::Dyn(_) | Ty::Null => t,
+        _ if t.wild() => Ty::Any,
+        _ => t,
+    }
+}
+
+/// Whether `node`, looked through single children and parentheses, is a `want` node.
+fn reaches(node: &Plain, want: &str) -> bool {
+    let mut at = node;
+    loop {
+        if name(at) == Some(want) {
+            return true;
+        }
+        if name(at) == Some("parenthesized value expression") {
+            match own(at, "value expression") {
+                Some(v) => {
+                    at = v;
+                    continue;
+                }
+                None => return false,
+            }
+        }
+        let defs: Vec<&Plain> = kids(at)
+            .into_iter()
+            .filter(|c| matches!(c, Plain::Def { .. }))
+            .collect();
+        match defs.as_slice() {
+            [one] if kids(at).len() == 1 => at = one,
+            _ => return false,
+        }
+    }
+}
+
+/// Whether `node`, looked through single children and parentheses, is an operator, a
+/// function, a concatenation or a literal on this tree: a value that is never a graph or a
+/// binding table.
+fn computed(node: &Plain) -> bool {
+    const OPERATORS: &[&str] = &[
+        "numeric value expression",
+        "term",
+        "factor",
+        "duration addition and subtraction",
+        "duration term",
+        "duration factor",
+        "datetime value expression",
+        "boolean value expression",
+        "boolean term",
+        "boolean factor",
+        "boolean test",
+    ];
+    let mut at = node;
+    loop {
+        let n = name(at).unwrap_or_default();
+        let defs: Vec<&Plain> = kids(at)
+            .into_iter()
+            .filter(|c| matches!(c, Plain::Def { .. }))
+            .collect();
+        if n == "parenthesized value expression" {
+            match own(at, "value expression") {
+                Some(v) => {
+                    at = v;
+                    continue;
+                }
+                None => return false,
+            }
+        }
+        if n.ends_with(" function") || n.ends_with(" concatenation") || n.ends_with(" literal") {
+            return true;
+        }
+        if kids(at).len() > 1 {
+            return OPERATORS.contains(&n);
+        }
+        match defs.as_slice() {
+            [one] => at = one,
+            _ => return false,
         }
     }
 }

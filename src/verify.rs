@@ -19,7 +19,7 @@ use crate::bnf::Ebnf;
 use crate::features::Forbidden;
 use crate::tokens::{EXCLUDED, Grammar};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use unicode_general_category::{GeneralCategory, get_general_category};
 
@@ -38,6 +38,27 @@ pub const GATE_ONLY: &[&str] = &[
     "20.8 SR 11 d",
     "22.19 SR 2",
     "17.1 SR 2",
+    "17.2 SR 2",
+    "12.6 SR 7",
+    // 20.8 SR 5's "CO specifies NULL" read as containing one anywhere: the generator does not
+    // follow NULLs below a cast operand
+    "20.8 SR 5 contains",
+    // The category over a bare primary, on the printed tree: the generator loses a deferred
+    // variable's narrowing when the variable is projected away at a RETURN (scope's view there
+    // has no kind), so `MATCH ( x ) RETURN x` is accepted on the tree reading x as a number;
+    // the gate keeps these out.
+    "20.13 SR 2 primary",
+    "20.21 SR 3 primary",
+    "20.23 SR 2 primary",
+    "20.23 SR 4 primary",
+    "20.15 SR 1 primary",
+    "20.20 SR 3 primary",
+    "20.1 SR 4-6 primary",
+    "20.28 SR 1 primary",
+    // a computed or null value as a graph or binding table expression, on this tree: the
+    // generator types MIN or MAX of a dynamic value dynamic, which such a site takes
+    "11.1 SR 3 primary",
+    "11.2 SR 4 primary",
     "13.3 SR 3",
     "14.2 SR 10",
     "14.11 SR 10",
@@ -176,6 +197,8 @@ impl<'b> Verifier<'b> {
         self.walk(tree, &mut Vec::new(), &mut out);
         if let Some(id086) = self.syntax_rules {
             catalog_root(tree, &mut out);
+            like_sources(tree, &mut out);
+            one_kind_per_name(tree, &mut out);
             syntax_rules(tree, id086, &mut Vec::new(), &mut out);
             out.extend(graph_type::check(tree));
         }
@@ -851,6 +874,32 @@ fn syntax_rules<'t>(
                 ));
             }
             "graph pattern" => {
+                // 16.6 SR 8 (reading): a selective path pattern holds no subquery, so no reference
+                // inside one can reach outside it unseen (the eleventh review: subqueries do sit in
+                // graph patterns, `( { a : EXISTS { <- } } )`). Selective by its own prefix or by the
+                // graph pattern's KEEP.
+                {
+                let selective_prefix = |n: &Plain| {
+                    let mut found = Vec::new();
+                    find(n, "path search prefix", &mut found);
+                    found.first().is_some_and(|p| own(p, "all path search").is_none())
+                };
+                let keep = own(node, "keep clause").is_some_and(|k| selective_prefix(k));
+                let mut pps = Vec::new();
+                find(node, "path pattern", &mut pps);
+                for pp in pps {
+                    let own_prefix = own(pp, "path pattern prefix").is_some_and(|p| selective_prefix(p));
+                    if (keep || own_prefix)
+                        && (contains(pp, "procedure body") || contains(pp, "exists predicate"))
+                    {
+                        out.push(violation(
+                            &path,
+                            "16.6 SR 8",
+                            "a subquery inside a selective path pattern (reading)".into(),
+                        ));
+                    }
+                }
+                }
                 let keep = flat(children)
                     .into_iter()
                     .any(|c| def_name(c) == Some("keep clause"));
@@ -1079,17 +1128,18 @@ fn syntax_rules<'t>(
                         &mut direct,
                     );
                 }
-                // 14.12 SR 1, 27: a SELECT is judged as its replacement, which is ambient.
+                // A SELECT is focused as written and ambient as replaced (14.12 SR 1, 27): read
+                // strictly, it is both, so it stands beside no other focused or ambient
+                // statement (the tenth review: `INSERT ( ) NEXT SELECT ..` passed as ambient).
                 let is_select = |d: &&Plain| inner(d).and_then(def_name) == Some("select statement");
                 let has = |n: &str| direct.iter().any(|d| def_name(d) == Some(n));
+                let select = direct.iter().any(|d| def_name(d) == Some("focused linear query statement") && is_select(d));
                 let focused = direct.iter().any(|d| {
                     (def_name(d) == Some("focused linear query statement") && !is_select(d))
                         || def_name(d) == Some("focused linear data-modifying statement")
                 });
-                let ambient = has("ambient linear query statement")
-                    || has("ambient linear data-modifying statement")
-                    || direct.iter().any(|d| def_name(d) == Some("focused linear query statement") && is_select(d));
-                if focused && ambient {
+                let ambient = has("ambient linear query statement") || has("ambient linear data-modifying statement");
+                if (focused && ambient) || (select && (focused || ambient)) {
                     out.push(violation(
                         &path,
                         "9.2 SR 5",
@@ -1158,15 +1208,14 @@ fn syntax_rules<'t>(
                         &mut direct,
                     );
                 }
+                // a SELECT both focused and ambient, as in 9.2 SR 5 above
                 let is_select = |d: &&Plain| inner(d).and_then(def_name) == Some("select statement");
+                let select = direct.iter().any(|d| def_name(d) == Some("focused linear query statement") && is_select(d));
                 let focused = direct
                     .iter()
                     .any(|d| def_name(d) == Some("focused linear query statement") && !is_select(d));
-                let ambient = direct.iter().any(|d| {
-                    def_name(d) == Some("ambient linear query statement")
-                        || (def_name(d) == Some("focused linear query statement") && is_select(d))
-                });
-                if focused && ambient {
+                let ambient = direct.iter().any(|d| def_name(d) == Some("ambient linear query statement"));
+                if (focused && ambient) || (select && (focused || ambient)) {
                     out.push(violation(
                         &path,
                         "14.2 SR 4",
@@ -1202,6 +1251,16 @@ fn syntax_rules<'t>(
             // solidus (`//` is no parent reference).
             "catalog object parent reference" => {
                 let kids = flat(children);
+                // 4.2.5.3, 17.6 SR 5 b (reading): a parent with an object name is a catalog
+                // object, which holds no catalog object; whatever is wanted in it, no
+                // environment has.
+                if kids.iter().any(|k| def_name(k) == Some("object name")) {
+                    out.push(violation(
+                        &path,
+                        "17.6 SR 5",
+                        "a parent with an object name: a catalog object holds no catalog object (reading)".into(),
+                    ));
+                }
                 let schema = kids.iter().find(|k| def_name(k) == Some("schema reference"));
                 let solidus = kids.iter().any(|k| def_name(k) == Some("solidus"));
                 // Reading in `refine::ParentSolidus`: with no schema reference, "otherwise"
@@ -1492,6 +1551,17 @@ fn syntax_rules<'t>(
                         "a parent with an object name identifies no schema".into(),
                     ));
                 }
+            }
+            // 16.8 SR 4 a ii, 11.1 SR 3 (reading): a closed graph type is not followed, so no
+            // value is given one where it could become a working graph (a cast target, a
+            // declared value type, a union component of either; a list or record element cannot
+            // be a graph expression). found by the sixth review.
+            "cast target" | "opt typed value initializer" if closed_graph_outside_collections(node) => {
+                out.push(violation(
+                    &path,
+                    "16.8 SR 4",
+                    "a value given a closed graph type: its labels are not followed (reading)".into(),
+                ));
             }
             // 8.2 SR 2: exactly one access mode.
             "transaction characteristics" => {
@@ -2259,6 +2329,105 @@ fn confusables(tree: &Plain, out: &mut Vec<Violation>) {
     }
 }
 
+/// A closed graph reference value type in `node`, not inside a list or record type, nor in a
+/// nested expression.
+fn closed_graph_outside_collections(node: &Plain) -> bool {
+    fn walk(n: &Plain) -> bool {
+        match def_name(n) {
+            Some("closed graph reference value type") => true,
+            Some("list value type" | "record type" | "value initializer") => false,
+            _ => match n {
+                Plain::Def { children, .. } => children.iter().any(walk),
+                _ => false,
+            },
+        }
+    }
+    match node {
+        Plain::Def { children, .. } => children.iter().any(walk),
+        _ => false,
+    }
+}
+
+/// 17.2 SR 2 d i 1 to 17.5 SR 3 b ii (the object a parent holds under the name is of the
+/// kind wanted) with H1: a schema holds one object per name, so one name used as two kinds of
+/// object is met by no environment. Reading: the parents are not compared, so the same name at
+/// two kinds is refused under any parents (found by the sixth review).
+fn one_kind_per_name(tree: &Plain, out: &mut Vec<Violation>) {
+    let mut kinds: HashMap<String, &'static str> = HashMap::new();
+    // a bare name in a graph or table expression is a catalog name of that kind (11.1 SR 2,
+    // 11.2 SR 3, reading: even where a variable of that name is in scope); a directory and
+    // a schema share their parent's names (the eleventh review)
+    let bare = |expr: &str| {
+        let mut exprs = Vec::new();
+        find(tree, expr, &mut exprs);
+        exprs
+            .into_iter()
+            .filter_map(|e| own(e, "object name or binding variable"))
+            .collect::<Vec<_>>()
+    };
+    let bare_graphs = bare("graph expression");
+    let bare_tables = bare("binding table expression");
+    for kind in ["graph name", "graph type name", "binding table name", "procedure name", "schema name", "directory name"] {
+        let mut names = Vec::new();
+        find(tree, kind, &mut names);
+        match kind {
+            "graph name" => names.extend(bare_graphs.iter().copied()),
+            "binding table name" => names.extend(bare_tables.iter().copied()),
+            _ => {}
+        }
+        // schemas and directories share a directory's names, apart from the objects a
+        // schema holds
+        let container = matches!(kind, "schema name" | "directory name");
+        for n in names {
+            let rep = graph_type::ident(n);
+            let key = if container { format!("/{rep}") } else { rep.clone() };
+            match kinds.get(&key) {
+                Some(k) if *k != kind => {
+                    out.push(Violation {
+                        path: String::new(),
+                        rule: "17.2 SR 2",
+                        detail: format!("{rep} is used as a <{k}> and a <{kind}>: one object per name (H1)"),
+                    });
+                    return;
+                }
+                _ => {
+                    kinds.insert(key, kind);
+                }
+            }
+        }
+    }
+}
+
+/// 12.6 SR 7 b iv (and 12.4 through its GR 5 rewrite): a LIKE source's declared type has a
+/// constraining graph type. The current graph and a catalog graph have one (H1); a value or a
+/// binding variable may be open, so neither is taken (reading; the eleventh review:
+/// `LIKE CAST ( NULL AS PROPERTY GRAPH )`).
+fn like_sources(tree: &Plain, out: &mut Vec<Violation>) {
+    let mut likes = Vec::new();
+    find(tree, "graph type like graph", &mut likes);
+    if likes.is_empty() {
+        return;
+    }
+    let mut bvs = Vec::new();
+    find(tree, "binding variable", &mut bvs);
+    let bound: Vec<String> = bvs.iter().map(|b| graph_type::ident(b)).collect();
+    for like in likes {
+        let fine = own(like, "graph expression").is_some_and(|ge| {
+            own(ge, "current graph").is_some()
+                || own(ge, "graph reference").is_some()
+                || own(ge, "object name or binding variable")
+                    .is_some_and(|n| !bound.contains(&graph_type::ident(n)))
+        });
+        if !fine {
+            out.push(Violation {
+                path: String::new(),
+                rule: "12.6 SR 7",
+                detail: "a LIKE source not known to have a constraining graph type (reading)".into(),
+            });
+        }
+    }
+}
+
 /// 17.1 SR 2 a i and SR 5 with H1: a bare `/` schema reference needs the catalog root to be a
 /// schema, an absolute directory path needs it to be a directory; one program using both is met
 /// by no environment (found by the fifth review).
@@ -2268,6 +2437,9 @@ fn catalog_root(tree: &Plain, out: &mut Vec<Violation>) {
     let schema = refs.iter().any(|r| r.text() == "/");
     let mut dirs = Vec::new();
     find(tree, "absolute directory path", &mut dirs);
+    // a `..` step needs a directory above the working schema, which a root schema has not
+    // (the eleventh review)
+    find(tree, "relative directory path", &mut dirs);
     if schema && !dirs.is_empty() {
         out.push(Violation {
             path: String::new(),
@@ -2287,6 +2459,9 @@ fn created_names(tree: &Plain, out: &mut Vec<Violation>) {
     for n in NAMES {
         find(tree, n, &mut all);
     }
+    // a bare name in a graph or table expression names a catalog object too (11.1 SR 2,
+    // 11.2 SR 3; the eleventh review)
+    find(tree, "object name or binding variable", &mut all);
     for (stmt, made, rule) in [
         ("create schema statement", "schema name", "12.2 SR 5"),
         ("create graph statement", "graph name", "12.4 SR 6"),
@@ -2306,8 +2481,9 @@ fn created_names(tree: &Plain, out: &mut Vec<Violation>) {
             let mut mades = Vec::new();
             find(st, made, &mut mades);
             let Some(m) = mades.first() else { continue };
-            let text = m.text();
-            if all.iter().any(|o| !std::ptr::eq(*o, *m) && o.text() == text) {
+            // representative forms (21.3 SR 3, 4): `"a"` and `a` are one name
+            let text = graph_type::ident(m);
+            if all.iter().any(|o| !std::ptr::eq(*o, *m) && graph_type::ident(o) == text) {
                 out.push(Violation {
                     path: String::new(),
                     rule,

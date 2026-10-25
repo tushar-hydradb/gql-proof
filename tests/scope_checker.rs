@@ -423,8 +423,9 @@ fn kinds_and_degrees_travel() {
     ok("MATCH (a) LET x = a RETURN x NEXT MATCH (x)-[e]->(b) RETURN b");
     ok("MATCH ((a)-[e]->(b)){2} FOR x IN e RETURN x.k AS k");
     ok("LET VALUE x = 1 RETURN x");
-    // reading: a value of unknown type may join a pattern variable
-    ok("MATCH (a) LET x = a.k MATCH (x) RETURN x");
+    // reading (stricter, the eighth review): a value of unknown type joins no pattern
+    // variable; a property value is never a node under H2
+    bad("MATCH (a) LET x = a.k MATCH (x) RETURN x", "16.3 SR 20");
     bad(
         "MATCH ((a)-[e]->(b)){2} RETURN a AS x NEXT RETURN x.k AS k",
         "20.1 SR 4-6",
@@ -508,4 +509,14 @@ fn session_and_catalog_expressions() {
     bad("CREATE GRAPH a ANY AS COPY OF VALUE { RETURN y AS z }", "20.12 SR 8");
     ok("SESSION SET VALUE $b = LET x = TRUE IN x END");
     ok("CREATE GRAPH a ANY AS COPY OF VALUE { MATCH ( y ) RETURN y AS z LIMIT 1 }");
+}
+
+#[test]
+fn eighth_review_findings() {
+    // 16.10 SR 3: an element variable reference names a node or edge variable.
+    bad("MATCH ( x ) LET y = x . a FILTER y IS DIRECTED RETURN y", "16.10 SR 3");
+    ok("MATCH ( ) -[ e ]-> ( ) FILTER e IS DIRECTED RETURN e");
+    // 16.3 SR 20: a value column joins nothing.
+    bad("RETURN CURRENT_DATE AS x NEXT MATCH ( x ) RETURN x", "16.3 SR 20");
+    ok("MATCH ( x ) RETURN x NEXT MATCH ( x ) RETURN x");
 }

@@ -11,33 +11,65 @@ lines = open(text_path).read().split("\n")
 noise = re.compile(r"Licensed to|ISO Store|Single user|© ISO|^ISO/IEC 39075|--- page|^\d+$")
 head = re.compile(r"^(\d+(?:\.\d+)?) (<[^>]+>.*|[A-Z][^.]*)$")
 
+# The extraction loses indentation, so a numbered sub-list inside rule N (`1) 2) .. N+1)`)
+# reads like the next top-level rule. Where both are possible the split is ambiguous; each
+# ambiguous split is resolved here by hand, from the text, and an unresolved one fails the
+# run (found by the sixth review: five clauses were split wrongly and passed by luck).
+RESOLVE = {
+    ("13.3", 4, "4) No <set property item> imme"): "top",
+    ("14.10", 5, "5) LetOB_COL be a newcolumnwho"): "sub",
+    ("16.6", 3, "3) If PPP is <counted shortest"): "sub",
+    ("16.15", 3, "3) The declared type of the in"): "sub",
+    ("17.2", 3, "3) The graph identified by CGP"): "sub",
+    ("17.3", 3, "3) The graph type identified b"): "sub",
+    ("17.4", 3, "3) The binding table identifie"): "sub",
+    ("20.7", 3, "3) At least one <result> in a "): "top",
+    ("20.24", 4, "4) If <trim character string> "): "sub",
+}
+
 # The clause each line belongs to: the last header line seen that is not in the contents.
 rules = {}  # (clause, n) -> text
-clause, section, current = None, None, None
+unresolved = []
+clause, section, current, nested = None, None, None, None
 for i, l in enumerate(lines):
     if i < 2600:  # the table of contents and front matter
         continue
     m = head.match(l)
     if m and "." * 5 not in l:
         if m.group(1) != clause:
-            clause, section, current = m.group(1), None, None
+            clause, section, current, nested = m.group(1), None, None, None
         continue
     s = l.strip()
     if s in ("Syntax Rules", "General Rules", "Conformance Rules", "Format", "Function"):
-        section, current = s, None
+        section, current, nested = s, None, None
         continue
     if section != "Syntax Rules" or clause is None or noise.search(l):
         continue
-    # Top level rules count up one at a time; a `1)` that does not follow is a sub-item.
+    # Top level rules count up one at a time; a `1)` inside a rule opens a numbered sub-list.
     r = re.match(r"^(\d+)\) ", l)
     if r:
         n = int(r.group(1))
         expected = 1 if current is None else current[1] + 1
-        if n == expected:
-            current = (clause, n)
+        top = n == expected
+        if current is not None and n == 1:
+            nested, top = 1, False
+        elif nested is not None and n == nested + 1:
+            nested = n
+            if top:
+                key = (clause, n, l[:30])
+                if key not in RESOLVE:
+                    unresolved.append(key)
+                top = RESOLVE.get(key) == "top"
+        if top:
+            current, nested = (clause, n), None
             rules.setdefault(current, "")
     if current:
         rules[current] += " " + l
+if unresolved:
+    print("ambiguous rule splits not resolved in RESOLVE (read the text, add each):")
+    for u in unresolved:
+        print(f"  {u}")
+    sys.exit(1)
 
 # A shall that constrains nothing, each with the reason.
 EXEMPT = {

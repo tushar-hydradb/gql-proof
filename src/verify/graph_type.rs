@@ -102,7 +102,7 @@ fn first<'t>(node: &'t Plain, want: &str) -> Option<&'t Plain> {
 
 /// The name an <identifier> stands for, its representative form (21.3 SR 3, 4): a delimited
 /// one without its quotes, doubled quotes undoubled.
-fn ident(node: &Plain) -> String {
+pub(crate) fn ident(node: &Plain) -> String {
     fn reps(node: &Plain, out: &mut String) {
         match node {
             Plain::Def { name, .. }

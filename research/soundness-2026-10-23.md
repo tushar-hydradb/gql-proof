@@ -281,3 +281,166 @@ run). what it found was in the argument and the tools:
 - in the claim: one environment judged before execution, a parameter at two
   types needs the cure, IL020, the cure's run-time exception, the checker's
   `x . a` reading in graph expressions, and three insert or set rows under H2'
+
+## 2026-10-25: the sixth review
+
+no printed sentence clearly broke a rule. the nearest, printed: object names
+in a reference parent (`CALL / a . a ( )`, `CREATE GRAPH ab / a . a`,
+`SESSION SET GRAPH / a . a . a`) need a catalog object holding catalog
+objects, which the text's catalog never has (4.2.5.3). as with the fourth
+review's DROP case, refused now in every parent reference
+(`refine::SchemaParents`, the checker's "17.6 SR 5")
+
+closed:
+
+- the types checker skipped `GRAPH x . a` and `VARIABLE "x"` in graph and
+  table expressions (an old reading against H3); the printed tree is typed now
+- 16.8 SR 4 a ii: a value given a closed graph type could become a working
+  graph whose labels nothing follows; refused (gate-only, a list or record
+  element left alone)
+- one name at two kinds of object (17.2 SR 2 with H1), gate-only; name
+  comparisons use representative forms (`"a"` is `a`), in the checker and in
+  the generator's respelling
+- `shall_coverage.py` split five clauses wrongly (a nested `1) .. N+1)` list
+  read as the next rule) and passed by luck: each ambiguous split is resolved
+  by hand in the tool now, and an unresolved one fails it (1,019 rules)
+- `audit.py` refuses a `generated` row whose only rule strings are gate-only,
+  as a generator miss there is never counted: ten rows are `checked` now
+- a float's exponent scale is settled to at most 8 (`FLOAT ( 8 , 88 )` was
+  printed); H2 states the printed lengths and precisions exactly
+
+## 2026-10-25: the seventh review
+
+a printed family: `RETURN COUNT ( ( ( GRAPH CURRENT_PROPERTY_GRAPH ) ) IS NULL
+) AS x`, the inner parentheses under a numeric, character string or byte
+string primary (20.21 SR 3, 20.23 SR 2, 4). the generator let an opaque value
+(a graph, a table, a VALUE subquery) through every category site, and the
+checker, by an old design note, never checked a bare category: it judged
+categories only at operators. with H3 the printed tree is judged, so:
+
+- the checker checks each category over a bare primary (numeric, character
+  and byte string, list, path, boolean, node, edge, record) and each numeric
+  term or factor on the printed tree, under per-tree strings (`20.21 SR 3
+  primary` and the like) so the operator checks stay tree-independent
+- the generator refuses an opaque child at a category site; a deferred
+  variable still goes on, narrowed by the site
+- a deferred class reaching a node that reads no class is settled on its
+  variable instead of dropped (`push`)
+- every per-tree site string is gate-only: the generator loses a deferred
+  variable's narrowing when the variable is projected away at a RETURN (the
+  closing check reads scope's view there, which carries no kind), so `MATCH (
+  x ) RETURN x` is accepted on the trees reading x as a number, a string or a
+  path; extraction picks such a tree mostly for `RETURN x` before `NEXT YIELD`
+  (118 withheld at 1 variable). the gate keeps them out; fixing it means scope
+  telling the types engine a projected variable's kind
+- a VALUE subquery is opaque to the generator, so no category takes it now:
+  `RETURN VALUE { RETURN count(*) AS y } AS x` is refused by reading
+
+the second part of the seventh review (no printed sentence):
+
+- an element variable reference naming a value variable of null or dynamic
+  type passed (`LET y = x . a FILTER y IS DIRECTED`); the cure replaces value
+  expressions, not a bare reference. the scope checker wants a node or edge
+  variable now (16.10 SR 3)
+- 16.3 SR 20's reading said same kind only, the checker let a value column
+  join anything; same kind only now, and no value column (the generator's
+  rule)
+- the gate was traced: every printed tree passes the full checker, no other
+  path prints
+- stale notes fixed: 13.3 SR 3 a iii, 20.8 SR 4, 9, 20.16 SR 1 a
+
+## 2026-10-25: the eighth review
+
+a printed family: `SESSION SET GRAPH ( $b * + NULL )`. on its tree `$b * + NULL`
+is a duration term, whose type is the duration operand's (20.28 SR 2 a), the
+null type: no material graph type (11.1 SR 3 a ii). the generator typed the
+term dynamic from $b; the checker typed arithmetic over two unknowns unknown.
+now:
+
+- an operator, a function, a concatenation or a literal at a graph or table
+  expression is refused on its tree (`11.1 SR 3 primary`, gate-only: MIN or
+  MAX of a dynamic value is still dynamic to the generator), as is a null or
+  empty type there (material)
+- the generator types a duration term by its duration operand and refuses a
+  null or dynamic one there and in a duration addition; a datetime moved by a
+  duration is a datetime, never dynamic
+- a duration addition's operands are durations on its tree (`20.28 SR 1
+  primary`, gate-only)
+- ABS, MOD, ELEMENTS and an unwritten list element type keep a dynamic type
+  dynamic, so 22.19 SR 2 sees it
+- with GROUP BY the aggregating items are typed with the grouping aliases
+  (14.11 SR 10 a ix)
+- the property source of `9.M` is typed on the property tree (H3)
+- ELEMENT_ID is refused under every category (ID076 in H2); H2' names 10.3 SR
+  8, 7.1 SR 6, 10.1 and 10.2 SR 8
+- a SELECT's WHERE to LIMIT come only with a FROM body, which the checker
+  refuses, so the scope checker's skipping them is moot
+
+## 2026-10-25: the ninth review
+
+no printed sentence broke a rule (the sets, a fresh 1 and 2 variable run, 5,040
+distinct sentences; about 1,440 traced by hand from their targets). six lenient
+places in the checker, none reached by a printed sentence, all closed:
+
+- a sign, LEFT, RIGHT, TRIM, UPPER, LOWER, NORMALIZE and TRIM of a list keep a
+  dynamic or null operand's type (they gave unknown, so 22.19 SR 2 and the
+  property sites missed it)
+- arithmetic where several rows fit types the result by its node on the tree
+  (numeric, datetime, duration), a dynamic operand keeping it dynamic
+- variables are keyed by their representative form, as scope keys them
+- no NOT NULL inside a list or record type, declared or cast to (nested
+  nullability is not followed; reading)
+- `- NULL` keeps the null type, so a property site refuses it
+- ELEMENT_ID only directly as a RETURN or SELECT item (reading, ID076)
+
+its second part (claim text, H):
+
+- ID004 cannot rest on the implementation's one choice when printed casts of
+  `[ ]` need different ones: `[ ]`'s element is read as ANY, a cast of it and
+  a combination holding it are refused
+- H2's property line names what S inserts, sets and assigns, not only casts
+- a parameter an earlier SESSION SET of the program set has that type (22.1
+  SR 5 d i); the checker had typed every `$b` unknown
+- 20.26 SR 1 is a reading (the operator forms only), not as written
+
+## 2026-10-25: the tenth review
+
+- a printed family: `INSERT ( ) NEXT SELECT CURRENT_DATE AS x` (15 in the
+  whole grammar set; the eleventh review showed it valid after all: 14.12 SR 1
+  applies the SELECT rewrite before every other rule, so the stricter reading
+  below is kept for safety, not to fix a break). 9.2 SR 5 names the grammar's focused and ambient
+  statements, and a SELECT is a focused one as written; the checker and the
+  automaton read it as its replacement, ambient, which lets this through. a
+  SELECT is now both, so it stands beside no other focused or ambient
+  statement (9.2 SR 5 and 14.2 SR 4), in the checker and in StatementKinds
+- 16.7 SR 15 c i read literally ("contained in" the concatenation, through
+  parentheses) gives `( ) <- *` a minimum node count of 0 and breaks SR 16; it
+  can also go below 0, a defect. the touching-pair reading the checker and the
+  generator use lets more in: 16.7 SR 16 and SR 20 are permissions in H4 now,
+  and the SR 14 rewrite row's "the readings differ only above 0" is corrected
+- the second part: H1's catalog argument corrected (refusing object names in
+  a parent is a narrowing, the text lets a primary catalog object hold
+  objects); IE001 named in H2 for `COPY OF urn:..`; a stale audit note on
+  subqueries in graph patterns
+
+## 2026-10-25: the eleventh review
+
+no new printed family breaking a rule the checker reads strictly; one family
+resting on a defect the claim had not named:
+
+- 12.8, 13.6 and 14.5 SR 2 ask the nested procedure specification to
+  immediately contain a kind of specification, which by 5.3.2.1 it never does:
+  literally no inline CALL, OPTIONAL or LET is valid. the checker reads one
+  level further down; a permission in H4 now. 13.1 SR 5's "STMSEQ shall
+  contain" read with 5.3.2.1 containment is one too
+- lenient places closed: a root schema beside a `..` step (17.1); bare names
+  in graph and table expressions and directory names in the one-kind and
+  created-name checks, in the checker and the generator's respelling (17.2,
+  12.x); a LIKE source with a possibly open type (12.6 SR 7 b iv, gate-only);
+  20.8 SR 5's "CO specifies NULL" as containing one, literal or keyword
+
+its second part: the tenth review's SELECT family was valid (14.12 SR 1); the
+no-subquery-in-a-pattern premise of three readings was false, and 16.6 SR 8
+now refuses any subquery in a selective path pattern; 18.9 SR 11 read
+literally bounds STRING too, so 10.3 SR 8 b i 1 is a permission in H4; 6 SR 4
+is IW014 (H2), not a reading; `gql-proof cover` is noted as no check

@@ -15,7 +15,7 @@ use std::sync::LazyLock;
 static ISO: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static BASE: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO));
 
-const RULES: [&str; 50] = [
+const RULES: [&str; 51] = [
     "12.4 SR 3",
     "12.5 SR 2",
     "12.6 SR 2",
@@ -30,6 +30,7 @@ const RULES: [&str; 50] = [
     "10.2 SR 8",
     "18.7 SR 4",
     "17.6 SR 1",
+    "17.6 SR 5",
     "16.4 SR 12",
     "9.1 SR 5",
     "9.1 SR 6",
@@ -615,8 +616,10 @@ fn refinement_loses_no_iso_production() {
                 // Outside the claim: a `$$` reference (refine::NoSubstitution).
                 || d.contains("<substituted parameter reference>")
                 || d.contains("<reference parameter specification>")
-                // 12.4-12.7: a CREATE or DROP parent is a schema; object names are kept for CALL,
-                // TABLE and the rest, so no ISO production is lost here.
+                // A reading: no object name in any parent reference, a catalog object holding
+                // nothing (refine::SchemaParents, 4.2.5.3).
+                || d.starts_with("<catalog object parent reference/rep")
+                || d.starts_with("<catalog object parent reference/opt")
                 // A reading: no SELECT with a FROM (refine::NoSelectBody).
                 || d.contains("<select statement body>")
                 || d.starts_with("<select statement body>")
