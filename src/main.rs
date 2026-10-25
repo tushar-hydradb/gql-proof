@@ -138,6 +138,9 @@ struct ContextArgs {
     /// Skip pairs the rule's join keys rule out.
     #[arg(long)]
     keys: bool,
+    /// Scan each round of the fixed point on every core (see `context::Options::parallel`).
+    #[arg(long)]
+    parallel: bool,
     /// With `--rule types`: check expression nodes at finish, not at their last child.
     #[arg(long)]
     no_fold: bool,
@@ -434,6 +437,7 @@ fn context(args: ContextArgs) -> Result<()> {
         single_pass: !args.no_single_pass,
         join: args.join,
         keys: args.keys,
+        parallel: args.parallel,
     };
     let scope = gql_proof::context::scope::Scope {
         caps: gql_proof::context::scope::Caps {

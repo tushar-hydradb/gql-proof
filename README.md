@@ -8,7 +8,7 @@ it was built for turbolay and runs against neo4j too. anything that takes gql te
 
 - reads iso's own grammar and the standard's conformance rules by machine. nothing is tagged by hand, and corrigendum 1's edits are applied on top
 - generates queries that use every rule of the grammar, every rule in every place it can appear, and every short chain of rules. with every feature claimed that is 2,133 grammar productions and 3,408 of 3,416 production-in-place pairs, and what is left out comes with a reason
-- the queries mean something, not just parse: every variable is bound before it is used and every expression is typed, at up to 2 variables
+- the queries mean something, not just parse: every variable is bound before it is used and every expression is typed, at up to 3 variables, the bound the coverage argument needs for productions
 - of the standard's 426 syntax rules that constrain a query, 253 are kept as written, 92 by a stricter reading, 5 are checked after the fact and 76 are open, each listed in `research/static-semantics-inventory-2026-10-22.md`
 - every query is checked by a second, separately written checker before it goes out, so a generator bug does not turn into a false failure for the engine
 - feature claims: give it the features an engine supports (`claims/turbolay.claim`) and it generates only those. for every feature left out, it generates a query the engine has to reject
@@ -18,7 +18,6 @@ on turbolay #243 (484d1a72), turbolay accepts 1,401 of the 2,243 typed queries. 
 
 not yet:
 - answers for what the standard leaves to the implementation. for 3,604 of the 3,800 typed queries a graph is built from the query's patterns and the whole result on it is computed from the general rules (`gql-proof oracle`, `research/oracle-witness-2026-10-23.md`); the 180 left are queries whose result is implementation-defined (SESSION_USER, the clock, byte strings) or that modify data, and a run checks only that the engine accepts or rejects them and with which status
-- 3 variables, which the coverage argument needs for productions
 - a catalog, so nothing refers to a named graph, a graph type or a procedure
 
 ## where it is going
@@ -31,12 +30,11 @@ the claim gets written the way bernot, gaudel and marre frame testing: a set of 
 
 in the order they block the claim, details in `roadmap.md`:
 1. static semantics sound: close the open syntax rules our queries still break, starting with path patterns
-2. 3 variables, which needs the engine faster
-3. graphs to run against and the first answer checks: a witness graph per query, and checks that compare equivalent queries
-4. negatives at the parse and syntax rule level, labelled with what they should fail with
-5. a reference evaluator for the read-only core, exception conditions included
-6. the claim for that core, written out in bernot's terms
-7. grow outward: the catalog, data modification, value edge cases
+2. graphs to run against and the first answer checks: a witness graph per query, and checks that compare equivalent queries
+3. negatives at the parse and syntax rule level, labelled with what they should fail with
+4. a reference evaluator for the read-only core, exception conditions included
+5. the claim for that core, written out in bernot's terms
+6. grow outward: the catalog, data modification, value edge cases
 
 ## how it differs from a fuzzer and a tck
 
@@ -97,11 +95,13 @@ only what an engine claims, shortest query per target, as jsonl:
 gql-proof purdom --short --claim claims/turbolay.claim --format jsonl
 ```
 
-typed queries, every variable bound and every expression typed, one per target. about 10 minutes and 1.3 gb at 2 variables:
+typed queries, every variable bound and every expression typed, one per target. about 2.5 minutes and 6.3 gb at 3 variables, 20 seconds at 2:
 
 ```
-gql-proof context --rule types --slots 2 --join --keys --phase cover --cdrc --sentences --jsonl --rules all --claim claims/turbolay.claim
+gql-proof context --rule types --slots 3 --join --keys --parallel --phase cover --cdrc --sentences --jsonl --rules all --claim claims/turbolay.claim
 ```
+
+`--parallel` runs the fixed point on every core too. it picks some trees differently from the run without it and covers exactly the same targets
 
 the generated sets are cached in `sentences/`, so run against those unless the generator changed
 

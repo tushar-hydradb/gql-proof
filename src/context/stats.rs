@@ -86,7 +86,20 @@ pub struct EmitStats {
     pub ground_accept_rejected: u64,
     /// Partial labels cut for already asking more than the target (`Context::narrower`).
     pub ground_narrowed: u64,
+    /// Per production walked: its walks and the candidates they tried themselves (not in
+    /// the searches they started), for finding where the searches spend.
+    pub ground_by_prod: BTreeMap<u32, GroundProd>,
+    /// Backward passes for the options a wide walk needs (`Engine::graph_useful`).
+    pub useful_runs: u64,
+    pub useful_nanos: u64,
     pub nanos: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GroundProd {
+    pub narrow: u64,
+    pub wide: u64,
+    pub candidates: u64,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -114,6 +127,36 @@ fn ms(nanos: u64) -> f64 {
 }
 
 impl Stats {
+    /// Adds what scans counted into stats of their own (scans on other threads): the
+    /// per production and per definition counts, projections, dooms and skipped pairs.
+    pub fn absorb(&mut self, other: Stats) {
+        for (p, o) in other.prods {
+            let s = self.prods.entry(p).or_insert_with(|| ProdStats {
+                describe: o.describe.clone(),
+                ..ProdStats::default()
+            });
+            s.scans += o.scans;
+            s.nanos += o.nanos;
+            s.partials_max = s.partials_max.max(o.partials_max);
+            s.partials_total += o.partials_total;
+            s.pushes += o.pushes;
+            s.pushed += o.pushed;
+        }
+        for (def, o) in other.defs {
+            let d = self.defs.entry(def).or_default();
+            d.pushes += o.pushes;
+            d.pushed += o.pushed;
+            d.push_nanos += o.push_nanos;
+            d.finishes += o.finishes;
+            d.finished += o.finished;
+            d.finish_nanos += o.finish_nanos;
+        }
+        self.projected += other.projected;
+        self.doomed += other.doomed;
+        self.joined += other.joined;
+        self.skipped += other.skipped;
+    }
+
     pub fn total_labels(&self) -> usize {
         self.labels.values().sum()
     }
