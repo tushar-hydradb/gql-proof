@@ -362,11 +362,11 @@ within a relative tolerance), an expected exception matched by class:
 
 | verdict | records |
 | --- | --- |
-| agree | 2,486 |
+| agree | 2,501 |
 | disagree | 280 |
-| refused (turbolay's parse and planning gaps) | 989 |
-| failed at run time, in the status tier | 7 |
-| unjudged (status tier) | 14 |
+| refused (turbolay's parse and planning gaps) | 982 |
+| unsendable (a parameter of a class the harness has no values of) | 7 |
+| failed at run time, in the status tier | 6 |
 
 every disagreement is in one of these families, each checked by hand against
 the text and by direct queries on a three node chain:
@@ -436,15 +436,14 @@ false) restricted to the pattern; a label added where a negation forbids it
 and a property value moved off its literal are the two mutations not emitted
 yet
 
-on the 2-variable set: 6,636 near misses over 1,860 records (2,722 edges
-dropped, 2,698 flipped, 1,212 labels added, 2 properties dropped, 2 changed:
-the set has few property predicates and label sets of one). turbolay: 4,612
-agree, 380 disagree, every one in the multiset alternation family (376) or
-the `?` family (4). an earlier three looked new (a path variable over one
+on the 2-variable set: 6,512 near misses over 1,850 records (edges dropped
+and flipped, labels added, the few properties dropped and changed; graphs
+over 64 edges get none). turbolay: 4,486 agree, 380 disagree, every one in
+the multiset alternation family (376) or the `?` family (4). an earlier three looked new (a path variable over one
 edge, flipped) and were the oracle's: the record of a `... ORDER BY ...
 FINISH` chain had no observation query, so the probe ran the `FINISH`
 sentence itself on the changed graph; the observation now comes from the
-evaluator's table. with the near misses the run has 7,098 agreements on
+evaluator's table. with the near misses the run has 6,987 agreements on
 turbolay from 3,800 sentences
 
 ## the ir and the setup statements
