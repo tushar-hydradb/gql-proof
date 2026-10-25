@@ -1025,3 +1025,19 @@ fn session_parameters_set_twice() {
         "7.1 SR 6",
     );
 }
+
+#[test]
+fn untyped_session_tables_are_typed() {
+    // The fifth review: an untyped SESSION SET TABLE body was not typed.
+    bad("SESSION SET TABLE $b = { RETURN 1 + TRUE AS x }", "20.21 SR 3");
+    ok("SESSION SET TABLE $b = { RETURN 1 + 1 AS x }");
+}
+
+#[test]
+fn immaterial_types_nested_in_a_cast_target() {
+    // 20.8 SR 4 read strictly (the fifth review): no immaterial type anywhere in TD.
+    bad("RETURN CAST ( NULL AS NOTHING LIST ) AS x", "20.8 SR 4");
+    bad("RETURN CAST ( NULL AS NULL | PATH ) AS x", "20.8 SR 4");
+    bad("RETURN CAST ( NULL AS INT NOT NULL | NOTHING LIST ) AS x", "20.8 SR 4");
+    ok("RETURN CAST ( NULL AS INT LIST ) AS x");
+}

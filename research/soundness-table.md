@@ -6,8 +6,8 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 
 | kind | generated | reading | permission | checked | grammar | hypothesis | open |
 |---|---|---|---|---|---|---|---|
-| constraint | 125 | 49 | 1 | 24 | 10 | 0 | 0 |
-| type | 48 | 29 | 8 | 8 | 0 | 2 | 0 |
+| constraint | 125 | 49 | 1 | 25 | 10 | 0 | 0 |
+| type | 47 | 29 | 8 | 9 | 0 | 2 | 0 |
 | environment | 0 | 0 | 0 | 0 | 0 | 74 | 0 |
 
 | rule | kind | status | in our words | checker |
@@ -177,6 +177,7 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 | 17.1 SR 4 a i | environment | hypothesis | HOME_SCHEMA needs a current home schema |  |
 | 17.1 SR 4 b i | environment | hypothesis | CURRENT_SCHEMA or a bare period needs a current working schema |  |
 | 17.1 SR 5 a | environment | hypothesis | an absolute directory path needs the catalog root to be a directory |  |
+| 17.1 SR 5 a, with 2 a i | constraint | checked | one program does not use the catalog root both as a schema (a bare solidus schema reference) and as a directory (an absolute directory path): no environment meets both | src/verify.rs:catalog_root "17.1 SR 2" (in verify::GATE_ONLY) |
 | 17.1 SR 6 b | environment | hypothesis | a relative directory path needs a current working schema |  |
 | 17.1 SR 6 d i | environment | hypothesis | no double-period step may start from the catalog root |  |
 | 17.2 SR 1 a i | environment | hypothesis | a home graph reference needs a current home graph |  |
@@ -274,7 +275,7 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 | 20.6 SR 10 | constraint | reading | the result has at most one row: either PRS ends in LIMIT 1 (a) or it has no GROUP BY and RI directly holds an aggregate (b) | src/verify/scope.rs:returns_one_row via expr ("20.6 SR 10") |
 | 20.7 SR 2 g | constraint | reading | Clause 19's Syntax and Conformance Rules apply to the predicates the rewrite builds | src/verify.rs:syntax_rules "20.7 SR 2" |
 | 20.7 SR 3 | constraint | reading | a case specification has at least one result that is a result expression, not NULL | src/verify/types.rs "20.7 SR 3" |
-| 20.8 SR 4 | type | generated | the cast target is not an immaterial value type | src/verify/types.rs:cast ("20.8 SR 4") |
+| 20.8 SR 4 | type | reading | the cast target is not an immaterial value type | src/verify/types.rs:cast ("20.8 SR 4") |
 | 20.8 SR 5 | type | reading | a NULL operand needs a nullable target (and a non-NULL one a material target, as SR 4) | src/verify/types.rs:cast ("20.8 SR 5", also for an operand of the null type) |
 | 20.8 SR 8 | type | reading | the source and target are not an N pair of Table 4 | src/verify/types.rs:castable via cast ("20.8 SR 8") |
 | 20.8 SR 9 | type | reading | a cast to a dynamic union type has a source that is a subtype of it | src/verify/types.rs "20.8 SR 9" |
@@ -370,7 +371,7 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 | 22.10 SR 7 a | environment | hypothesis | A list target takes only a list source, element types store-assignable in turn. |  |
 | 22.10 SR 8 a | environment | hypothesis | An open record target takes only a record source; a closed one a closed record of the same field names, fields store-assignable in turn. |  |
 | 22.18 SR 2 | type | reading | Without GV65 the general combination is the static combination of 22.19. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" (always static, the module  |
-| 22.19 SR 2 | type | reading | Every input of the static combination is a static value type. | src/verify/types.rs "22.19 SR 2" |
+| 22.19 SR 2 | type | checked | Every input of the static combination is a static value type. | src/verify/types.rs "22.19 SR 2" (in verify::GATE_ONLY) |
 | 22.19 SR 4 b i | type | generated | If one input is a character string, all are. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
 | 22.19 SR 4 b ii | type | permission | Some supported character string type is a supertype of every input. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |
 | 22.19 SR 4 c i | type | generated | If one input is a byte string, all are. | src/verify/types.rs:combine via Checker::combined "22.19 SR 4" |

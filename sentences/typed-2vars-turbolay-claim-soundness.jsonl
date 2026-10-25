@@ -2178,9 +2178,9 @@
 {"sentence":"FILTER SESSION_USER IS TYPED RECORD { } NOT NULL | NOTHING FINISH","target":"cdrc <record type@raw-not-null^in-component> ::= <record type/opt3^in-component> <field types specification> <record type/opt4@raw-not-null^in-component> at <record type> in <constructed value type>"}
 {"sentence":"VALUE x LIST < PATH > = NULL FINISH","target":"cdrc <list value type name> ::= <list value type name/opt1@empty^seek'GROUP'0> <list value type name synonym> at <list value type name> in <list value type>"}
 {"sentence":"FILTER SESSION_USER IS TYPED LIST < PATH > | PATH FINISH","target":"cdrc <list value type name^in-component> ::= <list value type name/opt1@empty^in-component+seek'GROUP'0> <list value type name synonym^in-component> at <list value type name> in <list value type>"}
-{"sentence":"VALUE x LIST < NULL > = NULL FINISH","target":"cdrc <value type> ::= <predefined type> at <value type> in <list value type>"}
+{"sentence":"FILTER SESSION_USER IS TYPED LIST < NULL > FINISH","target":"cdrc <value type> ::= <predefined type> at <value type> in <list value type>"}
 {"sentence":"VALUE x LIST < ANY > = NULL FINISH","target":"cdrc <value type> ::= <dynamic union type> at <value type> in <list value type>"}
-{"sentence":"VALUE x NULL LIST = NULL FINISH","target":"cdrc <value type> ::= <predefined type> at <value type> in <list value type>"}
+{"sentence":"FILTER SESSION_USER IS TYPED NULL LIST FINISH","target":"cdrc <value type> ::= <predefined type> at <value type> in <list value type>"}
 {"sentence":"VALUE x PATH LIST = NULL FINISH","target":"cdrc <value type> ::= <constructed value type> at <value type> in <list value type>"}
 {"sentence":"VALUE x ANY LIST = NULL FINISH","target":"cdrc <value type> ::= <dynamic union type> at <value type> in <list value type>"}
 {"sentence":"FILTER SESSION_USER IS TYPED PATH LIST | PATH FINISH","target":"cdrc <list value type/opt2^in-component> ::= <value type> at <list value type/opt2> in <list value type>"}
@@ -2220,7 +2220,7 @@
 {"sentence":"FILTER SESSION_USER IS TYPED PATH | PATH | PATH | PATH | PATH FINISH","target":"cdrc <component type list/rep1@comp-nullable+has<component type>0+has2<component type>0^in<dynamic union type>0> ::= <vertical bar> <component type@comp-nullable+has<component type>0^in<dynamic union type>0> <component type list/rep1@comp-nullable+has<component type>0+has2<component type>0^in<dynamic union type>0> at <component type list/rep1> in <component type list>"}
 {"sentence":"FILTER SESSION_USER IS TYPED NOTHING | NOTHING | NOTHING | NOTHING | NOTHING FINISH","target":"cdrc <component type list/rep1@comp-not-null+has<component type>0+has2<component type>0^in<dynamic union type>0> ::= <vertical bar> <component type@comp-not-null+has<component type>0^in<dynamic union type>0> <component type list/rep1@comp-not-null+has<component type>0+has2<component type>0^in<dynamic union type>0> at <component type list/rep1> in <component type list>"}
 {"sentence":"VALUE x { y :: PATH } = NULL FINISH","target":"cdrc <typed> ::= <double colon> at <typed> in <field type>"}
-{"sentence":"VALUE x { y NULL } = NULL FINISH","target":"cdrc <value type> ::= <predefined type> at <value type> in <field type>"}
+{"sentence":"FILTER SESSION_USER IS TYPED { x NULL } FINISH","target":"cdrc <value type> ::= <predefined type> at <value type> in <field type>"}
 {"sentence":"VALUE x { y ANY } = NULL FINISH","target":"cdrc <value type> ::= <dynamic union type> at <value type> in <field type>"}
 {"sentence":"RETURN TRUE AS x NEXT FILTER x OR x FINISH","target":"cdrc <boolean value expression> ::= <boolean value expression@is<binding variable reference>> OR <boolean term@is<binding variable reference>> at <boolean value expression> in <search condition>"}
 {"sentence":"RETURN TRUE AS x NEXT FILTER TRUE OR x FINISH","target":"cdrc <boolean value expression> ::= <boolean value expression> OR <boolean term@is<binding variable reference>> at <boolean value expression> in <search condition>"}

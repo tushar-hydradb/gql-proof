@@ -379,6 +379,10 @@ fn comparable(a: Class, b: Class, ordering: bool) -> bool {
 /// 22.18, 22.19 (reading: without GV65): the class of a CASE or COALESCE, if its results
 /// combine. Nulls drop out; all of them null is no type (20.7 SR 3).
 fn combine(classes: &[Class]) -> Option<Class> {
+    // 22.19 SR 2 (reading, as without GV65): no dynamic input at all, alone or not.
+    if classes.contains(&Dynamic) {
+        return None;
+    }
     let mut out: Option<Class> = None;
     for &c in classes.iter().filter(|&&c| c != Null) {
         out = Some(match (out, c) {
@@ -1416,12 +1420,13 @@ impl Types {
         }
         // NOT NULL rises through the type that holds it, up to the CAST or initializer.
         if own.ends_with(" type") || own == "cast target" {
-            out.facts |= acc.facts & (fact::NOT_NULL | fact::BOUNDED_STR);
+            out.facts |= acc.facts & (fact::NOT_NULL | fact::BOUNDED_STR | fact::IMMATERIAL);
         }
-        // A bounded string anywhere inside the declared type counts (the checker looks at any
-        // depth): it rises through a union's members and a record's fields too.
+        // A bounded string or an immaterial type anywhere inside the declared type counts (20.8
+        // SR 4 read strictly: a type specifies what it contains; the checker looks at any
+        // depth): they rise through a union's members and a record's fields too.
         if matches!(own, "component type list" | "field type list" | "field types specification") {
-            out.facts |= acc.facts & fact::BOUNDED_STR;
+            out.facts |= acc.facts & (fact::BOUNDED_STR | fact::IMMATERIAL);
         }
         // The node a carried fact is for consumes it.
         if matches!(

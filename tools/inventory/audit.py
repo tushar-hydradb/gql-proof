@@ -63,9 +63,14 @@ def load(paths):
             for q in quoted:
                 if f'"{q}"' not in src:
                     errors.append(f"{r['clause']} SR {r['sr']} {r['item']}: the checker reports no {q!r}")
-                elif f'"{q}"' not in tests and q not in PROBE_EXEMPT:
+                elif not red_probe(q, tests) and q not in PROBE_EXEMPT:
                     unprobed.add(q)
     UNPROBED = sorted(unprobed)
+    for q in UNPROBED:
+        errors.append(f"{q}: no red probe in tests/ (a call reporting it on a violating input)")
+    for r in rows:
+        if r["kind"] in ("constraint", "type") and r["status"] == "open":
+            errors.append(f"{r['clause']} SR {r['sr']} {r['item']}: open")
     # A `permission` row is a reading that lets in more than the text: it holds only under the
     # claim's H4, which names it.
     claim = open("research/soundness-claim.md").read()
@@ -87,6 +92,25 @@ def load(paths):
     return rows, errors
 
 UNPROBED = []
+
+PROBE_CALL = re.compile(r"\b(bad|red)\w*\s*\(")
+
+def red_probe(q, tests):
+    """Whether `q` is expected on a violating input somewhere in the tests: inside a `bad*(` or
+    `red*(` call, as `Some(q)` or in a list of expected violations, or asserted present. A bare
+    entry of a rule list (the automaton agreement test's) is no probe."""
+    for m in re.finditer(re.escape(f'"{q}"'), tests):
+        back = tests[max(0, m.start() - 600):m.start()]
+        calls = list(PROBE_CALL.finditer(back))
+        if calls and ";" not in back[calls[-1].start():] and "#[test]" not in back[calls[-1].start():]:
+            return True
+        line = tests[tests.rfind("\n", 0, m.start()) + 1:tests.find("\n", m.end())]
+        if re.fullmatch(r'\s*"[^"]+",\s*', line):
+            continue
+        pre = tests[max(0, m.start() - 10):m.start()]
+        if pre.endswith(("Some(", "vec![", "[", ", ", "contains(&")):
+            return True
+    return False
 
 
 def write_table(rows, path):

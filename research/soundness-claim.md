@@ -31,7 +31,14 @@ property of every printed sentence, by the gate in step 1
   SR 6, 12.6 SR 5, reported by the checker). a parent reference that cannot
   identify a schema in any environment (one holding an object name, 4.2.5.3) is
   not left to H1: the `object name` rows of 12.5 SR 2 and 12.7 SR 2 are
-  checked. the `environment` rows of the audit hold under H1 and only under it
+  checked; nor is a root used both as a schema and as a directory (17.1 SR 2 a
+  i against SR 5, checked). H1 is one environment, and every syntax rule is
+  judged against it before execution (`DROP GRAPH a NEXT DROP GRAPH a` needs
+  graph a at both, as the text applies syntax rules to the whole program
+  first). a parameter has the type the request gives it; one used at two
+  incompatible types (`$b * 2` used as a graph) holds only if that type is
+  dynamic and H2' cures it. the `environment` rows of the audit hold under H1
+  and only under it
 - **H2, implementation-defined choices.** the implementation-defined rules
   S's validity depends on take the choice that does not raise a syntax error:
   listed per row (`implementation` kind) in the audit. S avoids every
@@ -44,10 +51,16 @@ property of every printed sentence, by the gate in step 1
   the implementation executes the cured variant 4.14.4 permits ("may"). the
   checker lets such an operand meet the requirement on that assumption; rows
   resting on it: 20.1 SR 2-6, 11.1 SR 3, 20.20 SR 3, 20.21 SR 3, 20.23 SR 2, 4,
-  and the dynamic element of a path or list constructor (`PATH [ x . a ]`).
+  16.5 SR 6 c and 13.3 SR 3 a iv, b iii 2 (a dynamic property value inserted or
+  set), and the dynamic element of a path constructor (`PATH [ x . a ]`). a
+  combination (22.19 SR 2: CASE, COALESCE, NULLIF, a list constructor) is not
+  cured: the checker refuses a dynamic input there.
   the generator could avoid every dynamic operand at a large cost in coverage;
   this is the hypothesis that it need not. without the cure these sentences
-  are invalid
+  are invalid. the cure can turn an operand into a run-time exception when no
+  static type survives (4.14.4: `SESSION SET GRAPH CAST ( NULL AS ANY
+  PROPERTY VALUE )`, no property value type being a graph under H2): such a
+  sentence is valid in the weak sense that it raises no syntax error
 - **H2''', the claim's features.** a sentence that uses a feature-dependent
   form holds for an engine claiming that feature (the conformance rules of the
   claim keep the others out). one syntax rule turns on a feature: 18.2 SR 9 a
@@ -64,7 +77,11 @@ property of every printed sentence, by the gate in step 1
   `CAST ( NULL AS GRAPH NOT NULL | NOTHING LIST )` is valid as
   `LIST < GRAPH NOT NULL | NOTHING >` and breaks 18.9 SR 88 as the union of
   `GRAPH NOT NULL` and `NOTHING LIST`; the text has no rule choosing. a
-  stronger claim (every tree of S valid) needs every tree checked, not built
+  stronger claim (every tree of S valid) needs every tree checked, not built.
+  one known exception in the checker: in a graph or binding table expression it
+  types `x . a` as a catalog reference even where the tree holds a property
+  reference; both are dynamic or opaque there and pass the same rules, so no
+  verdict changes
 
 ## the trusted base (what the argument assumes correct, and how it is tested)
 
@@ -90,24 +107,32 @@ property of every printed sentence, by the gate in step 1
 ## the argument
 
 1. **the gate.** every printed tree passed the checker: purdom and `context`
-   cover withhold a flagged tree (`withheld` on stderr), and stop the run when
-   the flag is on a rule the generator should keep (one not in
-   `verify::GATE_ONLY`, a generator bug); `context` refuses `--sentences` with
-   no syntax-rule checker. so S's tree t
+   cover withhold every flagged tree (`withheld` on stderr). a flag on a rule
+   the generator should keep (one not in `verify::GATE_ONLY`) is a generator
+   bug: purdom stops, `context` withholds the tree too and counts it on stderr
+   (`N of them on a rule the generator keeps`). either way nothing flagged is
+   printed; the count measures the generator, not soundness. `context` refuses
+   `--sentences` with no syntax-rule checker. so S's tree t
    has no violation the checker reports. this step needs nothing from the
    generator: whatever extraction picks, nothing flagged goes out
 2. **the table is complete.** `tools/inventory/shall_coverage.py` reads every
    syntax rule of the text (1,025; 275 say `shall`) and fails unless each rule
    with a `shall` has a row in `research/audit/audit.jsonl` that is not a
-   definition. four are exempt, each with its reason in the tool (two deleted
-   by cor 1, one that defines how keywords are read, one applied only
-   hypothetically by its importers)
+   definition, and so does each cor 1 syntax rule with a `shall` (read from
+   `grammar/corrigendum.json`). four are exempt, each with its reason in the
+   tool (two deleted by cor 1, one that defines how keywords are read, one
+   applied only hypothetically by its importers). coverage is per rule, not per
+   `shall` item: a rule with several items is covered by its rows together,
+   which the review rounds read item by item
 3. **the checker reports every row.** `tools/inventory/audit.py` fails unless
    every constraint and type row is closed (no `open`), and every row the claim
    relies on (`generated`, `reading`, `checked`) quotes the rule string the
-   checker reports, that string is a literal in `src/verify*`, and a probe in
-   `tests/` exercises it (red on a violating sentence, green on a valid one; two
-   exempt where no text can break the rule). the probes run in `cargo test`
+   checker reports, that string is a literal in `src/verify*`, and a red probe
+   in `tests/` expects it on a violating input (inside a `bad*`/`red*` call, as
+   an expected violation, or asserted present; a bare entry of a rule list is
+   no probe; three exempt where no text can break the rule). an open row or an
+   unprobed string fails it. green probes exist for most rules but are not
+   checked by the script. the probes run in `cargo test`
 4. **what the checker does not report** is one of:
    - `grammar`: no derivation can break it (the row says why)
    - `hypothesis`: holds under H1 (an environment object, or a parameter's
@@ -169,6 +194,8 @@ review moved nine rows from `reading` to `permission`)
   type rules)
 - nothing about IW022 (nullability inference): a NOT NULL site takes no
   computed value (4.17.4.2, the checker's reading), so none is needed
+- IL020: the directory nesting depth is at least what S uses (S holds
+  absolute paths of a few directories and `..` steps)
 - IA023: the line feed ends a line (comments, byte string separators)
 - IV023: truncating whitespace is the space
 - the supported property value types include the predefined scalar types S

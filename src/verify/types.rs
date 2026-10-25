@@ -892,10 +892,13 @@ impl<'t> Checker<'t> {
                 }
             }
             Some("session set binding table parameter clause") => {
-                if let Some(otbti) = own(node, "opt typed binding table initializer")
-                    && own(otbti, "binding table reference value type").is_some()
-                {
-                    self.table_initializer(otbti, &Env::default(), "7.1 SR 6");
+                if let Some(otbti) = own(node, "opt typed binding table initializer") {
+                    if own(otbti, "binding table reference value type").is_some() {
+                        self.table_initializer(otbti, &Env::default(), "7.1 SR 6");
+                    } else {
+                        // Untyped, its body is still typed (found by the fifth review).
+                        self.walk(otbti, &Env::new(Default::default()));
+                    }
                 }
             }
             // 7.1 SR 6 c iii 3 A I: the initializer of a typed value parameter is assignable
@@ -1457,7 +1460,7 @@ impl<'t> Checker<'t> {
         let declared = value_type(vt);
         // 21.2 SR 67: a NULL to a declared type DT is CAST(NULL AS DT), which 20.8 SR 4 refuses
         // for an immaterial DT (the null type, the empty type).
-        if matches!(declared.ty, Ty::Null | Ty::Nothing) {
+        if matches!(declared.ty, Ty::Null | Ty::Nothing) || contains(vt, "immaterial value type") {
             self.report(
                 def,
                 "20.8 SR 4",
@@ -2682,8 +2685,9 @@ impl<'t> Checker<'t> {
             return Ty::Any;
         };
         let td = value_type(target);
-        // SR 4
-        if matches!(td.ty, Ty::Null | Ty::Nothing) {
+        // SR 4, read strictly: TD specifies every type it contains, so no immaterial type
+        // anywhere in it (`NOTHING LIST`, `NULL | PATH`)
+        if matches!(td.ty, Ty::Null | Ty::Nothing) || contains(target, "immaterial value type") {
             self.report(
                 target,
                 "20.8 SR 4",

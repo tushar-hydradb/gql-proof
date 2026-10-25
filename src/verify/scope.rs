@@ -8,7 +8,8 @@
 //! SR 7, 15.1 SR 5); a subquery sees that record and a unit table (15.1 SR 7, 20.6 SR 11-12).
 //!
 //! Unmodelled, so not checked inside and binding nothing:
-//! - catalog-modifying statements and session commands
+//! - catalog-modifying statements and session commands, beyond their expressions (walked
+//!   in the statement's scope, a session command's empty)
 //! - a <select statement> with a <select statement body>
 //! - the result of a <named procedure call> without YIELD, which only a catalog knows
 //! - value types: a name bound to an arbitrary expression has an unknown type, so kinds are
@@ -235,7 +236,11 @@ impl<'t> Checker<'t> {
             Some("linear query statement" | "linear data-modifying statement") => {
                 self.linear(node, Scope::default());
             }
-            Some(n) if n.starts_with("session") => {}
+            // A session command sees no binding variable: its expressions are judged in an
+            // empty scope (found by the fifth review: they were skipped).
+            Some(n) if n.starts_with("session") => {
+                self.expr(node, &Env::new(Fields::new()), At::default());
+            }
             _ => kids(node).into_iter().for_each(|k| self.root(k)),
         }
     }
@@ -365,6 +370,12 @@ impl<'t> Checker<'t> {
                 self.composite(own(inner, "composite query expression")?, scope)
             }
             "linear data-modifying statement" => self.linear(inner, scope),
+            // A catalog statement's expressions (a graph source, a LIKE graph) see what any
+            // statement's do (found by the fifth review: they were skipped).
+            "linear catalog-modifying statement" => {
+                self.expr(inner, &Env::new(scope.merged()), At::default());
+                None
+            }
             _ => None,
         }
     }

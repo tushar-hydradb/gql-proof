@@ -36,6 +36,8 @@ pub const GATE_ONLY: &[&str] = &[
     "7.1 SR 6",
     "9.2 SR 7",
     "20.8 SR 11 d",
+    "22.19 SR 2",
+    "17.1 SR 2",
     "13.3 SR 3",
     "14.2 SR 10",
     "14.11 SR 10",
@@ -173,6 +175,7 @@ impl<'b> Verifier<'b> {
         created_names(tree, &mut out);
         self.walk(tree, &mut Vec::new(), &mut out);
         if let Some(id086) = self.syntax_rules {
+            catalog_root(tree, &mut out);
             syntax_rules(tree, id086, &mut Vec::new(), &mut out);
             out.extend(graph_type::check(tree));
         }
@@ -2253,6 +2256,24 @@ fn confusables(tree: &Plain, out: &mut Vec<Violation>) {
                 seen.insert(sk, text);
             }
         }
+    }
+}
+
+/// 17.1 SR 2 a i and SR 5 with H1: a bare `/` schema reference needs the catalog root to be a
+/// schema, an absolute directory path needs it to be a directory; one program using both is met
+/// by no environment (found by the fifth review).
+fn catalog_root(tree: &Plain, out: &mut Vec<Violation>) {
+    let mut refs = Vec::new();
+    find(tree, "absolute catalog schema reference", &mut refs);
+    let schema = refs.iter().any(|r| r.text() == "/");
+    let mut dirs = Vec::new();
+    find(tree, "absolute directory path", &mut dirs);
+    if schema && !dirs.is_empty() {
+        out.push(Violation {
+            path: String::new(),
+            rule: "17.1 SR 2",
+            detail: "the catalog root is used as a schema (/) and as a directory (an absolute directory path): no environment has both (H1)".into(),
+        });
     }
 }
 

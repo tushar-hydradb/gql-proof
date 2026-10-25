@@ -498,3 +498,14 @@ fn a_subquery_body_yields_a_table() {
     );
     bad("RETURN VALUE { { RETURN 1 AS y } } AS x", "20.6 SR 10");
 }
+
+#[test]
+fn session_and_catalog_expressions() {
+    // The fifth review: these were skipped by the checker.
+    bad("SESSION SET VALUE $b = VALUE { RETURN y AS z }", "20.12 SR 8");
+    bad("SESSION SET VALUE $b = LET x = TRUE , x = TRUE IN x END", "20.5 SR 4");
+    bad("SESSION SET VALUE $b = EXISTS { MATCH ( x ) -> ( x ) -[ x ]-> ( ) }", "16.4 SR 5");
+    bad("CREATE GRAPH a ANY AS COPY OF VALUE { RETURN y AS z }", "20.12 SR 8");
+    ok("SESSION SET VALUE $b = LET x = TRUE IN x END");
+    ok("CREATE GRAPH a ANY AS COPY OF VALUE { MATCH ( y ) RETURN y AS z LIMIT 1 }");
+}

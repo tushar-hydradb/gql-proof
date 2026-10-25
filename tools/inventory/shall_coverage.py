@@ -52,10 +52,20 @@ covered = {(r["clause"], int(r["sr"])) for r in rows if r["kind"] != "definition
 listed = {(r["clause"], int(r["sr"])) for r in rows}
 gaps = [(k, t) for k, t in sorted(rules.items(), key=lambda kv: (tuple(int(x) for x in kv[0][0].split(".")), kv[0][1]))
         if re.search(r"\bshall\b", t) and k not in covered and k not in EXEMPT]
+# Cor 1 replaces or inserts syntax rules the 2024 text does not have: each with a shall needs
+# a constraining row too (grammar/corrigendum.json, our own extraction).
+cor1 = json.load(open("grammar/corrigendum.json"))["items"]
+for item in cor1:
+    if item["kind"] != "syntax rule" or not re.search(r"\bshall\b", item["text"]):
+        continue
+    n = int(re.match(r"\s*(\d+)", item["text"]).group(1))
+    k = (item["subclause"], n)
+    if k not in covered and k not in EXEMPT and k not in [g[0] for g in gaps]:
+        gaps.append((k, "cor 1: " + item["text"]))
 SHALL = re.compile(r"\bshall\b")
 with_shall = sum(1 for t in rules.values() if SHALL.search(t))
 print(f"{len(rules)} syntax rules in the text, {with_shall} with a shall")
-print(f"{len(gaps)} with a shall and no constraining row in the audit")
+print(f"{len(gaps)} with a shall and no constraining row in the audit (cor 1's replaced and inserted rules included)")
 for (c, n), t in gaps:
     where = "listed as definition only" if (c, n) in listed else "not in the audit"
     m = re.search(r"[^.]*\bshall\b[^.]*", t)

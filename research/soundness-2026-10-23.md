@@ -251,3 +251,33 @@ readings that let more in: nine rows moved from `reading` to a new status,
 site, a dynamic parameter typed by the request, the kind-less edge type
 pattern, a supported string supertype). `audit.py` fails on a permission row
 H4 does not name
+
+## 2026-10-25: the fifth review
+
+no printed sentence broke a rule (the regenerated sets and a fresh 1 variable
+run). what it found was in the argument and the tools:
+
+- the scope checker skipped session commands and catalog-modifying statements:
+  their scope rules rested on the generator's engine, outside the trusted base.
+  both are walked now (a session command in an empty scope, a catalog statement
+  in its statement's); an untyped `SESSION SET TABLE` body is typed too
+- 22.19 SR 2 was a `reading` the generator does not keep: a dynamic LET or
+  VALUE variable meets a CASE, COALESCE, NULLIF or list element through the
+  cure in `meet`, and the checker refuses it (33 trees withheld at 1 variable,
+  0 at 2). now `checked` (gate-only); the generator's combine refuses a lone
+  dynamic input as well
+- cover does not stop on a generator bug, it counts it; the claim said it
+  stopped. the claim says what it does now
+- `audit.py` did not fail on open rows or unprobed strings, and did not look
+  for a red probe; it does all three now (seven rules got tree-level probes:
+  the statement kind rules, 12.7 SR 2, 16.9 SR 3)
+- `shall_coverage.py` read only the 2024 text; it reads cor 1's syntax rules
+  too. the 14.7 SR 11 rewrite row is restated for cor 1 (one CALL per
+  definition)
+- 20.8 SR 4 read strictly (no immaterial type anywhere in a cast target), so
+  it is no permission
+- a root used as a schema and as a directory in one program (17.1 SR 2 a i
+  against SR 5) is checked, gate-only
+- in the claim: one environment judged before execution, a parameter at two
+  types needs the cure, IL020, the cure's run-time exception, the checker's
+  `x . a` reading in graph expressions, and three insert or set rows under H2'

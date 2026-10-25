@@ -326,3 +326,35 @@ fn fourth_review_findings() {
     bad("VALUE x RECORD { a :: STRING ( 3 ) } = NULL RETURN x AS y", "10.3 SR 8");
     fine("VALUE x STRING = SESSION_USER RETURN x AS y", "10.3 SR 8");
 }
+
+/// Red on a violating tree: some parse of `text` reports `rule`. For rules stated on a choice
+/// the ISO grammar leaves open (a statement kind), where every parse breaks one of several.
+#[track_caller]
+fn bad_on_some_parse(text: &str, rule: &str) {
+    let v = verdicts(text);
+    assert!(v.iter().any(|r| r.contains(&rule)), "{text:?}: no parse reports {rule}: {v:?}");
+}
+
+#[test]
+fn statement_kind_trees() {
+    // 9.1 SR 5, 6: a procedure of one kind holding statements of another.
+    bad_on_some_parse("CREATE SCHEMA / a NEXT FILTER TRUE FINISH", "9.1 SR 5");
+    bad_on_some_parse("CREATE SCHEMA / a", "9.1 SR 6");
+    // 12.8 SR 2, 13.6 SR 2, 14.5 SR 2: an inline call's procedure of another kind.
+    bad_on_some_parse("CALL { CREATE SCHEMA / a }", "12.8 SR 2");
+    bad_on_some_parse("CALL { CREATE SCHEMA / a }", "13.6 SR 2");
+    bad_on_some_parse("CALL { CREATE SCHEMA / a }", "14.5 SR 2");
+    // 12.7 SR 2: a DROP GRAPH TYPE parent holding an object name.
+    bad("DROP GRAPH TYPE / a . a", "12.7 SR 2");
+    fine("DROP GRAPH TYPE / a", "12.7 SR 2");
+    // 16.9 SR 3: a yielded path variable that is a node.
+    bad_on_some_parse("MATCH ( x ) YIELD x RETURN x", "16.9 SR 3");
+}
+
+#[test]
+fn catalog_root_is_one_thing() {
+    // 17.1 SR 2 a i against SR 5 (the fifth review): the root as a schema and as a directory.
+    bad("CREATE SCHEMA / a NEXT DROP GRAPH / b", "17.1 SR 2");
+    fine("CREATE SCHEMA / a NEXT DROP GRAPH / a / b", "17.1 SR 2");
+    fine("DROP GRAPH / b", "17.1 SR 2");
+}
