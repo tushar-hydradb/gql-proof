@@ -436,9 +436,17 @@ command, 19 s:
 
 0 disagreements with the generation record; 6,526 near misses; the 44
 three-variable sentences are 36 results, 7 exceptions (the typed `LET ... NOT
-NULL` family) and 1 refusal. turbolay's verdicts on it are below. the
-deadline-bounded partial set of 2026-10-25 (2,474 sentences before the
-extraction loop learnt to honor `--deadline`) is superseded and removed
+NULL` family) and 1 refusal. turbolay on it: 2,543 agree, 279 disagree (198
+the multiset alternation family, 74 the `?` family, 6 the typed `LET ... NOT
+NULL` parse gap, 1 the percentile fraction it refuses at planning), 963
+refused, 7 unsendable; near misses 4,498 agree, 380 disagree in the same two
+families. of the 44 three-variable sentences turbolay runs 28 and agrees on
+21, the rest the `NOT NULL` family and one run time exception reported with
+another class. `RETURN SUM ( NULL ) AS x` answering 0 where 20.x makes the
+sum of no non-null values null was seen on the earlier partial set and is
+among the findings. the deadline-bounded partial set of 2026-10-25 (2,474
+sentences before the extraction loop learnt to honor `--deadline`) is
+superseded and removed
 
 the data modification and inline call sentences (eighteen hand written ones,
 `mods.jsonl`): all in the bag tier, with 22G11, G1001 and 22007 where the
