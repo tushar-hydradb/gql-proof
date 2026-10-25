@@ -44,7 +44,7 @@
 
 use super::{Context, FactSpec, Link, Masks, Projection, Slot};
 use crate::refine::{Item, Node};
-use smallvec::SmallVec;
+use smallvec::{SmallVec, smallvec};
 
 /// The most variables one label holds, and one that only references them (an expression).
 /// Some bound keeps the labels finite: an expression may reference ever more variables.
@@ -305,9 +305,10 @@ pub struct View {
 /// went.
 #[derive(Clone)]
 struct Draft {
-    vars: Vec<Option<Var>>,
+    /// Inline: a draft is cloned for every way a child's variables meet.
+    vars: SmallVec<[Option<Var>; 8]>,
     flags: u32,
-    map: Vec<Option<usize>>,
+    map: SmallVec<[Option<usize>; 8]>,
 }
 
 impl Draft {
@@ -410,6 +411,9 @@ impl Draft {
     }
 }
 
+/// The targets a child's variable may take, inline.
+type Targets = SmallVec<[Target; 4]>;
+
 /// Where a child's variable goes when it meets the variables before it.
 #[derive(Clone, Copy)]
 enum Target {
@@ -421,7 +425,7 @@ enum Target {
 
 /// Every way `child`'s variables meet `draft`'s, each child variable taking one of its
 /// targets and no two the same one. The child's slots are the inputs after `draft`'s.
-fn meet(draft: &Draft, child: &Label, targets: impl Fn(&Var) -> Vec<Target>) -> Vec<Draft> {
+fn meet(draft: &Draft, child: &Label, targets: impl Fn(&Var) -> Targets) -> Vec<Draft> {
     let _span = tracing::trace_span!("meet").entered();
     let mut out = vec![draft.clone()];
     for cv in &child.vars {
@@ -638,7 +642,7 @@ impl Scope {
         // An insert pattern declares each name once (16.5 SR 10-11).
         let insert = owner(node.def).starts_with("insert");
         let drafts = meet(&d, child, |cv| {
-            let mut t = Vec::new();
+            let mut t = Targets::new();
             for (i, pv) in d.live() {
                 if let Some(k) = cv.need {
                     // Met by what a statement before binds (14.3 SR 3-5).
@@ -799,18 +803,18 @@ impl Scope {
         match def {
             "binding variable" => {
                 let d = Draft {
-                    vars: vec![Some(Var::default().with(vf::CHOSEN))],
+                    vars: smallvec![Some(Var::default().with(vf::CHOSEN))],
                     flags: gf::TOKENS,
-                    map: vec![None; partial.vars.len()],
+                    map: smallvec![None; partial.vars.len()],
                 };
                 return vec![d];
             }
             // A plain name (a label, a property), or a name spelled from the pool (an alias).
             "identifier" if partial.vars.is_empty() => {
                 let spelled = Draft {
-                    vars: vec![Some(Var::default().with(vf::CHOSEN))],
+                    vars: smallvec![Some(Var::default().with(vf::CHOSEN))],
                     flags: d.flags,
-                    map: Vec::new(),
+                    map: SmallVec::new(),
                 };
                 return vec![d, spelled];
             }
@@ -1652,7 +1656,7 @@ impl Context for Scope {
                 let plain = partial.has(gf::PLAIN);
                 let d = Draft::of(partial);
                 return meet(&d, child, |cv| {
-                    let mut t = Vec::new();
+                    let mut t = Targets::new();
                     if let Some(k) = cv.need.filter(|_| cv.reference()) {
                         for (i, pv) in d.live() {
                             if pv.out.is_some_and(|o| fits(k, o)) {
@@ -1684,7 +1688,7 @@ impl Context for Scope {
             ("let value expression", _) if pos == 3 => {
                 let d = Draft::of(partial);
                 return meet(&d, child, |cv| {
-                    let mut t = vec![Target::New];
+                    let mut t: Targets = smallvec![Target::New];
                     if let Some(k) = cv.need.filter(|_| cv.reference()) {
                         for (i, pv) in d.live() {
                             if pv.has(vf::NEW) && fits(k, Kind::Value) {
@@ -1734,7 +1738,7 @@ impl Context for Scope {
                 }
                 let d = Draft::of(partial);
                 return meet(&d, child, |cv| {
-                    let mut t = Vec::new();
+                    let mut t = Targets::new();
                     for (i, pv) in d.live() {
                         // One column name: a bare variable's, an alias's, or both.
                         let need = match (pv.need, cv.need) {
