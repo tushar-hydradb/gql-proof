@@ -238,6 +238,19 @@ fn bag_matches(expected: &[Value], ordered: bool, columns: &[String], rows: &[Ve
 }
 
 fn judge(expect: &Value, columns: &[String], rows: &[Vec<Value>]) -> (&'static str, String) {
+    if let Some(from) = expect["bag_from"].as_array() {
+        // A LIMIT chose its rows: the count is fixed, each row must be one of these.
+        let want = expect["rows"].as_u64().unwrap_or(0) as usize;
+        if rows.len() != want {
+            return ("disagree", format!("expected {want} rows, got {}", rows.len()));
+        }
+        for g in rows {
+            if !from.iter().any(|e| e.as_object().is_some_and(|e| row_matches(e, columns, g))) {
+                return ("disagree", format!("a row not among the possible ones: {g:?}"));
+            }
+        }
+        return ("agree", format!("{want} rows, each among the {} possible", from.len()));
+    }
     if let Some(bag) = expect["bag"].as_array() {
         return match bag_matches(bag, expect["ordered"] == json!(true), columns, rows) {
             Ok(()) => ("agree", format!("the whole bag of {} rows", bag.len())),
@@ -284,6 +297,11 @@ async fn run_oracle_records() {
         };
         let setup = &record["setup"]["turbolay"];
         if setup.is_null() {
+            continue;
+        }
+        if record["parameters_unsendable"].as_object().is_some_and(|m| !m.is_empty()) {
+            let row = json!({ "sentence": sentence, "outcome": "unsendable", "status": "", "message": "a parameter of a class the harness has no values of", "verdict": "unsendable", "detail": record["parameters_unsendable"].to_string(), "columns": [], "rows": [], "near_misses": [] });
+            writeln!(out, "{row}").unwrap();
             continue;
         }
         let witness = record["expect"]["tier"] == json!("witness");

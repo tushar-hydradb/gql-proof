@@ -321,18 +321,39 @@ on the 2-variable set (3,800 distinct):
 
 | tier | sentences |
 | --- | --- |
-| bag (theorem 2), of which exceptions 26 | 3,702 |
-| witness (theorem 1) | 0 |
-| status only | 72 |
+| bag (theorem 2), of which exceptions 27 | 3,753 |
+| witness (theorem 1): quantifier bounds of 80 to 2,560, beyond the evaluator | 21 |
+| status only: the static rule's readings below | 26 |
 
-the evaluator stops, by reason: a parameter with no admitted class 22 (the
-`NOT NULL` sites, a `types.rs` reading); quantifier bounds over 512 (10
-sentences, bounds of 800 to 2,560 from radix spellings: a hop count finding
-for an engine, and a graph the loaders should not be asked for); LIMIT
-without an order below the row count 5 (which rows stay is
-implementation-dependent); a duration term the walker does not name 2; a
-CAST of a node AS PATH 1; the rest single. so the status tier is now what the
-standard itself leaves open plus the parameter reading
+every row left in the status tier is a disagreement between the generator's
+static rule and the evaluator's reading of the rules, which is to say a
+finding for the soundness track, not a gap of the oracle:
+
+- 11 typed `VALUE` definitions whose initializer 10.3 SR says shall be
+  assignable to the declared type and is not: a date to `PATH | PATH` and
+  `NULL | PATH`, a local datetime to `ZONED DATETIME`, a zoned time to `LOCAL
+  TIME` and `TIME WITHOUT TIME ZONE`. the typed rule accepted them; either
+  the rule's reading of assignability between temporal and union types is
+  loose, or the evaluator's is strict; the record says which sentence and
+  why
+- 15 parameters whose site admits no concrete class and is not a `VALUE x T
+  = $b` definition: `$b . a`, `x * $b + $b` cast to a node, a list with `$b`
+  beside a date. these are valid only because a dynamic parameter stands
+  wherever a class is checked (4.14.4); with any concrete class the typed
+  rule refuses them, so the generator produced sentences no value can run.
+  the same reading as the `NOT NULL` sites above
+
+the `NOT NULL` sites themselves now run: the declared type of the definition
+gives the parameter's class (`FLOAT NOT NULL = $b` sends `1.5`), and a class
+the harness has no values of (a list, a record, a duration) makes the
+expectation conditional: the record carries `parameters_unsendable` and the
+probe reports it instead of running. a LIMIT without an order below the row
+count is exact in its count, and the rows are drawn from a known set
+(`bag_from`). a quantifier bound over 64 is beyond the evaluator (each power
+step copies every binding so far, quadratic in the path's length; a 2,560
+hop chain ran for forty minutes before it was stopped) and stands on theorem
+1: the witness builder makes the chain up to 4,096 hops, and the engine's hop
+limits are the finding those sentences exist for
 
 ### what turbolay says
 
@@ -385,8 +406,11 @@ from both nodes, a three-node chain filtered by three predicates, a path over
 three nodes, a quantified group between two singletons, a selective pattern):
 all fifteen in the bag tier, and turbolay agrees on all fifteen and on their
 63 near misses. the 3-variable *typed* run itself waits on the fixed point
-(`research/three-variable-run-2026-10-23.md`); when it lands, its set runs
-through the same command unchanged
+(`research/three-variable-run-2026-10-23.md`): a deadline-bounded attempt on
+2026-10-25 (`--slots 3 --deadline 1500`) was killed at round 30 of the fixed
+point after 282 s, while another agent's typed runs loaded the machine, and
+produced no sentence. when the set lands it runs through the same command
+unchanged; nothing in the oracle reads the variable count
 
 the data modification and inline call sentences (eighteen hand written ones,
 `mods.jsonl`): all in the bag tier, with 22G11, G1001 and 22007 where the

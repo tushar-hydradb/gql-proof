@@ -83,6 +83,10 @@ pub struct Table {
     pub rows: Vec<Row>,
     /// Whether row order is part of the result (an `ORDER BY` last).
     pub ordered: bool,
+    /// When a LIMIT without an order kept fewer rows than there were: `rows` holds the
+    /// count's worth of placeholders and the result is any `rows.len()` of these.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drawn_from: Option<Vec<Row>>,
 }
 
 /// What a query does on the graph.
@@ -120,10 +124,12 @@ pub fn evaluate(
     tree: &Plain,
     graph: &Graph,
     params: &BTreeMap<String, Value>,
+    opaque_params: &BTreeMap<String, String>,
     mode: MatchModeDefault,
     declared: &Declarations,
 ) -> Result<Outcome, String> {
-    let params: BTreeMap<String, Val> = params.iter().map(|(k, v)| (k.clone(), Val::from_ir(v))).collect();
+    let mut params: BTreeMap<String, Val> = params.iter().map(|(k, v)| (k.clone(), Val::from_ir(v))).collect();
+    params.extend(opaque_params.iter().map(|(k, c)| (k.clone(), Val::Opaque(c.clone()))));
     let env = Env { graph: std::cell::RefCell::new(graph.clone()), deleted: Default::default(), params: &params, mode, observing: false, group: Default::default(), declared };
     env.run(tree)
 }
@@ -134,10 +140,12 @@ pub fn evaluate_observing(
     tree: &Plain,
     graph: &Graph,
     params: &BTreeMap<String, Value>,
+    opaque_params: &BTreeMap<String, String>,
     mode: MatchModeDefault,
     declared: &Declarations,
 ) -> Result<Outcome, String> {
-    let params: BTreeMap<String, Val> = params.iter().map(|(k, v)| (k.clone(), Val::from_ir(v))).collect();
+    let mut params: BTreeMap<String, Val> = params.iter().map(|(k, v)| (k.clone(), Val::from_ir(v))).collect();
+    params.extend(opaque_params.iter().map(|(k, c)| (k.clone(), Val::Opaque(c.clone()))));
     let env = Env { graph: std::cell::RefCell::new(graph.clone()), deleted: Default::default(), params: &params, mode, observing: true, group: Default::default(), declared };
     env.run(tree)
 }
@@ -163,7 +171,7 @@ impl Env<'_> {
         let Some(body) = blocks.first() else {
             return Err("no procedure body".to_string());
         };
-        match self.procedure_body(body, &Table { rows: vec![Row::new()], ordered: false }) {
+        match self.procedure_body(body, &Table { rows: vec![Row::new()], ordered: false, drawn_from: None }) {
             Ok(Some(table)) => Ok(Outcome::Table(table)),
             Ok(None) => Ok(Outcome::NoResult),
             Err(Stop::Exception(status)) => Ok(Outcome::Exception(status)),
@@ -226,11 +234,14 @@ impl Env<'_> {
         let last = statements.len().saturating_sub(1);
         for (i, (yield_clause, s)) in statements.into_iter().enumerate() {
             // 9.2 GR 3 a: a statement after an omitted result starts from a new unit table.
-            let current = table.take().unwrap_or(Table { rows: vec![Row::new()], ordered: false });
+            let current = table.take().unwrap_or(Table { rows: vec![Row::new()], ordered: false, drawn_from: None });
             let current = match yield_clause {
                 Some(y) => self.yield_clause(y, current)?,
                 None => current,
             };
+            if current.drawn_from.is_some() {
+                return unsupported("a statement after a LIMIT that chose its rows");
+            }
             let before = current.clone();
             table = self.statement(s, current)?;
             if table.is_none() && self.observing && i == last {
@@ -278,7 +289,7 @@ impl Env<'_> {
                     .collect()
             })
             .collect();
-        Ok(Table { rows, ordered: table.ordered })
+        Ok(Table { rows, ordered: table.ordered, drawn_from: None })
     }
 
     /// One `<statement>`: a linear query (its simple query statements then its result
@@ -371,7 +382,7 @@ impl Env<'_> {
                             rows.push(row);
                         }
                     }
-                    Ok(Table { rows, ordered: table.ordered })
+                    Ok(Table { rows, ordered: table.ordered, drawn_from: None })
                 }
                 Some("let statement") => self.let_statement(c, table),
                 Some("for statement") => self.for_statement(c, table),
@@ -414,7 +425,7 @@ impl Env<'_> {
                 Some(names) => row.iter().filter(|(k, _)| names.contains(k)).map(|(k, v)| (k.clone(), v.clone())).collect(),
                 None => row.clone(),
             };
-            let result = self.procedure_body(body, &Table { rows: vec![visible], ordered: false })?;
+            let result = self.procedure_body(body, &Table { rows: vec![visible], ordered: false, drawn_from: None })?;
             match result {
                 None => rows.push(row),
                 Some(t) if t.rows.is_empty() => {
@@ -429,7 +440,7 @@ impl Env<'_> {
                 }
             }
         }
-        Ok(Table { rows, ordered: false })
+        Ok(Table { rows, ordered: false, drawn_from: None })
     }
 
     /// A linear data-modifying statement: its data-accessing statements in order (queries,
@@ -571,7 +582,7 @@ impl Env<'_> {
             }
             rows.push(row);
         }
-        Ok(Table { rows, ordered: false })
+        Ok(Table { rows, ordered: false, drawn_from: None })
     }
 
     /// The label set and properties an insert filler specifies.
@@ -793,7 +804,7 @@ impl Env<'_> {
             }
             rows.push(row);
         }
-        Ok(Table { rows, ordered: table.ordered })
+        Ok(Table { rows, ordered: table.ordered, drawn_from: None })
     }
 
     /// A `VALUE x [type] = expr` definition: the variable, the expression and the declared
@@ -860,7 +871,7 @@ impl Env<'_> {
                 rows.push(r);
             }
         }
-        Ok(Table { rows, ordered: table.ordered })
+        Ok(Table { rows, ordered: table.ordered, drawn_from: None })
     }
 
     fn result_statement(&self, result: &Plain, table: Table) -> R<Option<Table>> {
@@ -882,7 +893,7 @@ impl Env<'_> {
             return unsupported("RETURN without a body");
         };
         if has_kw(body, "NO") {
-            return Ok(Table { rows: vec![Row::new(); table.rows.len().min(1)], ordered: false });
+            return Ok(Table { rows: vec![Row::new(); table.rows.len().min(1)], ordered: false, drawn_from: None });
         }
         let distinct = child(body, "set quantifier").is_some_and(|q| has_kw(q, "DISTINCT"));
         let group_by = child(body, "group by clause");
@@ -959,7 +970,7 @@ impl Env<'_> {
         }
         // An opaque value in a result claims its class only; a probe checks the class and
         // that the value is not null.
-        Ok(Table { rows, ordered: false })
+        Ok(Table { rows, ordered: false, drawn_from: None })
     }
 
     fn order_and_page(&self, page: &Plain, table: Table) -> R<Table> {
@@ -1024,14 +1035,17 @@ impl Env<'_> {
             let n = self.non_negative(offset)?;
             rows = rows.into_iter().skip(n).collect();
         }
+        let mut drawn_from = None;
         if let Some(limit) = child(page, "limit clause") {
             let n = self.non_negative(limit)?;
-            if rows.len() > n && !ordered {
-                return unsupported("LIMIT below the row count without an order: which rows stay is implementation-dependent");
+            if rows.len() > n && !ordered && n > 0 {
+                // Which rows stay is implementation-dependent: the count is known and the
+                // rows are among these.
+                drawn_from = Some(rows.clone());
             }
             rows.truncate(n);
         }
-        Ok(Table { rows, ordered })
+        Ok(Table { rows, ordered, drawn_from })
     }
 
     fn non_negative(&self, clause: &Plain) -> R<usize> {
@@ -1218,7 +1232,7 @@ impl Env<'_> {
                 rows.push(join(outer, &inner));
             }
         }
-        Ok(Table { rows, ordered: false })
+        Ok(Table { rows, ordered: false, drawn_from: None })
     }
 
     fn optional_match(&self, m: &Plain, table: Table) -> R<Table> {
@@ -1231,7 +1245,7 @@ impl Env<'_> {
         find_all(operand, "simple match statement", &mut inner_matches);
         let mut rows = Vec::new();
         for outer in &table.rows {
-            let mut inner = Table { rows: vec![outer.clone()], ordered: false };
+            let mut inner = Table { rows: vec![outer.clone()], ordered: false, drawn_from: None };
             for sm in &inner_matches {
                 let Some(gp) = child(sm, "graph pattern binding table").and_then(|t| child(t, "graph pattern")) else {
                     return unsupported("OPTIONAL MATCH without a graph pattern");
@@ -1269,7 +1283,7 @@ impl Env<'_> {
                 rows.extend(inner.rows);
             }
         }
-        Ok(Table { rows, ordered: false })
+        Ok(Table { rows, ordered: false, drawn_from: None })
     }
 
     /// 16.4: the set of reduced matches of a graph pattern as records (22.8), under the
@@ -2026,21 +2040,13 @@ impl Matcher<'_, '_> {
                     self.power(unit, lower, upper)?
                 }
             };
-            let mut next = Vec::new();
-            for pb in &acc {
-                for s in &set {
-                    let mut c = pb.clone();
-                    c.extend(s.iter().cloned());
-                    if self.consistent(&c) {
-                        next.push(c);
-                    }
-                }
-            }
-            acc = next;
+            acc = self.join_sets(&acc, &set);
             if acc.len() > 200_000 {
                 return unsupported("more than 200,000 candidate path bindings");
             }
         }
+        // The whole binding, now that it is complete at this depth.
+        acc.retain(|pb| self.consistent(pb));
         Ok(acc)
     }
 
@@ -2182,6 +2188,99 @@ impl Matcher<'_, '_> {
         }
     }
 
+    /// The concatenations `a · s` for `a` in `acc` and `s` in `set` whose junction is
+    /// consistent: a node binding met by a node binding binds the same node (22.2 GR 16
+    /// b), an edge binding met by a node binding connects as its kind says (16 c); `set` is
+    /// indexed by its first node so a long chain costs its length, not its square. The
+    /// whole binding's consistency (modes, the rest) is checked where a span closes.
+    fn join_sets(&self, acc: &[PB], set: &[PB]) -> Vec<PB> {
+        let first_node = |pb: &PB| pb.iter().find_map(|(_, e)| match e { Elem::Node(n) => Some(*n), _ => None });
+        let last_elem = |pb: &PB| pb.iter().rev().find(|(_, e)| !matches!(e, Elem::None)).map(|(_, e)| e.clone());
+        let mut by_first: BTreeMap<Option<usize>, Vec<&PB>> = BTreeMap::new();
+        // A set of edge bindings is indexed by the node each edge can be left of, given
+        // its pattern's kind, so an edge is tried only from its own endpoints.
+        let mut by_left: BTreeMap<usize, Vec<&PB>> = BTreeMap::new();
+        let graph = self.env.graph.borrow();
+        let mut edges_first = false;
+        for s in set {
+            if let Some((_, Elem::Edge(e, kind))) = s.iter().find(|(_, el)| !matches!(el, Elem::None)) {
+                edges_first = true;
+                if let Some(edge) = graph.edges.iter().find(|x| x.id == *e) {
+                    let (src, dst) = (edge.source, edge.target);
+                    let lefts: Vec<usize> = match (kind, edge.directed) {
+                        (Kind::Left, true) => vec![dst],
+                        (Kind::Right, true) => vec![src],
+                        (Kind::Undirected, false) => vec![src, dst],
+                        (Kind::LeftOrUndirected, true) => vec![dst],
+                        (Kind::UndirectedOrRight, true) => vec![src],
+                        (Kind::LeftOrRight, true) | (Kind::Any, true) => vec![src, dst],
+                        (Kind::LeftOrUndirected | Kind::UndirectedOrRight | Kind::Any, false) => vec![src, dst],
+                        _ => Vec::new(),
+                    };
+                    for l in lefts {
+                        by_left.entry(l).or_default().push(s);
+                    }
+                }
+                continue;
+            }
+            by_first.entry(first_node(s)).or_default().push(s);
+        }
+        drop(graph);
+        let empty: Vec<&PB> = Vec::new();
+        let mut out = Vec::new();
+        for a in acc {
+            let candidates: Vec<&PB> = match last_elem(a) {
+                Some(Elem::Node(n)) if edges_first => by_left.get(&n).unwrap_or(&empty).clone(),
+                Some(Elem::Node(n)) => {
+                    // The set's first node must be this node; a set with no node (brackets
+                    // only) joins anything.
+                    let mut c: Vec<&PB> = by_first.get(&Some(n)).unwrap_or(&empty).clone();
+                    c.extend(by_first.get(&None).unwrap_or(&empty).iter().copied());
+                    c
+                }
+                _ => set.iter().collect(),
+            };
+            for s in candidates {
+                let mut c = a.clone();
+                c.extend(s.iter().cloned());
+                if self.junction_ok(a, s) {
+                    out.push(c);
+                }
+            }
+        }
+        out
+    }
+
+    /// The consistency conditions at the junction of `a` and `s` only.
+    fn junction_ok(&self, a: &PB, s: &PB) -> bool {
+        let last = a.iter().rev().find(|(_, e)| !matches!(e, Elem::None)).map(|(_, e)| e.clone());
+        let first = s.iter().find(|(_, e)| !matches!(e, Elem::None)).map(|(_, e)| e.clone());
+        match (last, first) {
+            (Some(Elem::Node(x)), Some(Elem::Node(y))) => x == y,
+            (Some(Elem::Edge(e, kind)), Some(Elem::Node(right))) => {
+                // The node before the edge in `a`.
+                let Some(left) = a.iter().rev().find_map(|(_, el)| match el { Elem::Node(n) => Some(*n), _ => None }) else { return false };
+                let graph = self.env.graph.borrow();
+                let Some(edge) = graph.edges.iter().find(|x| x.id == e) else { return false };
+                let l = edge.directed && edge.target == left && edge.source == right;
+                let u = !edge.directed && ((edge.source == left && edge.target == right) || (edge.source == right && edge.target == left));
+                let r = edge.directed && edge.source == left && edge.target == right;
+                match kind {
+                    Kind::Left => l,
+                    Kind::Undirected => u,
+                    Kind::Right => r,
+                    Kind::LeftOrUndirected => l || u,
+                    Kind::UndirectedOrRight => u || r,
+                    Kind::LeftOrRight => l || r,
+                    Kind::Any => l || u || r,
+                }
+            }
+            (Some(Elem::Node(_)), Some(Elem::Edge(..))) => true,
+            (None, _) | (_, None) => true,
+            _ => false,
+        }
+    }
+
     /// `S^lower ∪ ... ∪ S^upper`, each power's bindings consistent; an unbounded power is
     /// bounded by the graph under DIFFERENT EDGES (an edge binds once) and otherwise by a
     /// cap that the selective pattern or the mode must justify.
@@ -2197,8 +2296,10 @@ impl Matcher<'_, '_> {
                 (2 * edges + 1).max(lower)
             }
         };
-        if bound > 512 {
-            return unsupported(format!("a quantifier bound of {bound}"));
+        // Each power step copies every binding so far: fine to a few dozen iterations, not
+        // to thousands. Beyond, the witness tier stands (the chain exists, theorem 1).
+        if bound > 64 {
+            return unsupported(format!("a quantifier bound of {bound}: beyond the evaluator's reach, the witness stands"));
         }
         let mut out: Vec<PB> = Vec::new();
         let mut current: Vec<PB> = vec![Vec::new()];
@@ -2209,16 +2310,7 @@ impl Matcher<'_, '_> {
             if m == bound {
                 break;
             }
-            let mut next = Vec::new();
-            for pb in &current {
-                for u in &unit {
-                    let mut c = pb.clone();
-                    c.extend(u.iter().cloned());
-                    if self.consistent(&c) {
-                        next.push(c);
-                    }
-                }
-            }
+            let next = self.join_sets(&current, &unit);
             if next.is_empty() {
                 break;
             }
@@ -2643,6 +2735,15 @@ impl Env<'_> {
                 let (Some(left), Some(part2)) = (kids.first(), kids.get(1)) else {
                     return unsupported("a comparison without two sides");
                 };
+                // 20.27 GR 1: every datetime value function of one statement reads the same
+                // request timestamp, so the same spelling compares equal.
+                if let Some(right) = child(part2, "comparison predicand") {
+                    let (lt, rt) = (left.text(), right.text());
+                    if lt == rt && lt.starts_with("CURRENT_") || lt == rt && lt.starts_with("LOCAL_") {
+                        let op = child(part2, "comp op").map(|o| o.text()).unwrap_or_default();
+                        return Ok(Val::Bool(matches!(op.as_str(), "=" | "<=" | ">=")));
+                    }
+                }
                 let a = self.eval(left, row)?;
                 self.comparison_part2(part2, a, row)
             }
@@ -3110,7 +3211,7 @@ impl Env<'_> {
                 }
                 Ok(Val::Opaque(temporal_kind(name, &p.text())))
             }
-            "datetime value expression" | "duration value expression" | "duration value expression 1" | "duration addition and subtraction" | "duration term" | "duration term 2" | "duration factor" | "duration primary" | "datetime primary" => {
+            "datetime value expression" | "duration value expression" | "duration value expression 1" | "duration addition and subtraction" | "duration term 1" | "duration term" | "duration term 2" | "duration factor" | "duration primary" | "datetime primary" => {
                 // Temporal arithmetic: null in, null out; else a temporal value we do not
                 // represent. A factor of exact or approximate class is read for exceptions.
                 let mut vals = Vec::new();
@@ -3274,7 +3375,7 @@ impl Env<'_> {
                 let Some(body) = child(nested, "query specification").and_then(|s| child(s, "procedure body")) else {
                     return unsupported("VALUE with an empty query");
                 };
-                let table = self.procedure_body(body, &Table { rows: vec![row.clone()], ordered: false })?;
+                let table = self.procedure_body(body, &Table { rows: vec![row.clone()], ordered: false, drawn_from: None })?;
                 match table {
                     Some(t) if t.rows.len() == 1 && t.rows[0].len() == 1 => Ok(t.rows[0].values().next().cloned().unwrap_or(Val::Null)),
                     Some(t) if t.rows.is_empty() => Ok(Val::Null),
@@ -3416,7 +3517,7 @@ impl Env<'_> {
             return Ok(Val::Bool(!found.is_empty()));
         }
         if let Some(block) = child(p, "match statement block") {
-            let mut table = Table { rows: vec![row.clone()], ordered: false };
+            let mut table = Table { rows: vec![row.clone()], ordered: false, drawn_from: None };
             let mut statements = Vec::new();
             find_all(block, "match statement", &mut statements);
             for m in statements {
@@ -3428,7 +3529,7 @@ impl Env<'_> {
             let Some(body) = child(nested, "query specification").and_then(|s| child(s, "procedure body")) else {
                 return unsupported("EXISTS with an empty query");
             };
-            let table = self.procedure_body(body, &Table { rows: vec![row.clone()], ordered: false })?;
+            let table = self.procedure_body(body, &Table { rows: vec![row.clone()], ordered: false, drawn_from: None })?;
             return Ok(Val::Bool(table.is_some_and(|t| !t.rows.is_empty())));
         }
         unsupported("an EXISTS that could not be read")
@@ -3585,6 +3686,20 @@ impl Env<'_> {
                     _ => unsupported("AVG of something not numeric"),
                 }
             }
+            "STDDEV_POP" | "STDDEV_SAMP" => {
+                let mut xs = Vec::new();
+                for v in &values {
+                    xs.push(as_f64(v)?);
+                }
+                let n = xs.len();
+                if n == 0 || (kind == "STDDEV_SAMP" && n < 2) {
+                    return Ok(Val::Null);
+                }
+                let mean = xs.iter().sum::<f64>() / n as f64;
+                let ss: f64 = xs.iter().map(|x| (x - mean) * (x - mean)).sum();
+                let denominator = if kind == "STDDEV_POP" { n } else { n - 1 } as f64;
+                Ok(Val::Float((ss / denominator).sqrt()))
+            }
             other => unsupported(format!("the aggregate {other}")),
         }
     }
@@ -3634,22 +3749,19 @@ fn temporal_string(name: &str, s: &str) -> R<Val> {
     match name {
         "date" => if is_date(s) { Ok(Val::Opaque("date".to_string())) } else { Err(Stop::Exception("22007".to_string())) },
         "local time" => if is_time(s) { Ok(Val::Opaque("local time".to_string())) } else { Err(Stop::Exception("22007".to_string())) },
-        "zoned time" => match zone {
-            Some(_) if is_time(core) => Ok(Val::Opaque("zoned time".to_string())),
-            None if is_time(core) => unsupported("a zoned time without an offset: the default zone is implementation-defined"),
-            _ => Err(Stop::Exception("22007".to_string())),
-        },
+        // Without an offset the session's time zone applies (implementation-defined, but a
+        // value, and never an exception).
+        "zoned time" => if is_time(core) { Ok(Val::Opaque("zoned time".to_string())) } else { Err(Stop::Exception("22007".to_string())) },
         "local datetime" | "zoned datetime" => {
             let Some((d, t)) = core.split_once('T') else { return Err(Stop::Exception("22007".to_string())) };
             if !is_date(d) || !is_time(t) {
                 return Err(Stop::Exception("22007".to_string()));
             }
+            let _ = zone;
             if name == "local datetime" {
                 Ok(Val::Opaque("local datetime".to_string()))
-            } else if zone.is_some() {
-                Ok(Val::Opaque("zoned datetime".to_string()))
             } else {
-                unsupported("a zoned datetime without an offset: the default zone is implementation-defined")
+                Ok(Val::Opaque("zoned datetime".to_string()))
             }
         }
         "duration" => if s.starts_with('P') || s.starts_with("-P") { Ok(Val::Opaque("duration".to_string())) } else { Err(Stop::Exception("22007".to_string())) },
@@ -3672,7 +3784,7 @@ fn temporal_kind(name: &str, text: &str) -> String {
                 "date"
             } else if t.starts_with("CURRENT_TIMESTAMP") || t.starts_with("ZONED_DATETIME") {
                 "zoned datetime"
-            } else if t.starts_with("LOCAL_DATETIME") {
+            } else if t.starts_with("LOCAL_DATETIME") || t.starts_with("LOCAL_TIMESTAMP") {
                 "local datetime"
             } else if t.starts_with("CURRENT_TIME") || t.starts_with("ZONED_TIME") {
                 "zoned time"
@@ -3775,24 +3887,36 @@ fn check_declared_type(v: &Val, declared: &str) -> R<()> {
     let base = base.trim_start_matches("TYPED").trim_start_matches("::");
     let family = |prefixes: &[&str]| prefixes.iter().any(|p| base.starts_with(p));
     let fits = match v {
-        Val::Int(_) => family(&["INT", "SIGNED", "UINT", "USMALLINT", "UBIGINT", "SMALLINT", "BIGINT", "FLOAT", "DOUBLE", "REAL", "DECIMAL", "DEC", "ANY"]),
-        Val::Float(_) => family(&["FLOAT", "DOUBLE", "REAL", "ANY"]),
-        Val::Str(_) => family(&["STRING", "VARCHAR", "CHAR", "ANY"]),
-        Val::Bool(_) => family(&["BOOL", "ANY"]),
+        Val::Int(i) => {
+            if family(&["UNSIGNED", "UINT", "USMALLINT", "UBIGINT"]) && *i < 0 {
+                return Err(Stop::Exception("22003".to_string()));
+            }
+            family(&["INT", "SIGNED", "UINT", "USMALLINT", "UBIGINT", "UNSIGNED", "SMALLINT", "BIGINT", "FLOAT", "DOUBLE", "REAL", "DECIMAL", "DEC", "NUMERIC", "ANY", "PROPERTYVALUE"])
+        }
+        Val::Float(_) => family(&["FLOAT", "DOUBLE", "REAL", "ANY", "PROPERTYVALUE"]),
+        Val::Str(_) => family(&["STRING", "VARCHAR", "CHAR", "ANY", "PROPERTYVALUE"]),
+        Val::Bool(_) => family(&["BOOL", "ANY", "PROPERTYVALUE"]),
         Val::Node(_) => family(&["NODE", "VERTEX", "ANY", "OPEN"]),
         Val::Edge(_) => family(&["EDGE", "RELATIONSHIP", "ANY", "OPEN"]),
         Val::Path(_) => family(&["PATH", "ANY"]),
         Val::List(_) => family(&["LIST", "ARRAY", "ANY"]),
         Val::Record(_) => family(&["RECORD", "ANY", "{"]),
             Val::Opaque(hint) => match hint.as_str() {
-            "string" => family(&["STRING", "VARCHAR", "CHAR", "ANY"]),
-            "date" => family(&["DATE", "ANY"]),
-            "zoned time" => family(&["ZONEDTIME", "TIMEWITHTIMEZONE", "ANY"]),
-            "local time" => family(&["LOCALTIME", "TIMEWITHOUTTIMEZONE", "TIME", "ANY"]),
-            "zoned datetime" => family(&["ZONEDDATETIME", "TIMESTAMPWITHTIMEZONE", "ANY"]),
-            "local datetime" => family(&["LOCALDATETIME", "TIMESTAMPWITHOUTTIMEZONE", "TIMESTAMP", "ANY"]),
-            "duration" => family(&["DURATION", "ANY"]),
-            "bytes" => family(&["BYTES", "BINARY", "VARBINARY", "ANY"]),
+            "string" => family(&["STRING", "VARCHAR", "CHAR", "ANY", "PROPERTYVALUE"]),
+            "date" => family(&["DATE", "ANY", "PROPERTYVALUE"]),
+            "zoned time" => family(&["ZONEDTIME", "TIMEWITHTIMEZONE", "ANY", "PROPERTYVALUE"]),
+            "local time" => family(&["LOCALTIME", "TIMEWITHOUTTIMEZONE", "TIME", "ANY", "PROPERTYVALUE"]),
+            "zoned datetime" => family(&["ZONEDDATETIME", "TIMESTAMPWITHTIMEZONE", "ANY", "PROPERTYVALUE"]),
+            "local datetime" => family(&["LOCALDATETIME", "TIMESTAMPWITHOUTTIMEZONE", "TIMESTAMP", "ANY", "PROPERTYVALUE"]),
+            "duration" => family(&["DURATION", "ANY", "PROPERTYVALUE"]),
+            "bytes" => family(&["BYTES", "BINARY", "VARBINARY", "ANY", "PROPERTYVALUE"]),
+            "decimal" => family(&["DECIMAL", "DEC", "NUMERIC", "ANY", "PROPERTYVALUE"]),
+            "list" => family(&["LIST", "ARRAY", "ANY"]),
+            "record" => family(&["RECORD", "{", "ANY"]),
+            "node" => family(&["NODE", "VERTEX", "ANY", "OPEN"]),
+            "edge" => family(&["EDGE", "RELATIONSHIP", "ANY", "OPEN"]),
+            "path" => family(&["PATH", "ANY"]),
+            "any" => true,
             _ => return unsupported(format!("{hint} assigned to a declared type")),
         },
         Val::Null => true,
@@ -3800,7 +3924,13 @@ fn check_declared_type(v: &Val, declared: &str) -> R<()> {
     if fits {
         Ok(())
     } else {
-        unsupported(format!("a {} assigned to the declared type {declared}", class_of(v)))
+        // 10.3 SR: the initializer shall be assignable to the declared type. The static rule
+        // of the generator accepted this sentence, so one of the two readings is wrong: a
+        // soundness finding, recorded as the reason.
+        unsupported(format!(
+            "a {} assigned to the declared type {declared}: 10.3 SR says the initializer shall be assignable, the generator's static rule accepted it",
+            class_of(v)
+        ))
     }
 }
 
@@ -3995,6 +4125,21 @@ fn cast(v: Val, target: &str) -> R<Val> {
     let is_bool = t.starts_with("BOOL");
     if t.starts_with("ANY") {
         return Ok(v);
+    }
+    let reference_target = t.starts_with("PATH") || t.starts_with("NODE") || t.starts_with("VERTEX") || t.starts_with("EDGE") || t.starts_with("RELATIONSHIP") || t.starts_with("LIST") || t.starts_with("RECORD");
+    if reference_target {
+        let same = matches!(&v, Val::Path(_)) && t.starts_with("PATH")
+            || matches!(&v, Val::Node(_)) && (t.starts_with("NODE") || t.starts_with("VERTEX"))
+            || matches!(&v, Val::Edge(_)) && (t.starts_with("EDGE") || t.starts_with("RELATIONSHIP"))
+            || matches!(&v, Val::List(_)) && t.starts_with("LIST")
+            || matches!(&v, Val::Record(_)) && t.starts_with("RECORD");
+        return match v {
+            Val::Null => Ok(Val::Null),
+            v if same => Ok(v),
+            // 20.x CAST GR: a value not of the target type is a data exception, invalid
+            // value type (22G03).
+            _ => Err(Stop::Exception("22G03".to_string())),
+        };
     }
     match (v, is_string, is_int, is_float, is_bool) {
         (Val::Null, ..) => Ok(Val::Null),

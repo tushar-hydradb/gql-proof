@@ -105,6 +105,9 @@ pub struct Expect {
     /// The whole result, in the bag tier: every row, ordered when `ordered`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bag: Option<Vec<eval::Row>>,
+    /// When a LIMIT without an order chose: the result is `rows` rows, each among these.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bag_from: Option<Vec<eval::Row>>,
     pub ordered: bool,
     /// Why the evaluator stopped, when the record is not of the bag tier.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -138,6 +141,11 @@ pub struct Oracle {
     /// the generation record's `params`): sent with the query by the probes.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub parameters: BTreeMap<String, Value>,
+    /// Parameters of a class the harness has no values of (a list, a record, an element, a
+    /// temporal): the expectation holds for any value of the class, and the probe cannot
+    /// run the record.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub parameters_unsendable: BTreeMap<String, String>,
     /// The graph with one element changed, and the whole result on it (the bag tier's
     /// corollary): every predicate made false once. On a `FINISH` sentence the result is the
     /// observation query's.
@@ -459,9 +467,37 @@ pub(crate) fn declared(p: &Plain) -> Option<(String, bool)> {
     Some((identifier(v), temp))
 }
 
-/// An `<unsigned integer>` in any radix, underscores dropped.
+/// The value of a decimal digit of any script (21.1: `<digit>` is any Nd character): the Nd
+/// blocks are runs of ten starting at the zero, so the value is the distance to the run's
+/// start.
+fn digit_value(c: char) -> Option<u32> {
+    if let Some(d) = c.to_digit(10) {
+        return Some(d);
+    }
+    use unicode_general_category::{GeneralCategory, get_general_category};
+    if get_general_category(c) != GeneralCategory::DecimalNumber {
+        return None;
+    }
+    let mut value = 0u32;
+    let mut cp = c as u32;
+    while value < 9 {
+        let Some(prev) = char::from_u32(cp - 1) else { break };
+        if get_general_category(prev) != GeneralCategory::DecimalNumber {
+            break;
+        }
+        cp -= 1;
+        value += 1;
+    }
+    Some(value)
+}
+
+/// An `<unsigned integer>` in any radix, underscores dropped, digits of any script.
 pub(crate) fn unsigned(text: &str) -> Option<u64> {
-    let t: String = text.chars().filter(|c| *c != '_').collect();
+    let t: String = text
+        .chars()
+        .filter(|c| *c != '_')
+        .map(|c| digit_value(c).and_then(|d| char::from_digit(d, 10)).unwrap_or(c))
+        .collect();
     let lower = t.to_ascii_lowercase();
     if let Some(h) = lower.strip_prefix("0x") {
         u64::from_str_radix(h, 16).ok()
@@ -1183,7 +1219,7 @@ impl Builder {
                 binding
             }
             SItem::Quant(tertiary, kind, lower) => {
-                if lower > 512 {
+                if lower > 4096 {
                     self.out_of_core(format!("a quantifier lower bound of {lower}"));
                     return Vec::new();
                 }
@@ -1257,7 +1293,7 @@ impl Builder {
                     self.out_of_core("a quantifier whose lower bound could not be read");
                     return Vec::new();
                 };
-                if lower > 512 {
+                if lower > 4096 {
                     self.out_of_core(format!("a quantifier lower bound of {lower}"));
                     return Vec::new();
                 }
@@ -1870,7 +1906,7 @@ pub fn oracle(
     declared: &eval::Declarations,
 ) -> Oracle {
     let mut b = Builder::new(mode_default);
-    let (parameters, parameter_problems) = parameter_values(tree, params);
+    let (parameters, unsendable, parameter_problems) = parameter_values(tree, params);
     for why in parameter_problems {
         b.out_of_core(why);
     }
@@ -1935,6 +1971,7 @@ pub fn oracle(
         outcome: "ok",
         status: None,
         bag: None,
+        bag_from: None,
         ordered: false,
         evaluator: None,
         binding,
@@ -1947,12 +1984,16 @@ pub fn oracle(
     let mut observed_bag: Option<Vec<eval::Row>> = None;
     // The columns of the table a FINISH dropped, for the observation query.
     let mut observed_columns: Option<Vec<String>> = None;
-    match eval::evaluate(tree, &graph, &parameters, mode_default, declared) {
+    match eval::evaluate(tree, &graph, &parameters, &unsendable, mode_default, declared) {
         Ok(eval::Outcome::Table(table)) => {
             expect.tier = Tier::Bag;
             expect.rows = Some(table.rows.len());
             expect.ordered = table.ordered;
-            expect.bag = Some(table.rows);
+            if let Some(from) = table.drawn_from {
+                expect.bag_from = Some(from);
+            } else {
+                expect.bag = Some(table.rows);
+            }
             expect.row = None;
             expect.result = true;
         }
@@ -1960,7 +2001,7 @@ pub fn oracle(
             expect.tier = Tier::Bag;
             expect.result = false;
             expect.row = None;
-            if let Ok(eval::Outcome::Table(table)) = eval::evaluate_observing(tree, &graph, &parameters, mode_default, declared) {
+            if let Ok(eval::Outcome::Table(table)) = eval::evaluate_observing(tree, &graph, &parameters, &unsendable, mode_default, declared) {
                 expect.rows = Some(table.rows.len());
                 let mut columns: BTreeSet<String> = BTreeSet::new();
                 for r in &table.rows {
@@ -2039,14 +2080,14 @@ pub fn oracle(
     };
     // Near misses: the evaluator on every one-element change, up to a handful.
     let mut near_misses = Vec::new();
-    if expect.tier == Tier::Bag && !graph.nodes.is_empty() && (expect.result || observe.is_some()) {
+    if expect.tier == Tier::Bag && !graph.nodes.is_empty() && graph.edges.len() <= 64 && (expect.result || observe.is_some()) {
         let finish = !expect.result;
         let mentioned = label_names(tree);
         for (mut miss, mutated) in graph.mutations(&mentioned).into_iter().take(12) {
             let outcome = if finish {
-                eval::evaluate_observing(tree, &mutated, &parameters, mode_default, declared)
+                eval::evaluate_observing(tree, &mutated, &parameters, &unsendable, mode_default, declared)
             } else {
-                eval::evaluate(tree, &mutated, &parameters, mode_default, declared)
+                eval::evaluate(tree, &mutated, &parameters, &unsendable, mode_default, declared)
             };
             match outcome {
                 Ok(eval::Outcome::Table(table)) => {
@@ -2082,6 +2123,7 @@ pub fn oracle(
         expect,
         observe,
         parameters,
+        parameters_unsendable: unsendable,
         near_misses,
         why,
     }
@@ -2094,10 +2136,11 @@ pub fn oracle(
 fn parameter_values(
     tree: &Plain,
     params: Option<&serde_json::Value>,
-) -> (BTreeMap<String, Value>, Vec<String>) {
+) -> (BTreeMap<String, Value>, BTreeMap<String, String>, Vec<String>) {
     let mut refs = Vec::new();
     find_all(tree, "general parameter reference", &mut refs);
     let mut values = BTreeMap::new();
+    let mut opaque = BTreeMap::new();
     let mut problems = Vec::new();
     let known: Vec<(String, Vec<String>)> = params
         .and_then(|p| p.as_array())
@@ -2120,19 +2163,49 @@ fn parameter_values(
         let spelling = r.text();
         let Some(name) = child(r, "parameter name") else { continue };
         let key = parameter_key(&name.text());
-        if values.contains_key(&key) {
+        if values.contains_key(&key) || opaque.contains_key(&key) {
             continue;
         }
         let Some((_, classes)) = known.iter().find(|(n, _)| *n == spelling) else {
             problems.push(format!("a parameter without a recorded class: {spelling}"));
             continue;
         };
+        if classes.is_empty() && declared_type_of_initializer(tree, &spelling).is_none() {
+            problems.push(format!(
+                "the rules admit no class for {spelling}: the sentence is valid only with a dynamic parameter, a static rule reading for the soundness track"
+            ));
+            continue;
+        }
+        // When the rules admit no class, the declared type of a `VALUE x T = $b` whose
+        // initializer is the parameter says what the engine must be sent.
+        let declared = (classes.is_empty())
+            .then(|| declared_type_of_initializer(tree, &spelling))
+            .flatten();
         let value = if classes.iter().any(|c| c == "exact") {
             Value::Int(1)
         } else if classes.iter().any(|c| c == "str") {
             Value::Str("a".to_string())
         } else if classes.iter().any(|c| c == "bool") {
             Value::Bool(true)
+        } else if classes.iter().any(|c| c == "approx") {
+            Value::Float(1.5)
+        } else if let Some(t) = &declared {
+            let u = t.to_ascii_uppercase().replace(' ', "");
+            let family = |ps: &[&str]| ps.iter().any(|p| u.starts_with(p));
+            if family(&["INT", "SIGNED", "UINT", "USMALLINT", "UBIGINT", "SMALLINT", "BIGINT", "UNSIGNED"]) {
+                Value::Int(1)
+            } else if family(&["FLOAT", "DOUBLE", "REAL"]) {
+                Value::Float(1.5)
+            } else if family(&["STRING", "VARCHAR", "CHAR"]) {
+                Value::Str("a".to_string())
+            } else if family(&["BOOL"]) {
+                Value::Bool(true)
+            } else {
+                // A class the harness has no values of: the evaluator runs with an opaque
+                // value of it, the record says the parameter cannot be sent.
+                opaque.insert(key, opaque_class(&u));
+                continue;
+            }
         } else {
             problems.push(format!(
                 "a parameter of a class the harness cannot pass: {spelling} admits {}",
@@ -2142,7 +2215,58 @@ fn parameter_values(
         };
         values.insert(key, value);
     }
-    (values, problems)
+    (values, opaque, problems)
+}
+
+/// The evaluator's class hint for a declared type the harness has no values of.
+fn opaque_class(u: &str) -> String {
+    let family = |ps: &[&str]| ps.iter().any(|p| u.starts_with(p));
+    if family(&["DATE"]) {
+        "date"
+    } else if family(&["ZONEDTIME", "TIMEWITHTIMEZONE"]) {
+        "zoned time"
+    } else if family(&["LOCALTIME", "TIME"]) {
+        "local time"
+    } else if family(&["ZONEDDATETIME", "TIMESTAMPWITHTIMEZONE"]) {
+        "zoned datetime"
+    } else if family(&["LOCALDATETIME", "TIMESTAMP"]) {
+        "local datetime"
+    } else if family(&["DURATION"]) {
+        "duration"
+    } else if family(&["BYTES", "BINARY", "VARBINARY"]) {
+        "bytes"
+    } else if family(&["LIST", "ARRAY"]) {
+        "list"
+    } else if family(&["RECORD", "{", "ANYRECORD"]) {
+        "record"
+    } else if family(&["NODE", "VERTEX", "ANYNODE"]) {
+        "node"
+    } else if family(&["EDGE", "RELATIONSHIP", "ANYEDGE"]) {
+        "edge"
+    } else if family(&["PATH"]) {
+        "path"
+    } else if family(&["DECIMAL", "DEC", "NUMERIC"]) {
+        "decimal"
+    } else {
+        "any"
+    }
+    .to_string()
+}
+
+/// The declared type of the `VALUE x T = $p` definition whose initializer is exactly the
+/// parameter `p`.
+fn declared_type_of_initializer(tree: &Plain, param: &str) -> Option<String> {
+    let mut defs = Vec::new();
+    find_all(tree, "value variable definition", &mut defs);
+    for d in defs {
+        let opt = child(d, "opt typed value initializer")?;
+        let init = child(opt, "value initializer")?;
+        let expr = child(init, "value expression")?;
+        if expr.text() == param {
+            return child(opt, "value type").map(|t| t.text());
+        }
+    }
+    None
 }
 
 /// The key a parameter is passed under: the name without `$`, a delimited name unquoted,

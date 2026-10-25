@@ -224,9 +224,11 @@ fn the_evaluator_reaches_past_the_witness_core() {
     let r = record("RETURN 1 / 0 AS x", MatchModeDefault::DifferentEdges);
     assert_eq!(r.expect.outcome, "exception");
     assert_eq!(r.expect.status.as_deref(), Some("22012"));
-    // What the implementation decides stays out: which rows LIMIT keeps without an order.
+    // What the implementation decides is bounded: which rows LIMIT keeps without an order
+    // is open, how many and from which is not.
     let r = record("MATCH ( x ) , ( y ) RETURN x LIMIT 1", MatchModeDefault::DifferentEdges);
-    assert_ne!(r.expect.tier, Tier::Bag);
+    assert_eq!(r.expect.rows, Some(1));
+    assert!(r.expect.bag_from.as_ref().is_some_and(|from| from.len() > 1));
 }
 
 #[test]
