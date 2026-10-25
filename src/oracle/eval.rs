@@ -2371,6 +2371,7 @@ impl Env<'_> {
                 let b = self.eval(b, row)?;
                 match (a, b) {
                     (Val::Null, _) | (_, Val::Null) => Ok(Val::Null),
+                    (Val::Opaque(k), Val::Str(_)) | (Val::Str(_), Val::Opaque(k)) | (Val::Opaque(k), Val::Opaque(_)) => Ok(Val::Opaque(k)),
                     (Val::Str(x), Val::Str(y)) => Ok(Val::Str(x + &y)),
                     (Val::List(mut x), Val::List(y)) => {
                         x.extend(y);
@@ -2722,6 +2723,26 @@ impl Env<'_> {
                 }
                 Ok(Val::Path(ids))
             }
+            "trim list function" => {
+                // 20.16 GR 1: the list without its last NV elements; NV below 0 or above the
+                // cardinality is 22G0C.
+                let (Some(list), Some(n)) = (child(p, "list value expression"), child(p, "numeric value expression")) else {
+                    return unsupported("TRIM(list, n) without its arguments");
+                };
+                let n = self.eval(n, row)?;
+                let list = self.eval(list, row)?;
+                match (list, n) {
+                    (_, Val::Null) | (Val::Null, _) => Ok(Val::Null),
+                    (Val::List(items), Val::Int(n)) => {
+                        if n < 0 || n as usize > items.len() {
+                            return Err(Stop::Exception("22G0C".to_string()));
+                        }
+                        let keep = items.len() - n as usize;
+                        Ok(Val::List(items.into_iter().take(keep).collect()))
+                    }
+                    (l, n) => unsupported(format!("TRIM of a {} by a {}", class_of(&l), class_of(&n))),
+                }
+            }
             "elements function" => {
                 let mut args = Vec::new();
                 find_all(p, "path value expression", &mut args);
@@ -2803,9 +2824,17 @@ impl Env<'_> {
             Some("source predicate part 2") | Some("destination predicate part 2") => {
                 self.source_destination_part2(inner, operand.clone(), row)?
             }
-            Some("value type predicate part 2") | Some("normalized predicate part 2") => {
-                return unsupported("a type or normalized when operand");
+            Some("value type predicate part 2") => {
+                let Some(t) = child(inner, "value type") else {
+                    return unsupported("a type when operand without a type");
+                };
+                Val::Bool(is_typed(operand, &t.text())? != has_kw(inner, "NOT"))
             }
+            Some("normalized predicate part 2") => match operand {
+                Val::Null => Val::Null,
+                Val::Str(s) if s.is_ascii() => Val::Bool(!has_kw(inner, "NOT")),
+                other => return unsupported(format!("IS NORMALIZED on a {}", class_of(other))),
+            },
             _ => {
                 let w = self.eval(inner, row)?;
                 three(compare(operand, &w)?.map(|o| o == std::cmp::Ordering::Equal))
@@ -2936,12 +2965,70 @@ impl Env<'_> {
         v
     }
 
+    fn percentile(&self, agg: &Plain, members: &[Row]) -> R<Val> {
+        let Some(binary) = child(agg, "binary set function") else {
+            return unsupported("an aggregate that is neither a set function nor a percentile");
+        };
+        let cont = child(binary, "binary set function type").is_some_and(|t| t.text().contains("CONT"));
+        let (Some(dependent), Some(independent)) = (child(binary, "dependent value expression"), child(binary, "independent value expression")) else {
+            return unsupported("a percentile without its arguments");
+        };
+        let distinct = child(dependent, "set quantifier").is_some_and(|q| has_kw(q, "DISTINCT"));
+        let Some(arg) = child(dependent, "numeric value expression") else {
+            return unsupported("a percentile without a value expression");
+        };
+        // The fraction is one value for the group: evaluated on each member, it must agree.
+        let mut fraction: Option<f64> = None;
+        let mut values: Vec<f64> = Vec::new();
+        for m in members {
+            let f = match self.eval(independent, m)? {
+                Val::Null => return Ok(Val::Null),
+                Val::Int(i) => i as f64,
+                Val::Float(f) => f,
+                other => return unsupported(format!("a percentile fraction that is a {}", class_of(&other))),
+            };
+            if fraction.is_some_and(|p| p != f) {
+                return unsupported("a percentile fraction that differs across the group");
+            }
+            fraction = Some(f);
+            match self.eval(arg, m)? {
+                Val::Null => {}
+                Val::Int(i) => values.push(i as f64),
+                Val::Float(f) => values.push(f),
+                other => return unsupported(format!("a percentile of a {}", class_of(&other))),
+            }
+        }
+        let Some(p) = fraction else { return Ok(Val::Null) };
+        if !(0.0..=1.0).contains(&p) {
+            return Err(Stop::Exception("22G0C".to_string()));
+        }
+        if distinct {
+            values.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
+            values.dedup();
+        }
+        if values.is_empty() {
+            return Ok(Val::Null);
+        }
+        values.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
+        let n = values.len();
+        if cont {
+            let rn = p * (n as f64 - 1.0);
+            let (lo, hi) = (rn.floor() as usize, rn.ceil() as usize);
+            let v = if lo == hi { values[lo] } else { values[lo] + (rn - lo as f64) * (values[hi] - values[lo]) };
+            Ok(Val::Float(v))
+        } else {
+            let idx = ((p * n as f64).ceil() as usize).max(1) - 1;
+            let v = values[idx.min(n - 1)];
+            Ok(if v.fract() == 0.0 && v.abs() < 1e15 { Val::Int(v as i128) } else { Val::Float(v) })
+        }
+    }
+
     fn aggregate(&self, agg: &Plain, members: &[Row]) -> R<Val> {
         if has_kw(agg, "COUNT") && child(agg, "asterisk").is_some() || agg.text() == "COUNT(*)" {
             return Ok(Val::Int(members.len() as i128));
         }
         let Some(general) = child(agg, "general set function") else {
-            return unsupported("a binary set function (PERCENTILE)");
+            return self.percentile(agg, members);
         };
         let Some(kind) = child(general, "general set function type").map(|t| t.text()) else {
             return unsupported("a set function without a type");
@@ -3004,6 +3091,8 @@ impl Env<'_> {
 
 /// The text with everything inside brackets, braces and parentheses removed.
 fn strip_nested(t: &str) -> String {
+    // Arrows of an edge type are not angle brackets.
+    let t = t.replace("->", "--").replace("<-", "--").replace("<~", "~~").replace("~>", "~~");
     let mut depth = 0usize;
     let mut out = String::new();
     for c in t.chars() {
@@ -3102,7 +3191,17 @@ fn is_typed(v: &Val, declared: &str) -> R<bool> {
         Val::Path(_) => family(&["PATH"]),
         Val::List(_) => family(&["LIST", "ARRAY"]),
         Val::Record(_) => family(&["RECORD", "{"]),
-        Val::Opaque(_) => return unsupported("IS TYPED on an implementation-defined value"),
+        Val::Opaque(hint) => match hint.as_str() {
+            "string" => family(&["STRING", "VARCHAR", "CHAR", "VALUE"]),
+            "date" => family(&["DATE", "VALUE"]),
+            "zoned time" => family(&["ZONEDTIME", "TIMEWITHTIMEZONE", "VALUE"]),
+            "local time" => family(&["LOCALTIME", "TIMEWITHOUTTIMEZONE", "TIME", "VALUE"]),
+            "zoned datetime" => family(&["ZONEDDATETIME", "TIMESTAMPWITHTIMEZONE", "VALUE"]),
+            "local datetime" => family(&["LOCALDATETIME", "TIMESTAMPWITHOUTTIMEZONE", "TIMESTAMP", "VALUE"]),
+            "duration" => family(&["DURATION", "VALUE"]),
+            "bytes" => family(&["BYTES", "BINARY", "VARBINARY", "VALUE"]),
+            _ => return unsupported("IS TYPED on an implementation-defined value"),
+        },
         Val::Null => true,
     })
 }

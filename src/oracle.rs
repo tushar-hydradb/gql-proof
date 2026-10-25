@@ -388,6 +388,14 @@ pub(crate) fn literal(p: &Plain) -> Result<Value, String> {
             .map(Value::Float)
             .map_err(|_| "a decimal out of range".to_string());
     }
+    if let Some(d) = exactly(p, "unsigned decimal in scientific notation") {
+        return d
+            .text()
+            .replace('_', "")
+            .parse()
+            .map(Value::Float)
+            .map_err(|_| "a decimal out of range".to_string());
+    }
     if p.text().is_empty() {
         return Err("an empty value".to_string());
     }
@@ -1042,7 +1050,7 @@ impl Builder {
                 binding
             }
             SItem::Quant(tertiary, kind, lower) => {
-                if lower > 64 {
+                if lower > 512 {
                     self.out_of_core(format!("a quantifier lower bound of {lower}"));
                     return Vec::new();
                 }
@@ -1116,7 +1124,7 @@ impl Builder {
                     self.out_of_core("a quantifier whose lower bound could not be read");
                     return Vec::new();
                 };
-                if lower > 64 {
+                if lower > 512 {
                     self.out_of_core(format!("a quantifier lower bound of {lower}"));
                     return Vec::new();
                 }

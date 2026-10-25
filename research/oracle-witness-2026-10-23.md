@@ -40,9 +40,10 @@ on every graph; and the construction says which
 finite graph `G`, the bag `q(G)` is computable, so `q_r = q(G(q))` is known in
 full, not only up to one row
 
-theorem 1 is what is built in this note. theorem 2 is the reference evaluator
-for the pattern core (roadmap step 5); its proof is one paragraph here because
-the standard already gives the algorithm, and its code is the next step
+both are built: theorem 1 as the witness construction `W`, theorem 2 as the
+reference evaluator in `src/oracle/eval.rs` (2026-10-25, see "the evaluator").
+the record carries the strongest tier the two reach: `bag` (the whole result,
+or the exception), `witness` (a row, or no row anywhere), `status`
 
 ## the pattern core
 
@@ -240,6 +241,116 @@ shortest or counted paths, which are decided on the finite set. so `SLM`,
 `q` is relational algebra over that table. the evaluator is this enumeration
 written from 22.3 and 22.4 literally; it is the next thing to build
 
+## the evaluator (theorem 2, built)
+
+`src/oracle/eval.rs` runs a sentence on the witness graph by the general
+rules, written from them literally:
+
+- patterns: 22.3's local matches as sets of path bindings built by
+  concatenation, union and bounded power, each step kept consistent by 22.2
+  GR 16 (the extracted path is a path, non-separable node bindings bind one
+  node, directionality by the edge pattern's kind, the path mode over each
+  bracketed span); 22.2 GR 14's REDUCE and set semantics; 16.4's match (every
+  unconditional singleton bound once, different edges, the where clause); 22.4
+  for a selective pattern (candidates reduced and partitioned by their end
+  nodes; ANY N kept whole when the partition has N or fewer, SHORTEST N by
+  edge count when the cut between the Nth and the next is clean, SHORTEST N
+  GROUPS by length); 22.8's record (singletons, group lists, conditional
+  nulls, paths and subpaths); 16.3's join with the incoming table. a multiset
+  alternation keeps its operands apart (16.7 SR 10 gives each a subpath
+  symbol that REDUCE keeps); a union merges them
+- statements (clause 14): MATCH and OPTIONAL MATCH, FILTER, LET, FOR with
+  ORDINALITY or OFFSET, RETURN with DISTINCT, GROUP BY and aggregates (COUNT,
+  SUM, MIN, MAX, COLLECT_LIST, the percentiles), ORDER BY (an order is claimed
+  only when no two adjacent keys tie), OFFSET, LIMIT (claimed only when it
+  drops nothing or the rows are ordered), YIELD, FINISH (9.2 GR 3: a statement
+  after an omitted result starts from a new unit table), nested queries, EXISTS
+  in its three forms, VALUE subqueries, the VALUE definition block with the
+  declared type checked for the literal classes
+- expressions (clauses 19, 20) over null, boolean, integer, float, string,
+  node, edge, path, list and record: three-valued logic, comparisons,
+  arithmetic with 22012 and 22003, the numeric functions with their domains
+  (2201E, 22013), string concatenation, folds, LEFT and RIGHT, the trims
+  (22027), NORMALIZE and IS NORMALIZED for ASCII, CASE in both forms, NULLIF
+  and COALESCE, CAST among the literal classes and AS ANY, property references,
+  parameters, list and record constructors, PATH[...] with 22G0Z, ELEMENTS,
+  TRIM on lists (22G0C), CARDINALITY, PATH_LENGTH, CHAR_LENGTH, the labeled,
+  directed, source/destination, ALL_DIFFERENT, SAME, PROPERTY_EXISTS and IS
+  TYPED predicates, LET ... IN
+- what the rules leave to the implementation or the clock is an opaque
+  value: SESSION_USER, the datetime functions, temporal and byte string
+  literals, temporal arithmetic. an opaque value is known to be non-null and
+  to raise nothing, carries its class for IS TYPED and the declared type
+  check, and may never be compared or returned: a sentence that would stops
+  with the reason. `DATE ( { } )` and the empty record argument raise 22G05
+  as the rules say
+- where the rules give the implementation a choice the evaluator stops too,
+  with the reason, and the record keeps the witness tier: which N paths ANY
+  keeps, ties under SHORTEST N and ORDER BY, which rows LIMIT keeps without an
+  order, the type of AVG over exact numerics, the scale of exact division
+  with a remainder, ELEMENT_ID's spelling
+
+the oracle command parses each sentence with the typed rules choosing the
+derivation (`context::accepts` on the pair rule, falling back to the syntax
+rules alone), because the text is ambiguous and the generator's tree is the
+type-correct one: `1 + 2 * 3` also parses as duration arithmetic, which types
+refuse. the check against the generation record stays as before
+
+on the 2-variable set (3,800 distinct):
+
+| tier | sentences |
+| --- | --- |
+| bag (theorem 2), of which exceptions 16 | 3,604 |
+| witness (theorem 1) | 0 |
+| status only | 180 |
+
+the evaluator stops, by reason: an implementation-defined value in the
+result 57 (`RETURN SESSION_USER`, `RETURN CURRENT_DATE`); a parameter with no
+admitted class 21 (the `NOT NULL` sites); IS NORMALIZED on SESSION_USER 10; a
+literal class the harness has no values of 8; byte string functions 10; a
+data modifying or catalog statement 6; LIMIT without an order below the row
+count 5; CALL 2; the rest 1 or 2 each. so the status tier is now almost
+entirely what the standard itself leaves open
+
+### what turbolay says
+
+`just turbolay-oracle` on the #243 worktree, bags compared row for row (floats
+within a relative tolerance), an expected exception matched by class:
+
+| verdict | records |
+| --- | --- |
+| agree | 2,381 |
+| disagree | 276 |
+| refused (turbolay's parse and planning gaps) | 995 |
+| failed at run time, in the status tier | 11 |
+| unjudged (status tier) | 113 |
+
+every disagreement is in one of these families, each checked by hand against
+the text and by direct queries on a three node chain:
+
+- **`?` drops its one-iteration case** (74): on the chain `(n2) -> (n1) ->
+  (n0)`, `MATCH ( <- ? ) <- RETURN 1 AS n` gives 2 rows where 22.3 GR 3 d
+  (`S^0 ∪ S`) gives 3, and `MATCH ( <- * ) <- RETURN 1 AS n` gives 3. so
+  turbolay's `?` is not `{0,1}`. `MATCH ( x ) ( <- ? ) ( y ) RETURN x , y`
+  gives only the three `x = y` rows
+- **multiset alternation counted as a union with a remainder** (198): `MATCH
+  ( <- |+| <- ) RETURN 1 AS n` over two edges gives 3 rows; 16.7 SR 10 and
+  22.2 GR 14 give 4 (two operands, two edges, the operands kept apart), a
+  union would give 2
+- **a statement after FINISH runs on nothing** (2): `FINISH NEXT RETURN 1 AS
+  n` gives 0 rows; 9.2 GR 3 a ii starts the next statement on a new unit
+  table, so 1
+- the negated wildcard (3 sentences, above), and AVG over integers answering a
+  float where the rules leave the type open (now out of the core, so no
+  longer a disagreement)
+- two single records: `PERCENTILE_CONT ( NULL , x + x )` with a fraction of 2,
+  which the rules raise 22G0C on and turbolay refuses at planning as
+  unsupported; and a `NOT NULL` parameter site turbolay refuses for the
+  missing parameter
+
+these are findings against turbolay to file with the sentences and graphs;
+none is a reading the evaluator should change
+
 ## near misses, as a corollary
 
 for every element the witness uses, one change removes `b(P)` from `SLM(P)`:
@@ -401,10 +512,12 @@ two rows of the 2-variable set, read closely:
 ## what is built on this branch
 
 - `src/oracle.rs`: the ir, the label expression models, `W`, the record, the
-  three emitters, and the tier tagging; `tests/oracle.rs` pins the
-  construction on 15 sentence shapes (merges, self loops, unsatisfiable
-  labels and modes, directions, quantifiers, unions, simplified patterns,
-  paths, chains, the record check)
+  three emitters, and the tier tagging; `src/oracle/eval.rs`: the evaluator;
+  `tests/oracle.rs` pins the construction on 17 sentence shapes (merges, self
+  loops, unsatisfiable labels and modes, directions, quantifiers, unions,
+  simplified patterns, paths, chains, the record check, parameters, the
+  evaluator's reach, three variables). nothing in either is bound to two
+  variables: names are keys of a map, slots come from the record
 - `gql-proof oracle <sentences.jsonl>`: parses each sentence with the iso
   grammar, applies the 16.7 transformations, runs `W`, and writes one json
   line per sentence: `sentence`, `graph`, `setup` (`gql`, `cypher`,
@@ -461,8 +574,14 @@ two rows of the 2-variable set, read closely:
 - H-unit is cited (4.8.2: a root execution context's working table is a new
   unit binding table; 9.x SR 10: a program's incoming working table is the
   unit binding table type)
-- theorem 2's evaluator, which also lifts the selective prefix and the near
-  miss limits
+- near misses as full bags: the evaluator makes them one call per mutation;
+  not emitted yet
+- the 180 status rows are the standard's own openings (implementation-defined
+  values in a result, the `NOT NULL` parameter sites, byte strings, data
+  modification, CALL); a per-engine declaration of the implementation-defined
+  items would turn the first family into bags
+- the `neo4j` runner compares witness rows only, not bags; neo4j parses almost
+  none of the set anyway
 - value variables: `C` carries their class; the expression evaluator is where
   they get a value
 - the probe: turbolay's `zz_gql_proof.rs` loads an empty graph and counts
