@@ -955,6 +955,15 @@ impl<'t> Checker<'t> {
                 }
             }
         }
+        // 14.12 SR 22, 27 b: `*` over a FROM that declares no name rewrites to a RETURN with no
+        // item, which the grammar cannot spell.
+        if star && own(sel, "select statement body").is_some() && incoming.is_empty() {
+            self.report(
+                sel,
+                "14.12 SR 22",
+                "SELECT * over a FROM that declares no name: its replacement returns nothing".into(),
+            );
+        }
         if star {
             return Some(incoming);
         }
@@ -1120,14 +1129,18 @@ impl<'t> Checker<'t> {
                 all.extend(refs);
                 refs = all;
             }
-            if gbc.is_none() && !aggregating && contains(obc, "aggregate function") {
+            // 14.10 SR 4 A V (an aggregate needs GROUP BY and an aggregating item) and A VII
+            // (the hidden item it becomes cannot see a non-grouping alias): read strictly, as
+            // the generator does, no aggregate in a sort key at all.
+            if contains(obc, "aggregate function") {
                 self.report(
                     obc,
                     "14.10 SR 4",
-                    "an aggregate in ORDER BY without grouping or aggregation".into(),
+                    "an aggregate in ORDER BY (reading: none)".into(),
                 );
             }
-            if contains(obc, "nested query specification") {
+            // An EXISTS over a graph pattern or match block holds one after 19.4 SR 2, 3.
+            if contains(obc, "nested query specification") || contains(obc, "exists predicate") {
                 self.report(
                     obc,
                     "14.10 SR 4",

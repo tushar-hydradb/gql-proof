@@ -124,6 +124,14 @@ fn bad_on_a_tree(text: &str, rule: &str) {
     );
 }
 
+/// Valid on some tree: a string function derives as a character and as a byte string form,
+/// and the tree of the operand's own kind is valid (H3).
+#[track_caller]
+fn ok_some_tree(text: &str) {
+    let trees = verdicts(text, &verifier());
+    assert!(trees.iter().any(Vec::is_empty), "{text:?}: {trees:#?}");
+}
+
 #[track_caller]
 fn ok(text: &str) {
     let found = violations(text);
@@ -375,18 +383,23 @@ fn numeric_functions() {
 fn string_functions() {
     // 20.24, 20.25
     ok("RETURN UPPER('a') AS a, LOWER('A') AS b, NORMALIZE('a', NFC) AS c");
-    ok("RETURN LEFT('ab', 1) AS a, RIGHT(X'0F0F', 1) AS b");
-    ok("RETURN TRIM('  a ') AS a, TRIM(BOTH 'x' FROM 'xax') AS b, LTRIM('ab', 'a') AS c");
-    ok("RETURN TRIM(X'00' FROM X'000F') AS x");
-    bad("RETURN UPPER(1) AS x", "20.23 SR 2");
+    // LEFT and RIGHT derive as a character and as a byte string function; the tree of the
+    // operand's own kind is valid (H3: each tree is judged as written).
+    for text in ["RETURN LEFT('ab', 1) AS a", "RETURN RIGHT(X'0F0F', 1) AS b"] {
+        let trees = verdicts(text, &verifier());
+        assert!(trees.iter().any(Vec::is_empty), "{text}: {trees:#?}");
+    }
+    ok_some_tree("RETURN TRIM('  a ') AS a, TRIM(BOTH 'x' FROM 'xax') AS b, LTRIM('ab', 'a') AS c");
+    ok_some_tree("RETURN TRIM(X'00' FROM X'000F') AS x");
+    bad_on_a_tree("RETURN UPPER(1) AS x", "20.23 SR 2");
     bad("RETURN LEFT(1, 1) AS x", "20.23 SR 2, 4");
-    bad("RETURN LEFT('a', 'b') AS x", "20.21 SR 3");
-    bad("RETURN BTRIM(X'0F') AS x", "20.23 SR 2");
-    bad("RETURN TRIM(1) AS x", "20.23 SR 2, 4");
-    bad("RETURN TRIM('x' FROM X'0F') AS x", "20.24 SR 3");
-    bad("RETURN (UPPER('a')) + 1 AS x", "20.21 SR 3");
-    ok("RETURN (LEFT('ab', 1)) || 'c' AS x");
-    bad("RETURN (LEFT(X'0F', 1)) || 'c' AS x", "20.23 SR 4");
+    bad_on_a_tree("RETURN LEFT('a', 'b') AS x", "20.21 SR 3");
+    bad_on_a_tree("RETURN BTRIM(X'0F') AS x", "20.23 SR 2");
+    bad_on_a_tree("RETURN TRIM(1) AS x", "20.23 SR 2, 4");
+    bad_on_a_tree("RETURN TRIM('x' FROM X'0F') AS x", "20.24 SR 3");
+    bad_on_a_tree("RETURN (UPPER('a')) + 1 AS x", "20.21 SR 3");
+    ok_some_tree("RETURN (LEFT('ab', 1)) || 'c' AS x");
+    bad_on_a_tree("RETURN (LEFT(X'0F', 1)) || 'c' AS x", "20.23 SR 4");
 }
 
 #[test]
@@ -448,7 +461,7 @@ fn casts() {
     bad("RETURN CAST(X'0F' AS STRING) AS x", "20.8 SR 8");
     bad("RETURN CAST(CURRENT_DATE AS LOCAL TIME) AS x", "20.8 SR 8");
     bad("RETURN CAST(LOCAL_TIME AS DATE) AS x", "20.8 SR 8");
-    bad("RETURN CAST([1] AS LIST<DATE>) AS x", "20.8 SR 8");
+    bad("RETURN CAST([1] AS LIST<DATE>) AS x", "20.8 SR 11 d");
     bad("RETURN CAST({k: 1} AS RECORD {l INT}) AS x", "20.8 SR 8");
     bad("MATCH (a) RETURN CAST(a AS EDGE) AS x", "20.8 SR 8");
     // SR 4-5
@@ -691,7 +704,7 @@ fn dynamic_casts() {
     bad("MATCH (x) RETURN CAST(x.a AS LIST<INT>) AS y", "20.8 SR 10");
     bad(
         "MATCH (x) RETURN COLLECT_LIST(x.a) AS l NEXT RETURN CAST(l AS LIST<EDGE>) AS y",
-        "20.8 SR 10",
+        "20.8 SR 11 d",
     );
     // a closed union source: some component casts
     ok("RETURN CAST(CAST(1 AS ANY<INT | STRING>) AS DATE) AS y");

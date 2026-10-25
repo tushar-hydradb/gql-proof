@@ -1,5 +1,8 @@
 //! Grammar driven conformance evidence for GQL (ISO/IEC 39075).
 
+// A shadowed match arm is a check that never runs (the checker's arms are its rules).
+#![deny(unreachable_patterns)]
+
 pub mod bnf;
 pub mod cfg;
 pub mod context;

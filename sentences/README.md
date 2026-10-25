@@ -56,10 +56,11 @@ and `tools/inventory/violations.py` read them as they are
 - `typed-2vars-turbolay-claim-soundness.jsonl`, `typed-2vars-whole-grammar-soundness.jsonl`:
   the typed command (`--match-mode-default different-edges`) on `tushar/soundness`
   (2026-10-24), the claim's gate in force (`research/soundness-claim.md`): every
-  printed tree passed the syntax, scope and types checkers. after the independent
-  review (2026-10-24): turbolay claim 3,987 rows, 157 and 338 never, 0 withheld;
-  whole grammar 3,949 rows, 35 and 88 never, 135 withheld, all on gate-only rules
-  (graph type bodies, 9.2 SR 7), 0 on a rule the generator keeps
+  printed tree passed the syntax, scope and types checkers. after the fourth review
+  (2026-10-25): turbolay claim 3,583 rows, 158 and 342 never, 0 withheld; whole
+  grammar 3,465 rows, 36 and 90 never, 136 withheld, all on gate-only rules
+  (graph type bodies, 2 by the types checker), 0 on a rule the generator keeps. no SELECT
+  with a FROM and no `$$` are generated (readings, `research/soundness-claim.md`)
 - `typed-2vars-whole-grammar-51d059a.jsonl`: the typed command with no `--claim`
   (every feature) and `--deadline 3600`, on main at 51d059a (2026-10-23, before
   the soundness work): 3,508 rows, 3,443 distinct, 437 s; 4,442 of 4,473

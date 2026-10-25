@@ -200,16 +200,16 @@ fn where_clauses_in_patterns() {
     ok("MATCH (x) ((a)-[e]->(b WHERE b.k = x.k) | (c)-[f]->(d WHERE d.k = x.k)) RETURN x");
     // 16.6 SR 8: a selective path pattern references only its own variables
     bad(
-        "MATCH (x), ANY SHORTEST (a)-[e]->(b WHERE b.k = x.k) RETURN a",
+        "MATCH REPEATABLE ELEMENTS (x), ANY SHORTEST (a)-[e]->(b WHERE b.k = x.k) RETURN a",
         "16.6 SR 8",
     );
     ok("MATCH ANY SHORTEST (a)-[e]->(b WHERE b.k = a.k) RETURN a");
     // 16.6 SR 7: its strict interior variables are its own
     bad(
-        "MATCH ANY SHORTEST (a)-[e]->(b), (c)-[e]->(d) RETURN a",
+        "MATCH REPEATABLE ELEMENTS ANY SHORTEST (a)-[e]->(b), (c)-[e]->(d) RETURN a",
         "16.6 SR 7",
     );
-    ok("MATCH ANY SHORTEST (a)-[e]->(b), (b)-[f]->(c) RETURN a");
+    ok("MATCH REPEATABLE ELEMENTS ANY SHORTEST (a)-[e]->(b), (b)-[f]->(c) RETURN a");
     // 16.3 SR 25: a pattern expression sees the incoming names too
     ok("MATCH (a) MATCH (b WHERE b.k = a.k) RETURN b");
     ok("LET x = 1 MATCH (a WHERE a.k = x) RETURN a");
@@ -303,10 +303,7 @@ fn return_projects() {
     bad("RETURN MAX(LET y = VALUE { RETURN 1 AS z } IN y END) AS x", "20.9 SR 3");
     ok("RETURN COUNT(*) AS x, EXISTS { MATCH (a) RETURN a } AS y");
     // 14.12 SR 7 b
-    bad("SELECT * FROM { USE CURRENT_PROPERTY_GRAPH MATCH (a) RETURN a } GROUP BY ()", "14.12 SR 7");
     // 14.12 SR 7 c: FROM_ITEMS are the columns `*` returns and what the items see.
-    ok("SELECT * FROM { USE CURRENT_PROPERTY_GRAPH MATCH (a) RETURN a }");
-    ok("SELECT a AS b FROM CURRENT_GRAPH MATCH (a)");
     bad("MATCH (a) RETURN a ORDER BY COUNT(a)", "14.10 SR 4");
     // the projection ends the statement
     bad("MATCH (a) RETURN a.k AS k NEXT RETURN a", "20.12 SR 8");

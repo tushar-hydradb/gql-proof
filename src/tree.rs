@@ -157,7 +157,8 @@ pub fn order_bounds(
     rng: &mut ChaCha8Rng,
 ) -> bool {
     let values = settle_values(cfg, root, spell, rng);
-    distinct_names(cfg, root, spell) || values
+    let fresh = fresh_created_names(cfg, root, spell);
+    distinct_names(cfg, root, spell) || values || fresh
 }
 
 /// 18.5 SR 1, 18.10 SR 2, 20.19 SR 2: the names in one property type list, field type list
@@ -369,4 +370,90 @@ pub fn raised_bound(text: &str, lower: u64, rng: &mut ChaCha8Rng) -> String {
         _ => k.to_string(),
     };
     format!("{prefix}{spelt}{digits}")
+}
+
+/// 12.2 SR 5, 12.4 SR 6, 12.6 SR 5 with H1: a name a CREATE makes must name nothing that exists,
+/// every other name must name something that does. The leaf provider spells every name `a`, so
+/// a created name is re-spelled `ab`, `abb`, ... to the first spelling no other object name of
+/// the tree has, under its own definition.
+fn fresh_created_names(cfg: &Cfg, root: &mut Node, spell: &impl Fn(NtId, &str) -> Option<Node>) -> bool {
+    const NAMES: [&str; 5] = ["graph name", "graph type name", "binding table name", "procedure name", "schema name"];
+    fn texts(cfg: &Cfg, n: &Node, out: &mut Vec<String>) {
+        if let Sym::Nt(nt) = n.sym
+            && NAMES.contains(&cfg.base(nt))
+        {
+            out.push(n.render(cfg));
+        }
+        for c in &n.children {
+            texts(cfg, c, out);
+        }
+    }
+    fn made<'a>(cfg: &Cfg, n: &'a mut Node, want: &str) -> Option<&'a mut Node> {
+        if let Sym::Nt(nt) = n.sym
+            && cfg.base(nt) == want
+        {
+            return Some(n);
+        }
+        for c in &mut n.children {
+            if let Some(m) = made(cfg, c, want) {
+                return Some(m);
+            }
+        }
+        None
+    }
+    fn walk(cfg: &Cfg, n: &mut Node, spell: &impl Fn(NtId, &str) -> Option<Node>, taken: &mut Vec<String>) -> bool {
+        let mut changed = false;
+        if let Sym::Nt(nt) = n.sym {
+            let want = match cfg.base(nt) {
+                "create schema statement" => Some("schema name"),
+                "create graph statement" => Some("graph name"),
+                "create graph type statement" => Some("graph type name"),
+                _ => None,
+            };
+            if let Some(want) = want
+                && let Some(m) = made(cfg, n, want)
+                && let Sym::Nt(mnt) = m.sym
+            {
+                // Extend the spelling, not replace it: `b`s appended (inside the quotes of a
+                // delimited name), so every production the name was found for stays.
+                let old = m.render(cfg);
+                // A placeholder rendering (a tree spelled without lexical leaves) is not a name
+                // to extend: start from a plain one.
+                let old = if old.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '"' | '`'))
+                    && spell(mnt, &old).is_some()
+                {
+                    old
+                } else {
+                    String::from("a")
+                };
+                let quoted = old.len() >= 2
+                    && (old.starts_with('"') || old.starts_with('`'))
+                    && old.ends_with(&old[..1]);
+                let mut extra = String::from("b");
+                for _ in 0..64 {
+                    let fresh = if quoted {
+                        format!("{}{}{}", &old[..old.len() - 1], extra, &old[old.len() - 1..])
+                    } else {
+                        format!("{old}{extra}")
+                    };
+                    if !taken.contains(&fresh)
+                        && let Some(spelt) = spell(mnt, &fresh)
+                    {
+                        *m = spelt;
+                        taken.push(fresh);
+                        changed = true;
+                        break;
+                    }
+                    extra.push('b');
+                }
+            }
+        }
+        for c in &mut n.children {
+            changed |= walk(cfg, c, spell, taken);
+        }
+        changed
+    }
+    let mut taken = Vec::new();
+    texts(cfg, root, &mut taken);
+    walk(cfg, root, spell, &mut taken)
 }

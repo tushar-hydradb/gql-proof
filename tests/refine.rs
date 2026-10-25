@@ -15,7 +15,14 @@ use std::sync::LazyLock;
 static ISO: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static BASE: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO));
 
-const RULES: [&str; 43] = [
+const RULES: [&str; 50] = [
+    "12.4 SR 3",
+    "12.5 SR 2",
+    "12.6 SR 2",
+    "12.7 SR 2",
+    "20.7 SR 2",
+    "22.1 SR 3",
+    "14.12 SR 27",
     "21.2 SR 73",
     "21.2 SR 75",
     "18.9 SR 88",
@@ -605,6 +612,18 @@ fn refinement_loses_no_iso_production() {
                 // A reading, not the text: every declared binding table type is closed and
                 // tables are not typed (refine::ClosedInitializerTypes).
                 || d.starts_with("<opt typed binding table initializer/opt1> ::=")
+                // Outside the claim: a `$$` reference (refine::NoSubstitution).
+                || d.contains("<substituted parameter reference>")
+                || d.contains("<reference parameter specification>")
+                // 12.4-12.7: a CREATE or DROP parent is a schema; object names are kept for CALL,
+                // TABLE and the rest, so no ISO production is lost here.
+                // A reading: no SELECT with a FROM (refine::NoSelectBody).
+                || d.contains("<select statement body>")
+                || d.starts_with("<select statement body>")
+                || d.starts_with("<select graph match")
+                || d.starts_with("<select query specification>")
+                // A reading: no element predicate as a when operand (refine::NoElementWhen).
+                || (d.starts_with("<when operand> ::=") && (d.contains("directed predicate part 2") || d.contains("labeled predicate part 2") || d.contains("source predicate part 2") || d.contains("destination predicate part 2")))
         };
         let missing: Vec<String> = (0..copies.len())
             .filter(|&p| !copies[p] && !ruled_out(p))
@@ -1054,10 +1073,11 @@ fn a_selective_pattern_stands_alone_under_different_edges() {
         PORTABLE,
         None,
     );
+    // Portable: a missing mode may be DIFFERENT EDGES (16.4 SR 10), so SR 12 holds it so.
     expect(
         &graph_pattern(None, vec![selective(), plain()], None),
         PORTABLE,
-        None,
+        Some("16.4 SR 12"),
     );
     expect(
         &graph_pattern(Some("DIFFERENT"), vec![selective()], None),

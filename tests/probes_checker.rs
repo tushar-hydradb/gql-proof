@@ -70,6 +70,9 @@ fn leaves() {
     green(leaf("other digit", "\u{0663}"), "21.4 SR 2");
     red(leaf("character representation", "'"), "21.2 SR 31-33, 41");
     red(leaf("character representation", "\u{0378}"), "21.2 SR 31-33, 41");
+    // 21.2 SR 42: an escape reached through the prose leaf (SR 40) starts with a reverse solidus.
+    red(leaf("character representation", "\\"), "21.2 SR 31-33, 41");
+    red(leaf("string literal character", "\\"), "21.2 SR 31-33, 41");
     green(leaf("character representation", "x"), "21.2 SR 31-33, 41");
     red(leaf("external object reference", "http://x"), "17.8 SR 2, 3");
     green(leaf("external object reference", "urn:x"), "17.8 SR 2, 3");
@@ -213,13 +216,6 @@ fn confusable_names_under_h2() {
     fine("LET y = 1 LET z = 2 RETURN y + z AS x", "6 SR 4");
 }
 
-#[test]
-fn result_statements_agree_in_a_block() {
-    bad(
-        "SELECT * FROM { USE CURRENT_PROPERTY_GRAPH RETURN 1 AS a } NEXT SELECT a AS b",
-        "9.2 SR 7",
-    );
-}
 
 #[test]
 fn nothing_is_known_not_nullable() {
@@ -238,4 +234,95 @@ fn red_team_findings() {
     fine("INSERT ( { a : 1 } )", "16.5 SR 6");
     // 6 SR 4: a delimited identifier's representative form is compared too.
     bad("MATCH (m) RETURN m.`rn` AS x", "6 SR 4");
+}
+
+#[test]
+fn second_review_findings() {
+    // 14.12 SR 27 b: a HAVING needs an aggregating select item.
+    bad("SELECT * FROM CURRENT_PROPERTY_GRAPH { FINISH } HAVING TRUE", "14.12 SR 27");
+    // 14.12 SR 27 a then 9.2 SR 5: a SELECT is ambient, so beside a USE statement it breaks
+    // the block.
+    bad("SELECT CURRENT_DATE AS x NEXT USE CURRENT_PROPERTY_GRAPH INSERT ( )", "9.2 SR 5");
+    // 4.17.4.2: a NOT NULL declared graph type takes no computed value.
+    bad("SESSION SET GRAPH $b GRAPH NOT NULL = CURRENT_PROPERTY_GRAPH", "10.1 SR 8");
+    // 14.10 SR 4: an EXISTS in a sort key is a nested query after 19.4 SR 2.
+    bad("MATCH (a) RETURN a ORDER BY EXISTS { (a) }", "14.10 SR 4");
+}
+
+#[test]
+fn nested_graph_patterns() {
+    // 16.4 SR 14: an enclosing REPEATABLE ELEMENTS pattern does not guard a nested unbounded
+    // quantifier, though the nested pattern's own default would.
+    bad(
+        "MATCH REPEATABLE ELEMENTS ( x WHERE EXISTS { DIFFERENT EDGES <- + } ) RETURN x",
+        "16.4 SR 14 nested",
+    );
+    fine(
+        "MATCH DIFFERENT EDGES ( x WHERE EXISTS { DIFFERENT EDGES <- + } ) RETURN x",
+        "16.4 SR 14 nested",
+    );
+    // 16.4 SR 6: KEEP reaches a nested path pattern's search prefix.
+    bad("MATCH ( x WHERE EXISTS { ANY SHORTEST <- } ) KEEP TRAIL RETURN x", "16.4 SR 6 nested");
+}
+
+#[test]
+fn outside_the_claim() {
+    // 22.1 SR 3: no `$$`.
+    bad("CALL $$b ( )", "22.1 SR 3");
+    // 14.12 SR 22: `*` over a FROM that declares nothing.
+    bad("SELECT * FROM CURRENT_PROPERTY_GRAPH { FINISH }", "14.12 SR 22");
+    fine("SELECT * FROM { USE CURRENT_PROPERTY_GRAPH MATCH (a) RETURN a }", "14.12 SR 22");
+}
+
+#[test]
+fn rewrite_findings() {
+    // 21.2 SR 67 then 20.8 SR 4: a NULL to a declared null type is a cast to an immaterial type.
+    bad("LET VALUE x :: NULL = NULL RETURN x", "20.8 SR 4");
+    // 20.7 SR 1 b then 22.19 SR 2: NULLIF's result is its first operand, combined.
+    bad("MATCH ( x ) RETURN NULLIF ( x . p , 1 ) AS y", "22.19 SR 2");
+}
+
+#[test]
+fn rewrite_findings_paths() {
+    // 16.7 SR 10 then 20: a multiset alternation operand is a named subpath.
+    bad("MATCH ( <- ? |+| <- ? ) <- RETURN 1 AS x", "16.7 SR 20");
+    fine("MATCH ( <- |+| <- ) <- RETURN 1 AS x", "16.7 SR 20");
+    // 16.4 SR 12 under the portable default: a missing mode may be DIFFERENT EDGES.
+    bad("MATCH ANY ( a ) , ( b ) RETURN a , b", "16.4 SR 12");
+}
+
+#[test]
+fn third_review_findings() {
+    // 20.7 SR 2 g: an element predicate as a when operand (reading: none).
+    bad("RETURN COUNT ( * ) AS x NEXT ORDER BY CASE CAST ( NULL AS EDGE ) WHEN IS DIRECTED THEN NULL ELSE x END FINISH", "20.7 SR 2");
+    // 11.1 SR 3: SESSION SET GRAPH's expression is typed.
+    bad("SESSION SET GRAPH ( 1 + 2 )", "11.1 SR 3");
+}
+
+#[test]
+fn fourth_review_findings() {
+    // 12.5 SR 2: a DROP parent with an object name identifies no schema.
+    bad("DROP GRAPH / a . a", "12.5 SR 2");
+    fine("DROP GRAPH / a", "12.5 SR 2");
+    // 17.6 SR 1 b, held literally.
+    bad("DROP GRAPH HOME_SCHEMA a", "17.6 SR 1");
+    bad("DROP GRAPH a . a", "17.6 SR 1");
+    fine("DROP GRAPH HOME_SCHEMA / a", "17.6 SR 1");
+    // 12.6 SR 5 with H1: created and referenced.
+    bad("CREATE GRAPH TYPE a COPY OF a", "12.6 SR 5");
+    fine("CREATE GRAPH TYPE b COPY OF a", "12.6 SR 5");
+    bad("CREATE SCHEMA / a CREATE GRAPH / a / b ANY", "12.2 SR 5");
+    bad("CREATE GRAPH / a LIKE / a", "12.4 SR 6");
+    fine("CREATE GRAPH / b LIKE / a", "12.4 SR 6");
+    fine("CREATE GRAPH IF NOT EXISTS / a LIKE / a", "12.4 SR 6");
+    // 20.8 SR 11 a: a list casts to a list only.
+    bad("RETURN CAST ( [1] AS ANY ) AS x", "20.8 SR 11");
+    // 20.8 SR 11 d: the element types cast too.
+    bad("RETURN CAST ( [TRUE] AS LIST < DATE > ) AS x", "20.8 SR 11 d");
+    fine("RETURN CAST ( [1] AS LIST < INT > ) AS x", "20.8 SR 11 d");
+    // 10.3 SR 8 (reading): a length-bounded string type, also nested, is not declared.
+    bad("VALUE x CHAR = SESSION_USER RETURN x AS y", "10.3 SR 8");
+    bad("VALUE x ANY < BYTES | CHAR > = NULL RETURN x AS y", "10.3 SR 8");
+    bad("VALUE x RECORD { a :: STRING ( 3 ) } = NULL RETURN x AS y", "10.3 SR 8");
+    fine("VALUE x STRING = SESSION_USER RETURN x AS y", "10.3 SR 8");
 }

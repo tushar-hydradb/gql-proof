@@ -648,6 +648,11 @@ fn subtype(s: &Ty, t: &Ty) -> bool {
 fn cast_fault(sd: &Ty, td: &Ty) -> Option<&'static str> {
     use CastClass::*;
     match (sd, td) {
+        // SR 11 a: a regular list casts to a regular list only (not to PATH, not to a dynamic
+        // union)
+        (Ty::List { group: false, .. }, t) if !matches!(t, Ty::List { group: false, .. }) => {
+            return Some("20.8 SR 11");
+        }
         // SR 9
         (_, Ty::Dyn(u)) => return (!within(sd, u)).then_some("20.8 SR 9"),
         // SR 10: a component of the source casts to the target
@@ -691,7 +696,9 @@ fn cast_fault(sd: &Ty, td: &Ty) -> Option<&'static str> {
                 if !*group && *tg {
                     return Some("20.8 SR 8");
                 }
-                return cast_fault(elem, te);
+                // SR 11 d: the element types; the generator does not follow them, the gate keeps
+                // a breaking cast out (verify::GATE_ONLY).
+                return cast_fault(elem, te).map(|_| "20.8 SR 11 d");
             }
             _ => false,
         },
@@ -905,6 +912,13 @@ impl<'t> Checker<'t> {
                 let t = self.ty(ve, &env);
                 if let Some(vt) = own(otvi, "value type") {
                     let declared = value_type(vt);
+                    if bounded_string(vt) {
+                        self.report(
+                            node,
+                            "7.1 SR 6",
+                            "(reading) a length-bounded string type is not known to take every value of the initializer".into(),
+                        );
+                    }
                     if !assignable(&t, &declared) {
                         self.report(
                             node,
@@ -920,6 +934,10 @@ impl<'t> Checker<'t> {
             }
             Some("session set command" | "session set parameter clause") => {
                 kids(node).into_iter().for_each(|k| self.root(k))
+            }
+            // 11.1 SR 3 and the rest: a session command's own expressions are typed too.
+            Some("session set graph clause" | "session set schema clause" | "session set time zone clause") => {
+                self.walk(node, &Env::new(Default::default()));
             }
             Some(n) if n.starts_with("session") => {}
             _ => kids(node).into_iter().for_each(|k| self.root(k)),
@@ -1437,6 +1455,25 @@ impl<'t> Checker<'t> {
             return Some((n, vit));
         };
         let declared = value_type(vt);
+        // 21.2 SR 67: a NULL to a declared type DT is CAST(NULL AS DT), which 20.8 SR 4 refuses
+        // for an immaterial DT (the null type, the empty type).
+        if matches!(declared.ty, Ty::Null | Ty::Nothing) {
+            self.report(
+                def,
+                "20.8 SR 4",
+                format!("a declared {} type: its initializer is cast to an immaterial type", declared.ty),
+            );
+        }
+        // SR 8 b i 1, by 4.16.x a type is assignable when every value of it is: a character or
+        // byte string type bounded in length (CHAR, BINARY, any written length) is not known
+        // to take every value of the initializer, whose length is not followed (reading).
+        if bounded_string(vt) {
+            self.report(
+                def,
+                "10.3 SR 8",
+                "(reading) a length-bounded string type is not known to take every value of the initializer".into(),
+            );
+        }
         // SR 8 b i 1
         if !assignable(&vit, &declared) {
             self.report(
@@ -2126,7 +2163,9 @@ impl<'t> Checker<'t> {
                 let t = match a.first() {
                     Some(s) => {
                         let t = self.ty(s, env);
-                        self.expect(s, &t, &[Class::Char, Class::Bytes], "20.23 SR 2, 4");
+                        // H3: the tree's own form, character or byte string.
+                        let class = if n == "substring function" { Class::Char } else { Class::Bytes };
+                        self.expect(s, &t, &[class], "20.23 SR 2, 4");
                         t
                     }
                     None => Ty::Any,
@@ -2512,7 +2551,10 @@ impl<'t> Checker<'t> {
                     format!("{} and {} are not comparable", types[0], types[1]),
                 );
             }
-            return types.into_iter().next().unwrap_or(Ty::Any);
+            // 20.7 SR 1 b: the CASE's one result expression is V1, its type the combination
+            // of {V1} (22.19 SR 2: no dynamic one, the strict reading).
+            let first = types.into_iter().next().unwrap_or(Ty::Any);
+            return self.combined(ca, &[first], "20.7 SR 5");
         }
         // COALESCE (.., Vn-1, Vn) ends in CASE WHEN NOT Vn-1 IS NULL THEN Vn-1 ELSE Vn END
         if let [.., a, b] = operands.as_slice()
@@ -2837,12 +2879,14 @@ impl<'t> Checker<'t> {
             &["trim character string", "trim byte string"],
             &mut chars,
         );
-        let classes: &[Class] = if name(f) == Some("multi-character trim function") {
-            &[Class::Char]
+        // H3: the tree's own form; a byte string trim function takes bytes, the others
+        // character strings.
+        let classes: &[Class] = if name(f) == Some("byte string trim function") {
+            &[Class::Bytes]
         } else {
-            &[Class::Char, Class::Bytes]
+            &[Class::Char]
         };
-        let rule = if classes.len() == 1 {
+        let rule = if name(f) == Some("multi-character trim function") {
             "20.23 SR 2"
         } else {
             "20.23 SR 2, 4"
@@ -3541,4 +3585,18 @@ fn unwrap(mut node: &Plain) -> &Plain {
         }
     }
     node
+}
+
+/// A character or byte string type bounded in length: a written length, or CHAR and BINARY,
+/// whose fixed length 1 is implicit (18.9 SR 11). STRING, VARCHAR, BYTES and VARBINARY without a
+/// length take the implementation's maximum, which every string of the implementation fits (H2).
+fn bounded_string(vt: &Plain) -> bool {
+    let mut types = Vec::new();
+    find_any(vt, &["character string type", "byte string type"], &mut types);
+    types.iter().any(|t| {
+        contains(t, "min length")
+            || contains(t, "max length")
+            || contains(t, "fixed length")
+            || kids(t).iter().any(|k| keyword(k, "CHAR") || keyword(k, "BINARY"))
+    })
 }

@@ -30,8 +30,12 @@ use unicode_general_category::{GeneralCategory, get_general_category};
 /// which specifications sit together, not followed).
 pub const GATE_ONLY: &[&str] = &[
     // The audit's `checked` rows (tools/inventory/audit.py requires each listed here).
+    "14.12 SR 22",
+    "16.4 SR 6 nested",
+    "16.4 SR 14 nested",
     "7.1 SR 6",
     "9.2 SR 7",
+    "20.8 SR 11 d",
     "13.3 SR 3",
     "14.2 SR 10",
     "14.11 SR 10",
@@ -166,6 +170,7 @@ impl<'b> Verifier<'b> {
     pub fn verify(&self, tree: &Plain, rendered: &str) -> Vec<Violation> {
         let mut out = Vec::new();
         confusables(tree, &mut out);
+        created_names(tree, &mut out);
         self.walk(tree, &mut Vec::new(), &mut out);
         if let Some(id086) = self.syntax_rules {
             syntax_rules(tree, id086, &mut Vec::new(), &mut out);
@@ -633,6 +638,13 @@ fn syntax_rules<'t>(
         let path: Vec<&str> = ancestors.iter().filter_map(|a| def_name(a)).collect();
         match name.as_str() {
             "quantified path primary" | "simplified quantified" => {
+                if unbounded(node) && guarded(ancestors, id086) && !guarded_everywhere(ancestors, id086) {
+                    out.push(violation(
+                        &path,
+                        "16.4 SR 14 nested",
+                        "an unbounded quantifier in a nested graph pattern not guarded for an enclosing one".into(),
+                    ));
+                }
                 if unbounded(node) && !guarded(ancestors, id086) {
                     out.push(violation(
                         &path,
@@ -773,17 +785,17 @@ fn syntax_rules<'t>(
                     ));
                 }
             }
-            // 21.3 SR 4: a delimited identifier is not empty.
-            "delimited identifier" => {
+            // 21.3 SR 4: a delimited identifier is not empty. (A guard, so that a non-empty one
+            // goes on to the 21.3 SR 5 arm below.)
+            "delimited identifier"
                 if !contains(node, "double quoted character representation")
-                    && !contains(node, "accent quoted character representation")
-                {
-                    out.push(violation(
-                        &path,
-                        "21.3 SR 4",
-                        "an empty delimited identifier".into(),
-                    ));
-                }
+                    && !contains(node, "accent quoted character representation") =>
+            {
+                out.push(violation(
+                    &path,
+                    "21.3 SR 4",
+                    "an empty delimited identifier".into(),
+                ));
             }
             // 16.11 SR 3 a ii: the lower bound is at most the upper.
             "general quantifier" => {
@@ -843,6 +855,19 @@ fn syntax_rules<'t>(
                     own(pp, "path pattern prefix")
                         .is_some_and(|p| contains(p, "path search prefix"))
                 });
+                // 16.4 SR 6 with "contains" as written: a path pattern nested anywhere below.
+                let mut all = Vec::new();
+                find(node, "path pattern", &mut all);
+                let nested_searched = all.iter().any(|pp| {
+                    own(pp, "path pattern prefix").is_some_and(|p| contains(p, "path search prefix"))
+                });
+                if keep && nested_searched && !searched {
+                    out.push(violation(
+                        &path,
+                        "16.4 SR 6 nested",
+                        "a nested path pattern has a search prefix under a KEEP clause".into(),
+                    ));
+                }
                 if keep && searched {
                     out.push(violation(
                         &path,
@@ -850,9 +875,11 @@ fn syntax_rules<'t>(
                         "a path pattern has its own search prefix next to a KEEP clause".into(),
                     ));
                 }
+                // A missing mode may be DIFFERENT EDGES unless the default is known not to be
+                // (the strict side for this rule, 16.4 SR 10).
                 let different = match own(node, "match mode") {
                     Some(mode) => contains(mode, "different edges match mode"),
-                    None => id086 == MatchModeDefault::DifferentEdges,
+                    None => id086 != MatchModeDefault::RepeatableElements,
                 };
                 let patterns = path_patterns(node);
                 let keep_selective = flat(children).into_iter().any(|c| {
@@ -1049,11 +1076,16 @@ fn syntax_rules<'t>(
                         &mut direct,
                     );
                 }
+                // 14.12 SR 1, 27: a SELECT is judged as its replacement, which is ambient.
+                let is_select = |d: &&Plain| inner(d).and_then(def_name) == Some("select statement");
                 let has = |n: &str| direct.iter().any(|d| def_name(d) == Some(n));
-                let focused = has("focused linear query statement")
-                    || has("focused linear data-modifying statement");
+                let focused = direct.iter().any(|d| {
+                    (def_name(d) == Some("focused linear query statement") && !is_select(d))
+                        || def_name(d) == Some("focused linear data-modifying statement")
+                });
                 let ambient = has("ambient linear query statement")
-                    || has("ambient linear data-modifying statement");
+                    || has("ambient linear data-modifying statement")
+                    || direct.iter().any(|d| def_name(d) == Some("focused linear query statement") && is_select(d));
                 if focused && ambient {
                     out.push(violation(
                         &path,
@@ -1075,7 +1107,13 @@ fn syntax_rules<'t>(
                         "a SELECT beside another linear query statement".into(),
                     ));
                 }
-                let results = |q: &Plain| contains(q, "primitive result statement");
+                // Judged on the replacements: a SELECT is a RETURN (14.12 SR 27 a), an EXISTS
+                // over a pattern holds a RETURN (19.4 SR 2, 3).
+                let results = |q: &Plain| {
+                    contains(q, "primitive result statement")
+                        || contains(q, "select statement")
+                        || contains(q, "exists predicate")
+                };
                 if queries.iter().any(|q| results(q)) && !queries.iter().all(|q| results(q)) {
                     out.push(violation(
                         &path,
@@ -1117,8 +1155,15 @@ fn syntax_rules<'t>(
                         &mut direct,
                     );
                 }
-                let has = |n: &str| direct.iter().any(|d| def_name(d) == Some(n));
-                if has("focused linear query statement") && has("ambient linear query statement") {
+                let is_select = |d: &&Plain| inner(d).and_then(def_name) == Some("select statement");
+                let focused = direct
+                    .iter()
+                    .any(|d| def_name(d) == Some("focused linear query statement") && !is_select(d));
+                let ambient = direct.iter().any(|d| {
+                    def_name(d) == Some("ambient linear query statement")
+                        || (def_name(d) == Some("focused linear query statement") && is_select(d))
+                });
+                if focused && ambient {
                     out.push(violation(
                         &path,
                         "14.2 SR 4",
@@ -1341,6 +1386,107 @@ fn syntax_rules<'t>(
                         &path,
                         rule,
                         format!("{} is not a literal", bad.text()),
+                    ));
+                }
+            }
+            // 14.12 SR 27 b (reading in `refine::NoSelectBody`): a SELECT with a FROM is
+            // judged as its replacement, which the checker does not build.
+            "select statement" if own(node, "select statement body").is_some() => {
+                out.push(violation(
+                    &path,
+                    "14.12 SR 27",
+                    "a SELECT with a FROM: its replacement is not modelled (reading)".into(),
+                ));
+            }
+            // 14.12 SR 16, 21, 27 b: a HAVING needs an aggregating select item.
+            "select statement" if own(node, "having clause").is_some() => {
+                let mut aggs = Vec::new();
+                if let Some(list) = own(node, "select item list") {
+                    find_directly(list, &["aggregate function"], &mut aggs);
+                }
+                if aggs.is_empty() {
+                    out.push(violation(
+                        &path,
+                        "14.12 SR 27",
+                        "a HAVING with no aggregating select item: its replacement filters on an undeclared name".into(),
+                    ));
+                }
+            }
+            // 10.1 SR 8, 7.1 SR 6 c i (4.17.4.2 reading): no NOT NULL declared graph type.
+            "opt typed graph initializer"
+                if own(node, "graph reference value type").is_some_and(|g| contains(g, "not null")) =>
+            {
+                out.push(violation(
+                    &path,
+                    "10.1 SR 8",
+                    "a NOT NULL declared graph type: no value is known not nullable (reading)".into(),
+                ));
+            }
+            // 22.1 SR 3: a `$$` reference's validity is the substituted text's, which no
+            // sentence holds: outside the claim, reported.
+            "substituted parameter reference" => {
+                out.push(violation(
+                    &path,
+                    "22.1 SR 3",
+                    "a substituted parameter: its validity depends on text outside the sentence".into(),
+                ));
+            }
+            // 16.7 SR 10 then 20: each multiset alternation operand becomes a named subpath,
+            // which matches a node.
+            "path multiset alternation" if minimums(node).nodes == 0 => {
+                out.push(violation(
+                    &path,
+                    "16.7 SR 20",
+                    "a multiset alternation operand that can match no node (a named subpath by 16.7 SR 10)".into(),
+                ));
+            }
+            "simplified multiset alternation"
+                if matches!(simplified(node), Factor::Other(m) if m.nodes == 0) =>
+            {
+                out.push(violation(
+                    &path,
+                    "16.7 SR 20",
+                    "a multiset alternation operand that can match no node (a named subpath by 16.7 SR 10)".into(),
+                ));
+            }
+            // 20.7 SR 2 g, 19.8-19.10 SR 2 (reading in `refine::NoElementWhen`): an element
+            // predicate as a when operand needs the case operand to be a singleton element
+            // variable reference; none is generated, one is reported.
+            "when operand"
+                if flat(children).iter().any(|c| def_name(c).is_some_and(|d| {
+                    matches!(
+                        d,
+                        "directed predicate part 2"
+                            | "labeled predicate part 2"
+                            | "source predicate part 2"
+                            | "destination predicate part 2"
+                    )
+                })) =>
+            {
+                out.push(violation(
+                    &path,
+                    "20.7 SR 2",
+                    "an element predicate as a when operand (reading)".into(),
+                ));
+            }
+            // 12.4 SR 3, 12.5 SR 2, 12.6 SR 2, 12.7 SR 2: a CREATE or DROP parent identifies a
+            // schema, which a parent with an object name never does.
+            "create graph statement" | "drop graph statement" | "create graph type statement" | "drop graph type statement" => {
+                // The parent of the name the statement makes or drops, not of a graph it copies.
+                let pan = own(node, "catalog graph parent and name")
+                    .or_else(|| own(node, "catalog graph type parent and name"));
+                let parent = pan.and_then(|p| own(p, "catalog object parent reference"));
+                if parent.is_some_and(|p| flat(match p { Plain::Def { children, .. } => children, _ => unreachable!() }).iter().any(|c| def_name(c) == Some("object name"))) {
+                    let rule = match name.as_str() {
+                        "create graph statement" => "12.4 SR 3",
+                        "drop graph statement" => "12.5 SR 2",
+                        "create graph type statement" => "12.6 SR 2",
+                        _ => "12.7 SR 2",
+                    };
+                    out.push(violation(
+                        &path,
+                        rule,
+                        "a parent with an object name identifies no schema".into(),
                     ));
                 }
             }
@@ -1601,6 +1747,38 @@ fn prefix_guards(prefix: &Plain) -> bool {
 }
 
 /// 16.4 SR 14, from the quantified path primary's ancestors up to its graph pattern.
+/// 16.4 SR 14 read with "contains" as written: guarded with respect to every enclosing graph
+/// pattern, a nested one's included (a prefix guard on the way out counts for all of them; a
+/// match mode only for its own pattern).
+fn guarded_everywhere(ancestors: &[&Plain], id086: MatchModeDefault) -> bool {
+    let mut prefix = false;
+    // A KEEP prefix moves onto the path patterns of its own graph pattern only (16.4 SR 6).
+    let mut innermost = true;
+    for a in ancestors.iter().rev() {
+        match def_name(a) {
+            Some("parenthesized path pattern expression") => {
+                prefix |= own(a, "path mode prefix").is_some_and(prefix_guards);
+            }
+            Some("path pattern") => {
+                prefix |= own(a, "path pattern prefix").is_some_and(prefix_guards);
+            }
+            Some("graph pattern") => {
+                let keep = innermost && own(a, "keep clause").is_some_and(prefix_guards);
+                innermost = false;
+                let different = match own(a, "match mode") {
+                    Some(mode) => contains(mode, "different edges match mode"),
+                    None => id086 == MatchModeDefault::DifferentEdges,
+                };
+                if !(prefix || keep || different) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
 fn guarded(ancestors: &[&Plain], id086: MatchModeDefault) -> bool {
     for a in ancestors.iter().rev() {
         match def_name(a) {
@@ -2073,6 +2251,47 @@ fn confusables(tree: &Plain, out: &mut Vec<Violation>) {
             Some(_) => {}
             None => {
                 seen.insert(sk, text);
+            }
+        }
+    }
+}
+
+/// 12.2 SR 5, 12.4 SR 6, 12.6 SR 5 with H1: a name a CREATE makes (without IF NOT EXISTS or OR
+/// REPLACE) names no existing object, while every other name the program uses names an existing
+/// one (17.x); the same text in both places is met by no environment (a schema's graphs and
+/// graph types share its names, reading).
+fn created_names(tree: &Plain, out: &mut Vec<Violation>) {
+    const NAMES: [&str; 5] = ["graph name", "graph type name", "binding table name", "procedure name", "schema name"];
+    let mut all = Vec::new();
+    for n in NAMES {
+        find(tree, n, &mut all);
+    }
+    for (stmt, made, rule) in [
+        ("create schema statement", "schema name", "12.2 SR 5"),
+        ("create graph statement", "graph name", "12.4 SR 6"),
+        ("create graph type statement", "graph type name", "12.6 SR 5"),
+    ] {
+        let mut stmts = Vec::new();
+        find(tree, stmt, &mut stmts);
+        for st in stmts {
+            let kws: Vec<String> = flat(match st { Plain::Def { children, .. } => children, _ => continue })
+                .iter()
+                .filter(|k| matches!(k, Plain::Kw(_)))
+                .map(|k| k.text().to_ascii_uppercase())
+                .collect();
+            if kws.iter().any(|k| k == "NOT" || k == "REPLACE") {
+                continue;
+            }
+            let mut mades = Vec::new();
+            find(st, made, &mut mades);
+            let Some(m) = mades.first() else { continue };
+            let text = m.text();
+            if all.iter().any(|o| !std::ptr::eq(*o, *m) && o.text() == text) {
+                out.push(Violation {
+                    path: String::new(),
+                    rule,
+                    detail: format!("{text} is created and named elsewhere: it must and must not exist (H1)"),
+                });
             }
         }
     }

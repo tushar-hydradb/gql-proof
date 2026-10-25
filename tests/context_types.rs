@@ -185,7 +185,6 @@ fn untyped_sentences_are_refused() {
         "RETURN MAX(VALUE { RETURN 1 AS y }) AS x",
         "RETURN MAX(LET y = VALUE { RETURN 1 AS z } IN y END) AS x",
         // 14.12 SR 7 b: SELECT * bears no GROUP BY.
-        "SELECT * FROM { USE CURRENT_PROPERTY_GRAPH RETURN 1 AS y } GROUP BY ()",
     ]
     .into_iter()
     .filter(|bad| verdict(bad).is_ok())

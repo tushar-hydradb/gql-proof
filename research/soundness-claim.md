@@ -5,7 +5,8 @@
 ## the statement
 
 **theorem.** let S be a sentence `gql-proof context --rule types --rules all
---phase cover --sentences` prints. then S, read by the derivation tree it was
+--phase cover --sentences` prints, with the default `--start GQL-program` (another
+start prints fragments, not programs, outside the theorem). then S, read by the derivation tree it was
 printed from, satisfies every syntax rule of iso/iec 39075:2024 with cor 1 whose
 kind is constraint or type, under the readings listed below, given hypothesis H.
 
@@ -22,9 +23,15 @@ property of every printed sentence, by the gate in step 1
 ## the hypothesis H (what we do not control)
 
 - **H1, the environment.** every catalog object, session parameter, dynamic
-  parameter, graph, graph type, binding table and procedure that S names
-  exists in the engine's environment, with the type S uses it at. the
-  `environment` rows of the audit hold under H1 and only under it
+  parameter, graph, graph type, binding table and procedure that S references
+  exists in the engine's environment, with the type S uses it at; every
+  schema, graph and graph type a CREATE in S makes without IF NOT EXISTS or OR
+  REPLACE does not exist. the two parts never meet on one name: no made name
+  is spelled like another name in S (the `same text` rows of 12.2 SR 5, 12.4
+  SR 6, 12.6 SR 5, reported by the checker). a parent reference that cannot
+  identify a schema in any environment (one holding an object name, 4.2.5.3) is
+  not left to H1: the `object name` rows of 12.5 SR 2 and 12.7 SR 2 are
+  checked. the `environment` rows of the audit hold under H1 and only under it
 - **H2, implementation-defined choices.** the implementation-defined rules
   S's validity depends on take the choice that does not raise a syntax error:
   listed per row (`implementation` kind) in the audit. S avoids every
@@ -41,6 +48,11 @@ property of every printed sentence, by the gate in step 1
   the generator could avoid every dynamic operand at a large cost in coverage;
   this is the hypothesis that it need not. without the cure these sentences
   are invalid
+- **H2''', the claim's features.** a sentence that uses a feature-dependent
+  form holds for an engine claiming that feature (the conformance rules of the
+  claim keep the others out). one syntax rule turns on a feature: 18.2 SR 9 a
+  (an omitted key label set needs GG22); the sets that print graph type bodies
+  claim every feature, and a claim with GG23 but not GG22 is outside the theorem
 - **H2'', ID086.** the sets are printed for an implementation whose default
   match mode is the one passed as `--match-mode-default` (the turbolay and
   whole grammar sets: DIFFERENT EDGES); 16.4 SR 14 d and 16.4 SR 12 read it
@@ -65,9 +77,13 @@ property of every printed sentence, by the gate in step 1
 
 ## also in the trusted base
 
-- the audit's `grammar` rows (15): the auditors' argument that no derivation can
-  break the rule (each row says why). a mechanical check of these would be a
-  parse of the rule's construct over the refined grammar; not built
+- the audit's `grammar` rows (11) each name a mechanical check (the checker's
+  ISO BNF match, its rendering check, or a test); the argument that the check
+  implies the rule is the auditors'
+- the rewrite audit (`research/audit/rewrite-*.jsonl`, checked by
+  `tools/inventory/rewrites.py --check`): every rule that rewrites text has a
+  row saying whether the rewrite can break a later rule and where the checker
+  judges it
 - `tools/inventory/shall_coverage.py`'s extraction of the rules from the text
   (it finds the 1,025 rules the inventory has, a check on itself)
 
@@ -94,8 +110,12 @@ property of every printed sentence, by the gate in step 1
    exempt where no text can break the rule). the probes run in `cargo test`
 4. **what the checker does not report** is one of:
    - `grammar`: no derivation can break it (the row says why)
-   - `hypothesis`: an environment rule, H1
+   - `hypothesis`: holds under H1 (an environment object, or a parameter's
+     type, which is the request's) or H2' (the 4.14.4 cure)
    - `n/a`: a definition (no `shall`), or an implementation rule, H2
+   - `permission`: a reading that lets in more than the text, so it holds
+     under H4 and only there. the checker reports it under that reading;
+     `audit.py` fails unless every permission row is named in H4
 5. therefore S satisfies every constraint and type rule, under the readings,
    given H. ∎
 
@@ -112,26 +132,36 @@ checker and the table
 - `python3 -I tools/inventory/shall_coverage.py` exits 0
 - `python3 -I tools/inventory/audit.py` exits 0 (no open row, no unquoted or
   unprobed rule string)
+- `python3 -I tools/inventory/rewrites.py --check` exits 0 (every rewrite rule
+  has a closed row)
 - a cover run's `withheld` line: the targets lost to the gate, which are lost
   coverage, never lost soundness
 
 ## the readings
 
 stricter or narrower than the text, each keeping out more than iso does, so a
-sentence valid under the reading is valid under the text (the one reading that
-lets more in, the 4.14.4 cure, is not a reading but H2' above): the audit's
-`reading` rows, with their notes (`python3 -I tools/inventory/audit.py --md`)
+sentence valid under the reading is valid under the text: the audit's
+`reading` rows, with their notes (`python3 -I tools/inventory/audit.py --md`).
+a reading that lets more in is not a reading but part of H: the 4.14.4 cure is
+H2', the rest are the permissions of H4. the direction of each reading is the
+auditors' judgement, checked row by row in the review rounds (the fourth
+review moved nine rows from `reading` to `permission`)
 
 ## hypothesis H2, the implementation choices named
 
-- IL001-IL003, IL011, IL013, IL015: label, property, key label counts, lengths,
-  precisions and list cardinalities at least what S uses (S uses one or two
-  labels and properties, lengths and precisions under 256)
+- IL001-IL003, IL011, IL013, IL015: the implementation's minimum label, key
+  label and property counts at most what S uses, and the maxima at least: S
+  declares node and edge types with no label at all (`( )`), so the minima are
+  0 (18.2 SR 10, 12; 18.3 SR 11, 13), and uses one or two labels and properties,
+  lengths and precisions under 256
 - exact types of 18 decimal digits, an approximate literal type with the range
   of a 32 bit float (21.2 SR 18, 20; the checker reports past that)
 - IW014: names are confusable only as UTS #39's ASCII confusables are (`rn`
   and `m`, `vv` and `w`, `cl` and `d`, `1`, `I` and `l`, `0` and `o`; the
   checker reports two such names in one sentence)
+- ID061: SESSION_USER's character string type is assignable to every
+  character string type S declares for it; S declares no length-bounded one
+  (10.3 SR 8 reading, at any depth of the declared type)
 - IA014: a NULL whose context fixes no type does not raise a syntax error (21.2
   SR 67 b); S holds many (`NULL + NULL`)
 - ID022, the default collation: two names compare equal only when their
@@ -144,6 +174,32 @@ lets more in, the 4.14.4 cure, is not a reading but H2' above): the audit's
 - the supported property value types include the predefined scalar types S
   casts a property to (20.8 SR 10); no reference value type is assumed
   supported
-- `$$` substitution (22.1 SR 3): the substituted text is what the position
-  needs (17.7 SR 4). the claim leaves `$$` out: the hypothesis cannot be met
-  by an engine that is not told the text
+- `$$` substitution (22.1 SR 3): the substituted text decides validity (17.7
+  SR 4), and no engine is told it, so no hypothesis carries it: the generator
+  prints no `$$` (`refine::NoSubstitution`), the checker reports one
+
+## hypothesis H4, the permissions
+
+readings that let in more than the literal text, each a fix of what we take
+to be a defect in it, or an assumption about the implementation the text
+leaves open. S holds under H only where the engine reads these rules this way.
+each line names its audit rows (status `permission`)
+
+- **the null type meets a typed site.** a bare NULL, or a value of the null
+  type, is taken to meet a required type wherever its context fixes a
+  nullable one (21.2 SR 67 a reads every typed site as fixing one). literally
+  the null type is no graph element, graph or binding table reference type.
+  rows: 21.2 SR 67 a, 13.5 SR 5 (`DELETE NULL`), 20.1 SR 2, 20.1 SR 3 (`FOR x
+  IN NULL`, `PATH [ NULL ]` and `SUM ( NULL )` rest on 21.2 SR 67 a too). IA014
+  covers only 67 b, a NULL whose context fixes no type
+- **a dynamic parameter's type is the request's.** `$b` as a graph or binding
+  table is taken to have the type the request gives it (20.4 SR 2), which no
+  checker sees. rows: 11.1 SR 3 a ii, 11.2 SR 4 b ii
+- **a kind-less edge type pattern is free.** 18.3 SR 4 b's otherwise, read
+  literally, demands an undirected shape of every edge type pattern written
+  with no edge kind, `( ) -[ { } ]-> ( )` included; it is read as applying
+  only when UNDIRECTED is written. row: 18.3 SR 4 b
+- **a supported string supertype exists.** CASE, COALESCE and list
+  constructors over character or byte strings need a supported string type
+  that is a supertype of every input; S's strings are short and every
+  implementation is assumed to have one. rows: 22.19 SR 4 b ii, 22.19 SR 4 c ii

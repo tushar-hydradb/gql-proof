@@ -51,6 +51,17 @@ fn ok(text: &str) {
     assert!(v.iter().any(Vec::is_empty), "{text:?}: every parse breaks a rule: {v:?}");
 }
 
+/// Valid but for the reading that keeps every SELECT with a FROM out (14.12 SR 27 b): some parse
+/// breaks nothing else.
+#[track_caller]
+fn ok_but_select_body(text: &str) {
+    let v = verdicts(text);
+    assert!(
+        v.iter().any(|r| r.as_slice() == ["14.12 SR 27"]),
+        "{text:?}: no parse breaks only 14.12 SR 27: {v:?}"
+    );
+}
+
 #[track_caller]
 fn bad(text: &str, rule: &str) {
     let v = verdicts(text);
@@ -105,9 +116,9 @@ fn composite_rules() {
 fn select_from_rules() {
     // 14.12 SR 26 b ii 2: a bare FROM holds a focused statement.
     bad("SELECT * FROM { RETURN 1 AS x }", "14.12 SR 26");
-    ok("SELECT * FROM { USE CURRENT_PROPERTY_GRAPH RETURN 1 AS x }");
+    ok_but_select_body("SELECT * FROM { USE CURRENT_PROPERTY_GRAPH RETURN 1 AS x }");
     // b ii 1: after a graph expression, an ambient one.
-    ok("SELECT * FROM CURRENT_PROPERTY_GRAPH { RETURN 1 AS x }");
+    ok_but_select_body("SELECT * FROM CURRENT_PROPERTY_GRAPH { RETURN 1 AS x }");
     bad(
         "SELECT * FROM CURRENT_PROPERTY_GRAPH { USE CURRENT_PROPERTY_GRAPH RETURN 1 AS x }",
         "14.12 SR 26",
@@ -153,7 +164,12 @@ fn keep_makes_every_pattern_selective() {
 #[test]
 fn select_sort_keys_under_grouping() {
     // 14.12 SR 19: with an aggregate, a sort key names an alias or a grouping element.
-    ok("SELECT COUNT(*) AS c FROM CURRENT_PROPERTY_GRAPH MATCH (a) ORDER BY c");
+    ok_but_select_body("SELECT COUNT(*) AS c FROM CURRENT_PROPERTY_GRAPH MATCH (a) ORDER BY c");
+    // Moved from tests/scope_checker.rs: its harness keeps only trees with no syntax rule
+    // broken, and every SELECT with a FROM now breaks the reading.
+    bad("SELECT * FROM { USE CURRENT_PROPERTY_GRAPH MATCH (a) RETURN a } GROUP BY ()", "14.12 SR 7");
+    ok_but_select_body("SELECT * FROM { USE CURRENT_PROPERTY_GRAPH MATCH (a) RETURN a }");
+    ok_but_select_body("SELECT a AS b FROM CURRENT_GRAPH MATCH (a)");
     bad("SELECT COUNT(*) AS c FROM CURRENT_PROPERTY_GRAPH MATCH (a) ORDER BY a", "14.12 SR 19");
 }
 

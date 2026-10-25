@@ -73,9 +73,18 @@ fn probes() {
 /// Every generated tree passes the independent checker.
 #[test]
 fn generated_trees_pass_the_checker() {
-    let start = BASE.require("GQL-program").unwrap();
+    // Over the grammar the syntax rules refined, as the generator runs: what the automata keep
+    // out (a SELECT with a FROM, among others) is not scope's to keep.
+    let iso_start = BASE.require("GQL-program").unwrap();
+    let refined = gql_proof::refine::refine(
+        &BASE,
+        &gql_proof::refine::all_rules(gql_proof::MatchModeDefault::Portable),
+        iso_start,
+    )
+    .unwrap();
+    let start = refined.start;
     let t = Instant::now();
-    let built = build(&BASE, &Scope::default(), start, "x", &Options::default()).unwrap();
+    let built = build(&refined.cfg, &Scope::default(), start, "x", &Options::default()).unwrap();
     eprintln!(
         "built in {:?}: {} nonterminals, {} productions (base {} / {})",
         t.elapsed(),

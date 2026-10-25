@@ -184,3 +184,70 @@ it found four classes, all fixed or stated:
 
 it also named an H3 case (a union type whose two trees disagree), now stated in
 the claim
+
+## 2026-10-25: the second review and the rewrite audit
+
+the second review found three printed families (a HAVING with no aggregating
+item; a SELECT beside a USE statement, ambient after its rewrite; a NOT NULL
+graph type initializer), weak checks (16.4 SR 14 and 6 read per depth; an
+EXISTS in a sort key) and holes in the argument (rewrites outside the gate,
+`$$` printed though left out, H2's minima, the start symbol). it led to the
+rewrite audit: every one of the 96 rules that rewrite text has a row
+(`research/audit/rewrite-*.jsonl`, `tools/inventory/rewrites.py --check`), 18
+were open, all closed. the decisions:
+
+- no SELECT with a FROM is generated (`refine::NoSelectBody`): its replacement
+  (a CALL of the body, a filter, RETURNs and a NEXT with fresh names) is not
+  built by the checker, and seven open rewrite rows came from it
+- no `$$` is generated (`refine::NoSubstitution`)
+- 16.7 SR 10 makes each multiset alternation operand a named subpath, so SR 20
+  applies to it: printed sentences like `MATCH ( <- ? |+| <- ? ) <- FINISH`
+  broke it; the automaton and the checker keep it now
+- under the portable default a missing match mode is read as DIFFERENT EDGES
+  for 16.4 SR 12 (the strict side)
+- a shadowed match arm had kept the 21.3 SR 5 check from ever running on
+  delimited identifiers; `#![deny(unreachable_patterns)]` makes that a build
+  error
+- an automaton for HAVING carried an aggregate fact through every expression
+  and stalled the 2-variable run (30 minutes); redundant once SELECT bodies were
+  out, removed
+
+## 2026-10-25: the third review
+
+one printed family: a simple CASE whose operand is a CAST with an element
+predicate as a when operand (`CASE CAST ( NULL AS EDGE ) WHEN IS DIRECTED ..`):
+by cor 1's 20.7 SR 2 g the rewrite `operand IS DIRECTED` needs a singleton
+element variable reference. no element predicate when operand is generated now
+(`refine::NoElementWhen`), the checker reports one. weak checks closed:
+SESSION SET GRAPH's expression typed (11.1 SR 3); a character string form takes
+character strings and a byte string form bytes (20.23 SR 2, 4, each tree as
+written). GG22 named in the claim (18.2 SR 9 a)
+
+## 2026-10-25: the fourth review
+
+two printed families, both in the whole grammar set, both sentences no
+environment can make valid:
+
+- a DROP parent holding an object name (`DROP GRAPH / a . a`): 12.5 SR 2 and
+  12.7 SR 2 want a schema, and a schema holds no schema (4.2.5.3). the
+  audit had closed them as environment. `refine::SchemaParents` refuses an
+  object name in a CREATE or DROP parent; the checker reports it
+- a name made and referenced at once (`CREATE GRAPH TYPE a COPY OF a`): 12.6
+  SR 5 says it does not exist, 17.3 SR 1 that it does. H1 had said every named
+  object exists, which contradicts every plain CREATE. H1 now splits references
+  (exist) from made names (do not); `tree.rs:fresh_created_names` spells a
+  made name apart from every other one (it appends, so the productions the
+  name was chosen for stay); the checker reports a clash
+
+weak checks closed: 10.3 SR 8 compared coarse classes only (`VALUE x CHAR =
+SESSION_USER` passed): no length-bounded string type is declared now, at any
+depth of the declared type, and ID061 is in H2. a list casts to a list only
+(20.8 SR 11 a, literal now); its element types are the gate's (`20.8 SR 11 d`
+in `GATE_ONLY`). 21.2 SR 42 rests on the leaf check refusing a reverse solidus,
+not on the grammar alone. 17.6 SR 1 b turned out literal already (a stale note)
+
+readings that let more in: nine rows moved from `reading` to a new status,
+`permission`, each named in the claim's new H4 (the null type meeting a typed
+site, a dynamic parameter typed by the request, the kind-less edge type
+pattern, a supported string supertype). `audit.py` fails on a permission row
+H4 does not name

@@ -238,6 +238,8 @@ mod fact {
     pub const CLOSED_UNION: u16 = 1 << 13;
     /// A `<value type>` is a closed node or edge reference type (`NODE { .. }`).
     pub const CLOSED_ELEMENT: u16 = 1 << 14;
+    /// A `<value type>` is a string type bounded in length (CHAR, BINARY, a written length).
+    pub const BOUNDED_STR: u16 = 1 << 15;
 }
 
 /// What a subtree says: its class, per variable of scope's label an entry, and what only the
@@ -402,6 +404,10 @@ fn castable(from: Class, to: Class) -> bool {
     if to == Opaque || from == Opaque {
         return false;
     }
+    // 20.8 SR 11 a: a list casts to a list only (the engine does not tell group lists apart).
+    if from == List {
+        return to == List;
+    }
     if to == Dynamic || from == Null {
         return true;
     }
@@ -504,6 +510,7 @@ const BOUNDARY: &[&str] = &[
 
 /// Definitions outside the expression grammar that read their children's classes.
 const READS: &[&str] = &[
+    "property key value pair",
     "opt typed value initializer",
     "value initializer",
     "value variable definition",
@@ -909,6 +916,15 @@ impl Types {
                 classed.iter().all(|c| fits(Some(*c), |c| c == Bytes)),
                 Some(Bytes),
             ),
+            // 16.5 SR 6 c (an inserted property, H2: a predefined scalar, a dynamic value under
+            // the cure); read so in a match pattern's property too (reading).
+            "property key value pair" => {
+                let v = at("value expression");
+                check(
+                    matches!(v, Some(c) if c.scalar() || c == Dynamic),
+                    None,
+                )
+            }
             // 13.5 SR 5: what DELETE deletes is a node or an edge.
             "delete item" => check(fits(only, |c| matches!(c, Node | Edge)), only),
             "byte string function" => Some(Some(Bytes)),
@@ -1135,7 +1151,13 @@ impl Types {
                 // 10.3 SR 8 (reading): no closed union declared, its assignability is not
                 // followed.
                 // 4.17.4.2 (reading): no NOT NULL declared type, no value is known not nullable.
-                if has(fact::IMMATERIAL) || has(fact::CLOSED_UNION) || has(fact::NOT_NULL) {
+                // 10.3 SR 8 (reading): no length-bounded string type declared, the value's length
+                // is not followed.
+                if has(fact::IMMATERIAL)
+                    || has(fact::CLOSED_UNION)
+                    || has(fact::NOT_NULL)
+                    || has(fact::BOUNDED_STR)
+                {
                     return None;
                 }
                 let value = kids.last().copied().flatten();
@@ -1186,8 +1208,14 @@ impl Types {
         match def {
             // `<value type>` and what it names, up to a CAST or a typed initializer.
             "boolean type" => out.target = Some(Bool),
-            "character string type" => out.target = Some(Str),
-            "byte string type" => out.target = Some(Bytes),
+            "character string type" | "byte string type" => {
+                out.target = Some(if def == "character string type" { Str } else { Bytes });
+                // CHAR and BINARY have the implicit fixed length 1; a written length rises from
+                // its node below.
+                if node.items.iter().any(|i| matches!(i, Item::Token("CHAR" | "BINARY"))) {
+                    out.facts |= fact::BOUNDED_STR;
+                }
+            }
             "exact numeric type" => out.target = Some(Exact),
             "approximate numeric type" => out.target = Some(Approx),
             "date type" => out.target = Some(Date),
@@ -1199,6 +1227,7 @@ impl Types {
                 out.target = Some(if has(fact::YEARS) { YearMonth } else { DayTime })
             }
             "path value type" => out.target = Some(Path),
+            "min length" | "max length" | "fixed length" => out.facts |= fact::BOUNDED_STR,
             "list value type" => out.target = Some(List),
             "record type" => out.target = Some(Record),
             "node reference value type" => {
@@ -1228,7 +1257,11 @@ impl Types {
             | "cast target" => {
                 out.target = acc.target;
                 out.facts |= acc.facts
-                    & (fact::IMMATERIAL | fact::ANY_TYPE | fact::CLOSED_UNION | fact::CLOSED_ELEMENT);
+                    & (fact::IMMATERIAL
+                        | fact::ANY_TYPE
+                        | fact::CLOSED_UNION
+                        | fact::CLOSED_ELEMENT
+                        | fact::BOUNDED_STR);
             }
             "not null" => out.facts |= fact::NOT_NULL,
             "temporal duration qualifier" => {
@@ -1361,7 +1394,8 @@ impl Types {
                     | fact::ANY_TYPE
                     | fact::NOT_NULL
                     | fact::CLOSED_UNION
-                    | fact::CLOSED_ELEMENT);
+                    | fact::CLOSED_ELEMENT
+                    | fact::BOUNDED_STR);
         }
         // A closed element cast rises to the property source that reads it (20.11 SR 3).
         if matches!(
@@ -1382,7 +1416,12 @@ impl Types {
         }
         // NOT NULL rises through the type that holds it, up to the CAST or initializer.
         if own.ends_with(" type") || own == "cast target" {
-            out.facts |= acc.facts & fact::NOT_NULL;
+            out.facts |= acc.facts & (fact::NOT_NULL | fact::BOUNDED_STR);
+        }
+        // A bounded string anywhere inside the declared type counts (the checker looks at any
+        // depth): it rises through a union's members and a record's fields too.
+        if matches!(own, "component type list" | "field type list" | "field types specification") {
+            out.facts |= acc.facts & fact::BOUNDED_STR;
         }
         // The node a carried fact is for consumes it.
         if matches!(

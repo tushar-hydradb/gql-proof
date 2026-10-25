@@ -168,6 +168,10 @@ pub fn all_rules(id086: MatchModeDefault) -> Vec<Box<dyn Rule>> {
         Box::new(ClosedInitializerTypes),
         Box::new(UnionNullability),
         Box::new(LiteralElements),
+        Box::new(NoSubstitution),
+        Box::new(NoSelectBody),
+        Box::new(NoElementWhen),
+        Box::new(SchemaParents),
     ]
 }
 
@@ -607,6 +611,11 @@ impl Rule for PathMinimums {
             "path concatenation" | "simplified concatenation" => {
                 let (nodes, len) = (s.has(NODES), s.has(LEN));
                 minima(s, nodes, len)
+            }
+            // 16.7 SR 10 makes each multiset alternation operand a named subpath, which SR 20
+            // asks to match a node: every operand has a positive minimum node count.
+            "path multiset alternation" | "simplified multiset alternation" if s.has(NO_NODES) => {
+                return None;
             }
             d if UNIONS.contains(&d) => {
                 let (nodes, len) = (!s.has(NO_NODES), !s.has(NO_LEN));
@@ -1133,7 +1142,10 @@ const CALL_DATA: Fact = 65;
 const CALL_QUERY: Fact = 66;
 const Q_ALL: Fact = 67;
 const IN_SETOP: Fact = 68;
-const BLOCK_FACTS: [Fact; 8] = [K_CAT, K_DATA, K_QUERY, HAS_NEXT, FOC, AMB, SEL_Q, NSEL_Q];
+/// A SELECT: textually a focused linear query statement (14.12 SR 26 reads that), ambient as
+/// its replacement (9.2 SR 5, 14.2 SR 4 read that, 14.12 SR 1, 27).
+const SEL_FOCUS: Fact = 84;
+const BLOCK_FACTS: [Fact; 9] = [K_CAT, K_DATA, K_QUERY, HAS_NEXT, FOC, AMB, SEL_Q, NSEL_Q, SEL_FOCUS];
 const SPEC_KINDS: [&str; 3] = [
     "catalog-modifying procedure specification",
     "data-modifying procedure specification",
@@ -1174,6 +1186,7 @@ impl Rule for StatementKinds {
             (CALL_QUERY, "call-query"),
             (Q_ALL, "q-all"),
             (IN_SETOP, "in-setop"),
+            (SEL_FOCUS, "sel-focus"),
         ]);
         for (i, f) in CONJ.iter().enumerate() {
             l.push((*f, format!("conj{i}")));
@@ -1261,6 +1274,9 @@ impl Rule for StatementKinds {
                 let sel = s.has(SEL);
                 s.without(SEL).with(if sel { SEL_Q } else { NSEL_Q })
             }
+            // 14.12 SR 1, 27: a SELECT is judged as its replacement, which is ambient (a RETURN,
+            // or its body's CALL followed by RETURNs).
+            "focused linear query statement" if s.has(SEL) => s.with(SEL_FOCUS),
             "focused linear query statement" | "focused linear data-modifying statement" => {
                 s.with(FOC)
             }
@@ -1272,7 +1288,7 @@ impl Rule for StatementKinds {
             // directly contained in the block.
             "composite query expression" => {
                 if CONJ.iter().filter(|f| s.has(**f)).count() > 1
-                    || (s.has(FOC) && s.has(AMB))
+                    || (s.has(FOC) && (s.has(AMB) || s.has(SEL_FOCUS)))
                     || (s.has(SEL_Q) && s.has(NSEL_Q))
                 {
                     return None;
@@ -1294,7 +1310,7 @@ impl Rule for StatementKinds {
             // 9.2 SR 4, 5, 6.
             "statement block" => {
                 if (s.has(K_CAT) && s.has(HAS_NEXT))
-                    || (s.has(FOC) && s.has(AMB))
+                    || (s.has(FOC) && (s.has(AMB) || s.has(SEL_FOCUS)))
                     || (s.has(SEL_Q) && s.has(NSEL_Q))
                 {
                     return None;
@@ -1312,7 +1328,7 @@ impl Rule for StatementKinds {
                 if !ok {
                     return None;
                 }
-                let (foc, amb) = (s.has(FOC), s.has(AMB));
+                let (foc, amb) = (s.has(FOC) || s.has(SEL_FOCUS), s.has(AMB));
                 let mut s = s.without_all(&BLOCK_FACTS).without_all(&CONJ).without(SEL);
                 if d == "query specification" {
                     s.set(SPEC_FOC, foc);
@@ -1489,15 +1505,18 @@ impl Rule for ClosedInitializerTypes {
             out.set(IN_TABLE_INIT, true);
         }
         if (owner == "opt typed graph initializer" && to_type(child, "graph reference value type"))
-            || (inh.has(IN_GRAPH_INIT) && node.def == "graph reference value type")
+            || (inh.has(IN_GRAPH_INIT)
+                && matches!(owner, "graph reference value type" | "open graph reference value type"))
         {
             out.set(IN_GRAPH_INIT, true);
         }
     }
 
     fn rejects(&self, node: &Node, inh: &State) -> bool {
+        // 4.17.4.2 (reading): no value is known not nullable, so no NOT NULL declared type.
         (inh.has(IN_TABLE_INIT) && node.def == "binding table reference value type")
-            || (inh.has(IN_GRAPH_INIT) && node.def == "closed graph reference value type")
+            || (inh.has(IN_GRAPH_INIT)
+                && matches!(node.def, "closed graph reference value type" | "not null"))
     }
 
     fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
@@ -1679,6 +1698,238 @@ impl Rule for LiteralElements {
     }
 }
 
+/// 14.12 SR 16, 21, 27 b: a SELECT's HAVING filters on a column only RETURN_FIRST declares,
+/// which exists only when a select item aggregates; without one the replacement's `FILTER
+/// WHERE HCID` names nothing (20.12 SR 8). So a HAVING needs an aggregate in the select items.
+///
+/// Synthesized: an aggregate function below, made an item fact at the <select item list> and
+/// dropped at the <having clause>, the <order by clause> and every procedure kind (a subquery's
+/// aggregates are its own); judged at the <select statement>.
+/// Not in `all_rules`: a HAVING follows a FROM body only, and `NoSelectBody` generates none,
+/// so this rule has nothing to judge; its fact rose through every expression and multiplied
+/// them (the 2-variable run stalled). Kept for when SELECT bodies are modelled.
+pub struct SelectHaving;
+
+const SH_AGG: Fact = 81;
+const SH_ITEM_AGG: Fact = 82;
+const SH_HAVING: Fact = 83;
+
+impl Rule for SelectHaving {
+    fn name(&self) -> &str {
+        "SELECT's HAVING has an aggregating item"
+    }
+
+    fn cite(&self) -> &str {
+        "14.12 SR 16, 21, 27 b: a HAVING needs an aggregating select item, else its replacement filters on an undeclared name"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(SH_AGG, "sh-agg"), (SH_ITEM_AGG, "sh-item-agg"), (SH_HAVING, "sh-having")])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn step(&self, node: &Node, _inh: &State, _children: &[State], s: State) -> Option<State> {
+        if node.group {
+            return Some(s);
+        }
+        Some(match node.def {
+            "aggregate function" => s.with(SH_AGG),
+            "select item list" => {
+                let agg = s.has(SH_AGG);
+                let mut s = s.without(SH_AGG);
+                s.set(SH_ITEM_AGG, agg);
+                s
+            }
+            "having clause" => s.without(SH_AGG).with(SH_HAVING),
+            "order by clause" => s.without(SH_AGG),
+            "select statement" => {
+                if s.has(SH_HAVING) && !s.has(SH_ITEM_AGG) {
+                    return None;
+                }
+                s.without_all(&[SH_AGG, SH_ITEM_AGG, SH_HAVING])
+            }
+            d if matches!(
+                d,
+                "catalog-modifying procedure specification"
+                    | "data-modifying procedure specification"
+                    | "query specification"
+            ) =>
+            {
+                s.without_all(&[SH_AGG, SH_ITEM_AGG, SH_HAVING])
+            }
+            _ => s,
+        })
+    }
+}
+
+/// 22.1 SR 3, 17.7 SR 4: a `$$` reference is replaced by text the request supplies, and that
+/// text decides validity. No hypothesis about the environment carries it, so no `$$` is
+/// generated.
+pub struct NoSubstitution;
+
+impl Rule for NoSubstitution {
+    fn name(&self) -> &str {
+        "no substituted parameter"
+    }
+
+    fn cite(&self) -> &str {
+        "22.1 SR 3: a substituted parameter's validity depends on text outside the sentence"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        Vec::new()
+    }
+
+    fn rejects(&self, node: &Node, _inh: &State) -> bool {
+        node.def == "substituted parameter reference"
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if self.rejects(node, inh) {
+            return None;
+        }
+        Some(s)
+    }
+}
+
+/// 14.12 SR 27 b: a SELECT with a FROM is effectively replaced by a CALL of its body, a
+/// filter, up to two RETURNs and a NEXT, with fresh names threaded through them; every later
+/// rule is judged on that replacement (scope, grouping, ordering, the CALL's column overlap).
+/// The checker does not build the replacement, so no SELECT with a body is generated (a
+/// reading: the productions under <select statement body> are never targets). A SELECT
+/// without one is `RETURN` (SR 27 a), modelled.
+pub struct NoSelectBody;
+
+impl Rule for NoSelectBody {
+    fn name(&self) -> &str {
+        "no SELECT with a FROM"
+    }
+
+    fn cite(&self) -> &str {
+        "14.12 SR 27 b: a SELECT with a FROM is judged as its replacement, not modelled"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        Vec::new()
+    }
+
+    fn rejects(&self, node: &Node, _inh: &State) -> bool {
+        node.def == "select statement body"
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if self.rejects(node, inh) {
+            return None;
+        }
+        Some(s)
+    }
+}
+
+/// 20.7 SR 2 (Cor 1) g with 19.8-19.10: a simple CASE's when operand that is a directed,
+/// labeled, source or destination predicate part makes `operand IS DIRECTED` and the like,
+/// whose Format takes an element variable reference of singleton degree only. Reading: no such
+/// when operand is generated (the case operand would have to be one, which the label does not
+/// see); the checker reports one.
+pub struct NoElementWhen;
+
+const ELEMENT_WHEN: [&str; 4] = [
+    "directed predicate part 2",
+    "labeled predicate part 2",
+    "source predicate part 2",
+    "destination predicate part 2",
+];
+
+impl Rule for NoElementWhen {
+    fn name(&self) -> &str {
+        "no element predicate as a when operand"
+    }
+
+    fn cite(&self) -> &str {
+        "20.7 SR 2 g, 19.8-19.10 SR 2: an element predicate's operand is a singleton element variable reference"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        Vec::new()
+    }
+
+    fn rejects(&self, node: &Node, _inh: &State) -> bool {
+        node.def == "when operand"
+            && matches!(node.items, [Item::Def(d)] if ELEMENT_WHEN.contains(d))
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if self.rejects(node, inh) {
+            return None;
+        }
+        Some(s)
+    }
+}
+
+/// 12.4 SR 3, 12.5 SR 2, 12.6 SR 2, 12.7 SR 2: the parent of a graph or graph type a CREATE or
+/// DROP names identifies a GQL-schema. A parent with an object name (`/ a . a`) identifies a
+/// catalog object (17.6 SR 5 b), which is no schema, so no environment meets it: refused.
+pub struct SchemaParents;
+
+const IN_SCHEMA_PARENT: Fact = 85;
+const SCHEMA_STATEMENTS: [&str; 4] = [
+    "create graph statement",
+    "drop graph statement",
+    "create graph type statement",
+    "drop graph type statement",
+];
+
+impl Rule for SchemaParents {
+    fn name(&self) -> &str {
+        "a CREATE or DROP parent is a schema"
+    }
+
+    fn cite(&self) -> &str {
+        "12.4 SR 3, 12.5 SR 2, 12.6 SR 2, 12.7 SR 2: the parent identifies a GQL-schema, which a parent with an object name never does"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(IN_SCHEMA_PARENT, "in-schema-parent")])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn down(&self, node: &Node, inh: &State, _pos: usize, _left: &[State], out: &mut State) {
+        let owner = node.def.split('/').next().unwrap_or(node.def);
+        // From the statement down its parent-and-name and the parent reference, groups
+        // included; into nothing else (a name's own subtree has no parent reference).
+        let on_path = SCHEMA_STATEMENTS.contains(&owner)
+            || (inh.has(IN_SCHEMA_PARENT)
+                && matches!(
+                    owner,
+                    "catalog graph parent and name"
+                        | "catalog graph type parent and name"
+                        | "catalog object parent reference"
+                ));
+        if on_path {
+            out.set(IN_SCHEMA_PARENT, true);
+        }
+    }
+
+    fn rejects(&self, node: &Node, inh: &State) -> bool {
+        let owner = node.def.split('/').next().unwrap_or(node.def);
+        inh.has(IN_SCHEMA_PARENT)
+            && owner == "catalog object parent reference"
+            && node.items.contains(&Item::Def("object name"))
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if self.rejects(node, inh) {
+            return None;
+        }
+        Some(s)
+    }
+}
+
 /// 16.4 SR 12: under DIFFERENT EDGES, a selective path pattern is alone in its list.
 ///
 /// Reading: 16.6 SR 4 makes a path pattern selective by the search prefix it simply contains,
@@ -1750,7 +2001,10 @@ impl Rule for SelectiveAlone {
             "different edges match mode" => s.with(DIFF),
             "match mode" => s.with(MODE),
             "graph pattern" => {
-                let default = !s.has(MODE) && self.id086 == MatchModeDefault::DifferentEdges;
+                // A missing mode may be DIFFERENT EDGES unless the default is known not to be
+                // (16.4 SR 10, ID086): the portable default reads it so here, the strict side
+                // for this rule, as it reads it not so for SR 14.
+                let default = !s.has(MODE) && self.id086 != MatchModeDefault::RepeatableElements;
                 if (s.has(DIFF) || default)
                     && (s.has(SELECTIVE_PATTERN) || s.has(KEEP_SELECTIVE))
                     && s.has(MANY)
