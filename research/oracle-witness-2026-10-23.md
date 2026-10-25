@@ -470,15 +470,19 @@ false) restricted to the pattern; a label added where a negation forbids it
 and a property value moved off its literal are the two mutations not emitted
 yet
 
-on the 2-variable set: 6,512 near misses over 1,850 records (edges dropped
+on the 2-variable set: 6,524 near misses over 1,853 records (edges dropped
 and flipped, labels added, the few properties dropped and changed; graphs
-over 64 edges get none). turbolay: 4,486 agree, 380 disagree, every one in
+over 64 edges get none). turbolay: 4,498 agree, 380 disagree, every one in
 the multiset alternation family (376) or the `?` family (4). an earlier three looked new (a path variable over one
 edge, flipped) and were the oracle's: the record of a `... ORDER BY ...
 FINISH` chain had no observation query, so the probe ran the `FINISH`
 sentence itself on the changed graph; the observation now comes from the
-evaluator's table. with the near misses the run has 7,015 agreements on
-turbolay from 3,800 sentences
+evaluator's table. with the near misses the run has 7,027 agreements on
+turbolay from 3,800 sentences. the long quantifiers show the hop limit the
+oracle note of 2026-10-22 predicted: turbolay matches `MATCH <- { 80 }
+FINISH` on its 80 hop chain (one row, as the oracle says) and refuses `{ 800
+}` and `{ 0xA00 }` with 42000, "a quantifier's bound" over its cap, so those
+sentences are refused where the standard runs them
 
 ## the ir and the setup statements
 
