@@ -321,11 +321,11 @@ on the 2-variable set (3,800 distinct):
 
 | tier | sentences |
 | --- | --- |
-| bag (theorem 2): a result, an exception, or a refusal the rules require | 3,779 |
-| of which: a result table or no result | 3,730 |
+| bag (theorem 2): a result, an exception, or a refusal the rules require | 3,800 |
+| of which: a result table or no result | 3,751 |
 | of which: a data exception (22G11, 22012, 22007, 22G0C, 22G03, ...) | 37 |
 | of which: a syntax rule broken, the engine shall refuse (class 42) | 12 |
-| witness (theorem 1): quantifier bounds of 80 to 2,560, beyond the evaluator | 21 |
+| witness only (theorem 1) | 0 |
 | status only | 0 |
 
 the third outcome, `invalid`, is what the rules fix for a sentence that
@@ -358,11 +358,12 @@ the harness has no values of (a list, a record, a duration) makes the
 expectation conditional: the record carries `parameters_unsendable` and the
 probe reports it instead of running. a LIMIT without an order below the row
 count is exact in its count, and the rows are drawn from a known set
-(`bag_from`). a quantifier bound over 64 is beyond the evaluator (each power
-step copies every binding so far, quadratic in the path's length; a 2,560
-hop chain ran for forty minutes before it was stopped) and stands on theorem
-1: the witness builder makes the chain up to 4,096 hops, and the engine's hop
-limits are the finding those sentences exist for
+(`bag_from`). a quantified group is evaluated as a chain of shared prefixes
+(one link per unit, written out once at the end), so `MATCH <- { 0xA00 }
+FINISH` over its 2,560 hop witness chain is one binding found in
+milliseconds where copying the prefix at every step ran forty minutes; the
+witness builder makes chains up to 4,096 hops, and the engine's hop limits
+are the finding those sentences exist for
 
 ### what turbolay says
 
@@ -427,10 +428,10 @@ target 206), 32 sentences naming three variables, every row with `vars` and
 
 | tier | sentences |
 | --- | --- |
-| bag: a result | 2,410 |
+| bag: a result | 2,430 |
 | bag: a data exception | 23 |
 | bag: a syntax rule broken, refuse | 10 |
-| witness: quantifier bounds beyond the evaluator | 20 |
+| witness only | 0 |
 | status only | 0 |
 
 0 disagreements with the generation record over its 708 rows naming a

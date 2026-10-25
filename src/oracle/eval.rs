@@ -2289,7 +2289,9 @@ impl Matcher<'_, '_> {
 
     /// `S^lower ∪ ... ∪ S^upper`, each power's bindings consistent; an unbounded power is
     /// bounded by the graph under DIFFERENT EDGES (an edge binds once) and otherwise by a
-    /// cap that the selective pattern or the mode must justify.
+    /// cap that the selective pattern or the mode must justify. A path of units is kept as a
+    /// chain of shared prefixes (one link per unit), so a power costs the number of its
+    /// bindings, not their length; the bindings are written out once at the end.
     fn power(&self, unit: Vec<PB>, lower: u64, upper: Option<u64>) -> R<Vec<PB>> {
         let edges = self.env.graph.borrow().edges.len() as u64;
         let bound = match upper {
@@ -2302,28 +2304,78 @@ impl Matcher<'_, '_> {
                 (2 * edges + 1).max(lower)
             }
         };
-        // Each power step copies every binding so far: fine to a few dozen iterations, not
-        // to thousands. Beyond, the witness tier stands (the chain exists, theorem 1).
-        if bound > 64 {
-            return unsupported(format!("a quantifier bound of {bound}: beyond the evaluator's reach, the witness stands"));
+        if bound > 1 << 20 {
+            return unsupported(format!("a quantifier bound of {bound}"));
         }
-        let mut out: Vec<PB> = Vec::new();
-        let mut current: Vec<PB> = vec![Vec::new()];
+        // Units indexed by the node they start with; a unit's last node is where the next
+        // one must start (22.2 GR 16 b). Units begin and end with a node after 16.7 SR 14.
+        let first_node = |pb: &PB| pb.iter().find_map(|(_, e)| match e { Elem::Node(n) => Some(*n), _ => None });
+        let last_node = |pb: &PB| pb.iter().rev().find_map(|(_, e)| match e { Elem::Node(n) => Some(*n), _ => None });
+        let mut by_first: BTreeMap<Option<usize>, Vec<usize>> = BTreeMap::new();
+        for (k, u) in unit.iter().enumerate() {
+            by_first.entry(first_node(u)).or_default().push(k);
+        }
+        let unit_last: Vec<Option<usize>> = unit.iter().map(last_node).collect();
+        struct Link {
+            unit: usize,
+            prev: Option<std::rc::Rc<Link>>,
+        }
+        let mut finished: Vec<(u64, Option<std::rc::Rc<Link>>)> = Vec::new();
+        // Chains of the current power: the link and the node they end with.
+        let mut current: Vec<(Option<std::rc::Rc<Link>>, Option<usize>)> = vec![(None, None)];
+        let mut total_elements: u64 = 0;
+        let unit_len: Vec<u64> = unit.iter().map(|u| u.len() as u64).collect();
         for m in 0..=bound {
             if m >= lower {
-                out.extend(current.iter().cloned());
+                for (link, _) in &current {
+                    finished.push((m, link.clone()));
+                }
+                total_elements += current.len() as u64 * m;
+                if total_elements > 50_000_000 {
+                    return unsupported(format!("a quantifier over {} bindings of {} units: more than the evaluator writes out", current.len(), m));
+                }
             }
-            if m == bound {
+            if m == bound || current.is_empty() {
                 break;
             }
-            let next = self.join_sets(&current, &unit);
-            if next.is_empty() {
-                break;
+            let mut next = Vec::new();
+            for (link, end) in &current {
+                let candidates: Vec<usize> = match end {
+                    None => (0..unit.len()).collect(),
+                    Some(n) => {
+                        let mut c = by_first.get(&Some(*n)).cloned().unwrap_or_default();
+                        c.extend(by_first.get(&None).cloned().unwrap_or_default());
+                        c
+                    }
+                };
+                for k in candidates {
+                    let new_end = unit_last[k].or(*end);
+                    next.push((Some(std::rc::Rc::new(Link { unit: k, prev: link.clone() })), new_end));
+                }
             }
             if next.len() > 200_000 {
                 return unsupported("more than 200,000 candidate path bindings under a quantifier");
             }
             current = next;
+        }
+        // Written out: each chain's units concatenated, then the whole binding checked.
+        let mut out = Vec::new();
+        for (_, link) in finished {
+            let mut units = Vec::new();
+            let mut l = link;
+            while let Some(node) = l {
+                units.push(node.unit);
+                l = node.prev.clone();
+            }
+            units.reverse();
+            let capacity: u64 = units.iter().map(|&k| unit_len[k]).sum();
+            let mut pb: PB = Vec::with_capacity(capacity as usize);
+            for k in units {
+                pb.extend(unit[k].iter().cloned());
+            }
+            if self.consistent(&pb) {
+                out.push(pb);
+            }
         }
         Ok(out)
     }
