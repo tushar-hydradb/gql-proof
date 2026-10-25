@@ -390,8 +390,10 @@ the text and by direct queries on a three node chain:
   22.2 GR 14 give 4 (two operands, two edges, the operands kept apart), a
   union would give 2
 - the negated wildcard (3 sentences, above), and AVG over integers answering a
-  float where the rules leave the type open (now out of the core, so no
+  float where the rules leave the type open (declared for turbolay, so no
   longer a disagreement)
+- `SUM ( NULL )` answering a value where the sum of no non-null values is
+  null (20.x), from the three-variable set
 - seven records turbolay refuses before running where the rules raise an
   exception at run time: six typed `LET VALUE ... NOT NULL` definitions of
   null (22004 by 22.10; turbolay's closed type parse gap) and
@@ -414,12 +416,34 @@ and the `three.jsonl` run: joins across path patterns, a two-cycle matched
 from both nodes, a three-node chain filtered by three predicates, a path over
 three nodes, a quantified group between two singletons, a selective pattern):
 all fifteen in the bag tier, and turbolay agrees on all fifteen and on their
-63 near misses. the 3-variable *typed* run itself waits on the fixed point
-(`research/three-variable-run-2026-10-23.md`): a deadline-bounded attempt on
-2026-10-25 (`--slots 3 --deadline 1500`) was killed at round 30 of the fixed
-point after 282 s, while another agent's typed runs loaded the machine, and
-produced no sentence. when the set lands it runs through the same command
-unchanged; nothing in the oracle reads the variable count
+63 near misses. and a typed set at three variables, generated: the extraction
+loop now honors `--deadline` (it was checked inside single searches only),
+so `--slots 3 --deadline 1500` runs the fixed point and the reach closure to
+the end and returns the trees the cover walk reaches in 25 minutes:
+`sentences/typed-3vars-turbolay-claim-partial.jsonl`, 2,474 sentences (2,463
+distinct), productions 4,398 of 4,540 covered, cdrc 418 of 6,941 (cut at
+target 206), 32 sentences naming three variables, every row with `vars` and
+`params`. the oracle over it, same command:
+
+| tier | sentences |
+| --- | --- |
+| bag: a result | 2,410 |
+| bag: a data exception | 23 |
+| bag: a syntax rule broken, refuse | 10 |
+| witness: quantifier bounds beyond the evaluator | 20 |
+| status only | 0 |
+
+0 disagreements with the generation record over its 708 rows naming a
+variable; the 32 three-variable sentences are 25 results and 7 exceptions
+(the typed `LET ... NOT NULL` family). turbolay on this set: 1,618 agree,
+176 disagree (134 the multiset alternation family, 35 the `?` family, 6 the
+typed `LET ... NOT NULL` parse gap, and one new finding: `RETURN SUM ( NULL )
+AS x` answers a value where 20.x makes the sum of no non-null values null),
+645 refused, 7 unsendable; near misses 3,260 agree, 196 disagree in the same
+two families. of the 32 three-variable sentences turbolay runs 22 and agrees
+on 15, the rest the `NOT NULL` family. the full three-variable run still
+waits on the fixed point work (`research/three-variable-run-2026-10-23.md`):
+the deadline makes a partial set, not a fast one (112 minutes for this file)
 
 the data modification and inline call sentences (eighteen hand written ones,
 `mods.jsonl`): all in the bag tier, with 22G11, G1001 and 22007 where the

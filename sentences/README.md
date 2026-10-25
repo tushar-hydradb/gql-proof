@@ -59,6 +59,16 @@ and `tools/inventory/violations.py` read them as they are
   set 15 sentences are new and 23 gone, witness choices at a later commit
   (`0o152` for `0o22`, `@"x"` for `@""`), the same targets. the oracle reads
   the record from here and checks the pattern kinds against it
+- `typed-3vars-turbolay-claim-partial.jsonl`: the turbolay command at
+  `--slots 3` with `--deadline 1500` on `tushar/oracle` at 2beb4fe
+  (2026-10-25), the first typed set at three variables: the fixed point and
+  the reach closure complete, the extraction cut by the deadline at cdrc
+  target 206 of 6,941 (the loop now honors it and returns what it has).
+  2,474 rows, 2,463 distinct, 112 minutes in all; productions 4,398 of 4,540
+  covered, cdrc 418 of 6,941; 32 sentences name three variables; every row
+  carries `vars` and `params`. partial on purpose: the full run waits on the
+  fixed point work (`research/three-variable-run-2026-10-23.md`). the oracle's
+  three-variable evidence (`research/oracle-witness-2026-10-23.md`)
 - `typed-2vars-whole-grammar-before-258437a.jsonl`: types under scope, 2
   variables, whole grammar (no claim), before extraction took the smallest
   context first. 1,228 distinct, each with the `targets` it covers. kept for
