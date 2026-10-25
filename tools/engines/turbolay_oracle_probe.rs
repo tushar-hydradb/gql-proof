@@ -349,8 +349,23 @@ async fn run_oracle_records() {
         };
         let mut observed: Vec<Vec<Value>> = Vec::new();
         let expected_exception = record["expect"]["outcome"] == json!("exception");
+        let expected_invalid = record["expect"]["outcome"] == json!("invalid");
         let judged = record["expect"]["tier"] == json!("bag") || witness;
         let (verdict, detail) = match (outcome, judged) {
+            (_, true) if expected_invalid => {
+                // A syntax rule broken: refused with class 42; or, under dynamic curing,
+                // the run time exception the record names.
+                let also = record["expect"]["also"].as_str();
+                if outcome == "refused" && status.starts_with("42") {
+                    ("agree", format!("refused with {status}"))
+                } else if outcome == "refused" {
+                    ("agree", format!("refused with {status}, not a syntax error class: {message}"))
+                } else if outcome == "failed" && also.is_some_and(|a| status.get(..2) == a.get(..2)) {
+                    ("agree", format!("raised {status} under dynamic curing"))
+                } else {
+                    ("disagree", format!("expected a refusal, outcome {outcome} {status}: {message}"))
+                }
+            }
             (_, true) if expected_exception => {
                 let want = record["expect"]["status"].as_str().unwrap_or("");
                 if outcome == "failed" && status == want {

@@ -321,27 +321,28 @@ on the 2-variable set (3,800 distinct):
 
 | tier | sentences |
 | --- | --- |
-| bag (theorem 2), of which exceptions 27 | 3,753 |
+| bag (theorem 2): a result, an exception, or a refusal the rules require | 3,759 |
+| of which: a result table or no result | 3,705 |
+| of which: a data exception (22G11, 22012, 22007, 22G0C, ...) | 20 |
+| of which: a syntax rule broken, the engine shall refuse (class 42) | 34 |
 | witness (theorem 1): quantifier bounds of 80 to 2,560, beyond the evaluator | 21 |
-| status only: the static rule's readings below | 26 |
+| status only | 0 |
 
-every row left in the status tier is a disagreement between the generator's
-static rule and the evaluator's reading of the rules, which is to say a
-finding for the soundness track, not a gap of the oracle:
+the third outcome, `invalid`, is what the rules fix for a sentence that
+breaks a syntax rule the generator's static rule did not enforce: the engine
+shall refuse it, status class 42. two families, 34 sentences, each a finding
+for the soundness track as well as an expectation:
 
 - 11 typed `VALUE` definitions whose initializer 10.3 SR says shall be
   assignable to the declared type and is not: a date to `PATH | PATH` and
   `NULL | PATH`, a local datetime to `ZONED DATETIME`, a zoned time to `LOCAL
-  TIME` and `TIME WITHOUT TIME ZONE`. the typed rule accepted them; either
-  the rule's reading of assignability between temporal and union types is
-  loose, or the evaluator's is strict; the record says which sentence and
-  why
-- 15 parameters whose site admits no concrete class and is not a `VALUE x T
-  = $b` definition: `$b . a`, `x * $b + $b` cast to a node, a list with `$b`
-  beside a date. these are valid only because a dynamic parameter stands
-  wherever a class is checked (4.14.4); with any concrete class the typed
-  rule refuses them, so the generator produced sentences no value can run.
-  the same reading as the `NOT NULL` sites above
+  TIME` and `TIME WITHOUT TIME ZONE`. the record names the rule
+- 23 parameters whose site no static type satisfies: `$b . a`, `x * $b + $b`
+  cast to a node, a list with `$b` beside a date, `$b` inside a typed `LET`.
+  they are valid only because a dynamic parameter stands wherever a class is
+  checked. 4.14.4 lets an engine refuse (class 42) or cure the sentence with
+  run time type tests, which no value passes, so the record also names 22G03
+  as the outcome under curing; the probe takes either
 
 the `NOT NULL` sites themselves now run: the declared type of the definition
 gives the parameter's class (`FLOAT NOT NULL = $b` sends `1.5`), and a class

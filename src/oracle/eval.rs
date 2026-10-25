@@ -64,11 +64,13 @@ impl Val {
     }
 }
 
-/// Why evaluation stopped: outside the evaluator, or a data exception the rules raise.
+/// Why evaluation stopped: outside the evaluator, a data exception the rules raise, or a
+/// syntax rule the sentence breaks (a static error the engine must report, class 42).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Stop {
     Unsupported(String),
     Exception(String),
+    Invalid(String),
 }
 
 fn unsupported<T>(why: impl Into<String>) -> R<T> {
@@ -98,6 +100,9 @@ pub enum Outcome {
     NoResult,
     /// A data exception of this class.
     Exception(String),
+    /// A syntax rule broken: the engine shall refuse the sentence (status class 42). The
+    /// reason names the rule.
+    Invalid(String),
 }
 
 /// What an engine declares for the behaviour the standard leaves to it (annex: the
@@ -175,6 +180,7 @@ impl Env<'_> {
             Ok(Some(table)) => Ok(Outcome::Table(table)),
             Ok(None) => Ok(Outcome::NoResult),
             Err(Stop::Exception(status)) => Ok(Outcome::Exception(status)),
+            Err(Stop::Invalid(rule)) => Ok(Outcome::Invalid(rule)),
             Err(Stop::Unsupported(why)) => Err(why),
         }
     }
@@ -3924,13 +3930,13 @@ fn check_declared_type(v: &Val, declared: &str) -> R<()> {
     if fits {
         Ok(())
     } else {
-        // 10.3 SR: the initializer shall be assignable to the declared type. The static rule
-        // of the generator accepted this sentence, so one of the two readings is wrong: a
-        // soundness finding, recorded as the reason.
-        unsupported(format!(
-            "a {} assigned to the declared type {declared}: 10.3 SR says the initializer shall be assignable, the generator's static rule accepted it",
+        // 10.3 SR: the initializer shall be assignable to the declared type; it is not, so
+        // the sentence breaks a syntax rule and the engine shall refuse it. The generator's
+        // static rule accepted it: a soundness finding beside the expectation.
+        Err(Stop::Invalid(format!(
+            "10.3 SR: a {} is not assignable to the declared type {declared}",
             class_of(v)
-        ))
+        )))
     }
 }
 

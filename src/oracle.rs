@@ -99,9 +99,17 @@ pub struct Expect {
     pub tier: Tier,
     /// `ok` (a status of class 00), or `exception`.
     pub outcome: &'static str,
-    /// The exception class when the outcome is one.
+    /// The exception class when the outcome is one; `42000` (the class) when the outcome
+    /// is `invalid`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// For an `invalid` outcome under 4.14.4's dynamic curing: the run time exception an
+    /// engine that cures instead of refusing raises.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub also: Option<String>,
+    /// The rule an `invalid` outcome rests on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rule: Option<String>,
     /// The whole result, in the bag tier: every row, ordered when `ordered`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bag: Option<Vec<eval::Row>>,
@@ -1906,7 +1914,7 @@ pub fn oracle(
     declared: &eval::Declarations,
 ) -> Oracle {
     let mut b = Builder::new(mode_default);
-    let (parameters, unsendable, parameter_problems) = parameter_values(tree, params);
+    let (parameters, unsendable, dynamic_only, parameter_problems) = parameter_values(tree, params);
     for why in parameter_problems {
         b.out_of_core(why);
     }
@@ -1970,6 +1978,8 @@ pub fn oracle(
         tier,
         outcome: "ok",
         status: None,
+        also: None,
+        rule: None,
         bag: None,
         bag_from: None,
         ordered: false,
@@ -2019,9 +2029,36 @@ pub fn oracle(
             expect.row = None;
             expect.rows = None;
         }
+        Ok(eval::Outcome::Invalid(rule)) => {
+            expect.tier = Tier::Bag;
+            expect.outcome = "invalid";
+            expect.status = Some("42000".to_string());
+            expect.rule = Some(rule);
+            expect.result = false;
+            expect.row = None;
+            expect.rows = None;
+        }
         Err(reason) => {
             expect.evaluator = Some(reason);
         }
+    }
+    // A parameter site no concrete class satisfies: the sentence is valid only through a
+    // dynamic parameter. 4.14.4 lets an engine cure it with run time type tests, which no
+    // value passes (22G03), or refuse it (class 42).
+    if !dynamic_only.is_empty() {
+        expect.tier = Tier::Bag;
+        expect.outcome = "invalid";
+        expect.status = Some("42000".to_string());
+        expect.also = Some("22G03".to_string());
+        expect.rule = Some(format!(
+            "4.14.4: no static type meets the requirements of the site of {}; refused, or cured by a type test every value fails",
+            dynamic_only.join(", ")
+        ));
+        expect.evaluator = None;
+        expect.result = false;
+        expect.row = None;
+        expect.rows = None;
+        expect.bag = None;
     }
     let tier = expect.tier;
     let setup = emit(&graph);
@@ -2111,7 +2148,8 @@ pub fn oracle(
                     miss.outcome = "exception";
                     miss.status = Some(status);
                 }
-                Err(_) => continue,
+                // A near miss cannot make a static error of a valid sentence.
+                Ok(eval::Outcome::Invalid(_)) | Err(_) => continue,
             }
             near_misses.push(miss);
         }
@@ -2136,11 +2174,12 @@ pub fn oracle(
 fn parameter_values(
     tree: &Plain,
     params: Option<&serde_json::Value>,
-) -> (BTreeMap<String, Value>, BTreeMap<String, String>, Vec<String>) {
+) -> (BTreeMap<String, Value>, BTreeMap<String, String>, Vec<String>, Vec<String>) {
     let mut refs = Vec::new();
     find_all(tree, "general parameter reference", &mut refs);
     let mut values = BTreeMap::new();
     let mut opaque = BTreeMap::new();
+    let mut dynamic_only = Vec::new();
     let mut problems = Vec::new();
     let known: Vec<(String, Vec<String>)> = params
         .and_then(|p| p.as_array())
@@ -2171,9 +2210,10 @@ fn parameter_values(
             continue;
         };
         if classes.is_empty() && declared_type_of_initializer(tree, &spelling).is_none() {
-            problems.push(format!(
-                "the rules admit no class for {spelling}: the sentence is valid only with a dynamic parameter, a static rule reading for the soundness track"
-            ));
+            // Valid only through a dynamic parameter: any value is sent, and the expectation
+            // is a refusal or a failed type test (`oracle`).
+            dynamic_only.push(spelling.clone());
+            values.insert(key, Value::Int(1));
             continue;
         }
         // When the rules admit no class, the declared type of a `VALUE x T = $b` whose
@@ -2215,7 +2255,7 @@ fn parameter_values(
         };
         values.insert(key, value);
     }
-    (values, opaque, problems)
+    (values, opaque, dynamic_only, problems)
 }
 
 /// The evaluator's class hint for a declared type the harness has no values of.
