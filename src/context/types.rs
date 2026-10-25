@@ -43,6 +43,7 @@ use super::scope::{Kind, Label as Scoped, Scope, View};
 use super::{Link, Slot};
 use crate::cfg::{Cfg, Sym};
 use crate::refine::{Item, Node};
+use smallvec::SmallVec;
 use std::collections::{BTreeMap, HashSet};
 
 /// A type class.
@@ -241,7 +242,8 @@ mod fact {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Default)]
 pub struct Label {
     class: Option<Ty>,
-    vars: Vec<Entry>,
+    /// Inline, like scope's: a label is cloned on every push.
+    vars: SmallVec<[Entry; 6]>,
     facts: u16,
     /// The class a `<value type>` names.
     target: Option<Class>,
@@ -253,7 +255,7 @@ pub struct Label {
     /// The simple CASE operand classes every when operand so far accepts (bits of
     /// [`OPERANDS`]).
     operand: Option<u8>,
-    kids: Vec<Option<Ty>>,
+    kids: SmallVec<[Option<Ty>; 6]>,
     /// A partial label past its definition's last child, already checked (`Types::folds`):
     /// its class and entries are the node's, and `finish` only relinks them.
     done: bool,
@@ -549,7 +551,7 @@ pub struct Types {
 
 /// Where each input slot of a step went: its output slot, or the entry it closed with.
 struct Relinked {
-    vars: Vec<Entry>,
+    vars: SmallVec<[Entry; 6]>,
     at: Vec<Result<Slot, Entry>>,
 }
 
@@ -559,7 +561,7 @@ impl Relinked {
     /// scope said of it (`views`, in step with `inputs`): a variable closed here is checked
     /// here or never.
     fn new(inputs: &[Entry], views: &[View], link: &Link, width: usize) -> Option<Relinked> {
-        let mut vars = vec![Free; width];
+        let mut vars: SmallVec<[Entry; 6]> = smallvec::smallvec![Free; width];
         let mut locals: BTreeMap<Slot, Entry> = BTreeMap::new();
         let to = |i: usize| link.0.get(i).copied().flatten();
         for (i, e) in inputs.iter().enumerate() {
@@ -1413,7 +1415,8 @@ impl Types {
             }
         }
         // Chosen: every class each variable may have, and what that asks of it.
-        let mut picks: Vec<(BTreeMap<Slot, Class>, Vec<Entry>)> = vec![(BTreeMap::new(), vars)];
+        let mut picks: Vec<(BTreeMap<Slot, Class>, SmallVec<[Entry; 6]>)> =
+            vec![(BTreeMap::new(), vars)];
         for (&s, &m) in &slots {
             let mut next = Vec::new();
             for (pick, vars) in &picks {
@@ -1453,7 +1456,7 @@ impl Under<Scope> for Types {
 
     fn empty(&self, _: &Node, a: &Scoped) -> Label {
         Label {
-            vars: vec![Free; a.width()],
+            vars: smallvec::smallvec![Free; a.width()],
             ..Label::default()
         }
     }
@@ -1711,6 +1714,10 @@ impl Under<Scope> for Types {
         x.alike(y) && x.vars.iter().zip(&y.vars).all(|(a, b)| within(*a, *b))
     }
 
+    fn overlaps(&self, _: &Scoped, x: &Label, y: &Label) -> bool {
+        x.alike(y) && x.vars.iter().zip(&y.vars).all(|(a, b)| overlap(*a, *b))
+    }
+
     fn partial_key(&self, node: &Node, pos: usize, l: &Label) -> u32 {
         let kid = |i: usize| l.kids.get(i).copied().flatten();
         match Site::of(node, pos) {
@@ -1821,6 +1828,15 @@ fn within(a: Entry, b: Entry) -> bool {
     match (a, b) {
         (_, Free) => true,
         (Allow(p), Allow(q)) => p & !q == 0,
+        (a, b) => a == b,
+    }
+}
+
+/// Whether some entry lies within both `a` and `b`: the sets meet.
+fn overlap(a: Entry, b: Entry) -> bool {
+    match (a, b) {
+        (_, Free) | (Free, _) => true,
+        (Allow(p), Allow(q)) => p & q != 0,
         (a, b) => a == b,
     }
 }
