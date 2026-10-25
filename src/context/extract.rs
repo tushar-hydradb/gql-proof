@@ -31,7 +31,6 @@ use crate::tree;
 use anyhow::Result;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use rayon::prelude::*;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -226,28 +225,45 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
         let (pushes_before, pushed_before) = counted();
         e.cache.borrow_mut().clear();
         // One scan per production, on every core: a scan reads the fixed point and changes
-        // nothing, and counts into stats of its own, added after.
-        let view = e.view();
-        let scanned: Vec<(Prepared<C::Label>, Stats)> = (0..cfg.prods.len() as ProdId)
-            .into_par_iter()
-            .map(|p| {
-                let mut stats = Stats::default();
-                let (layers, graph) = view.layers_graph(&mut stats, p);
-                let ends = view.ends(&layers, &graph);
-                let prepared = Prepared {
-                    layers,
-                    graph,
-                    ends,
-                    ahead: OnceCell::new(),
-                    useful_up: OnceCell::new(),
-                };
-                (prepared, stats)
-            })
-            .collect();
+        // nothing, and counts into stats of its own, added after. The largest productions (by
+        // the partial labels the fixed point made for them) start first, so none is left
+        // running alone at the end; each splits its own pushes too.
+        let view = super::Scan {
+            inner: true,
+            ..e.view()
+        };
+        let scan = |p: ProdId| {
+            let mut stats = Stats::default();
+            let (layers, graph) = view.layers_graph(&mut stats, p);
+            let ends = view.ends(&layers, &graph);
+            let prepared = Prepared {
+                layers,
+                graph,
+                ends,
+                ahead: OnceCell::new(),
+                useful_up: OnceCell::new(),
+            };
+            (prepared, stats)
+        };
+        let mut by_size: Vec<ProdId> = (0..cfg.prods.len() as ProdId).collect();
+        {
+            let stats = e.stats.borrow();
+            by_size.sort_by_key(|p| {
+                std::cmp::Reverse(stats.prods.get(p).map_or(0, |s| s.partials_total))
+            });
+        }
+        let mut scanned: Vec<Option<(Prepared<C::Label>, Stats)>> =
+            (0..cfg.prods.len()).map(|_| None).collect();
+        let done: Vec<(ProdId, (Prepared<C::Label>, Stats))> =
+            super::map_ordered(by_size, |p| (p, scan(p)));
+        for (p, s) in done {
+            scanned[p as usize] = Some(s);
+        }
         let mut prepared = Vec::with_capacity(scanned.len());
         {
             let mut stats = e.stats.borrow_mut();
-            for (pre, s) in scanned {
+            for s in scanned {
+                let (pre, s) = s.expect("every production scanned");
                 stats.absorb(s);
                 prepared.push(pre);
             }
