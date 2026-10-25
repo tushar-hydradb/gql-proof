@@ -630,6 +630,10 @@ impl Scope {
         let passes = !chain || !partial.has(gf::CLOSES);
         // 9.2 SR 12: after NEXT, only the statement before is seen.
         let next = chain && child.has(gf::NEXT);
+        // 15.2 SR 6 a ii: names in a scope clause are distinct variables.
+        let listing = owner(node.def) == "binding variable reference list";
+        // An insert pattern declares each name once (16.5 SR 10-11).
+        let insert = owner(node.def).starts_with("insert");
         let drafts = meet(&d, child, |cv| {
             let mut t = Vec::new();
             for (i, pv) in d.live() {
@@ -662,8 +666,6 @@ impl Scope {
                         ));
                     }
                 }
-                // 15.2 SR 6 a ii: names in a scope clause are distinct variables.
-                let listing = owner(node.def) == "binding variable reference list";
                 if passes
                     && !next
                     && !listing
@@ -672,11 +674,11 @@ impl Scope {
                 {
                     t.push(Target::Into(i, v));
                 }
-                if !chain && let Some(v) = joined_decl(pv, cv) {
-                    // An insert pattern declares each name once (16.5 SR 10-11).
-                    if !owner(node.def).starts_with("insert") {
-                        t.push(Target::Into(i, v));
-                    }
+                if !chain
+                    && !insert
+                    && let Some(v) = joined_decl(pv, cv)
+                {
+                    t.push(Target::Into(i, v));
                 }
             }
             if cv.need.is_none() || (passes && !next) {

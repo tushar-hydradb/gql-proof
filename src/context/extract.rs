@@ -457,8 +457,23 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
             }
         } else {
             let at = self.stack.borrow()[hit].clone();
-            self.conditional.borrow_mut().insert(key.clone(), (hit, at));
-            self.by_depth.borrow_mut().entry(hit).or_default().push(key);
+            // Failures conditional on this search or on deeper ones hold as long as this one
+            // fails, which is as long as the search at `hit` does: they move there. Left at
+            // this depth, the next search to fail here for good would settle them.
+            let moved = self.by_depth.borrow_mut().split_off(&depth);
+            let mut conditional = self.conditional.borrow_mut();
+            let mut by_depth = self.by_depth.borrow_mut();
+            let there = by_depth.entry(hit).or_default();
+            for k in moved.into_values().flatten() {
+                if let Some(c) = conditional.get_mut(&k)
+                    && c.0 >= depth
+                {
+                    *c = (hit, at.clone());
+                    there.push(k);
+                }
+            }
+            conditional.insert(key.clone(), (hit, at));
+            there.push(key);
         }
         // A hit into this search is settled here; one into a search above is theirs.
         self.lowest
@@ -533,15 +548,29 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
         }
         let pre = &self.prepared[p as usize];
         let instance = self.e.smallest(p, &pre.layers, &pre.ends, r)?;
-        let (ground, out) = self.e.ground(
-            p,
-            &instance,
-            None,
-            &|l| self.e.ctx.within(g, l),
-            &|pos, o| self.child_ok(p, pos, o),
-            Some(g),
-            &[false, true],
-        )?;
+        let accept = |l: &C::Label| self.e.ctx.within(g, l);
+        let child_ok = |pos: usize, o: &Opt<C::Label>| self.child_ok(p, pos, o);
+        let found = self
+            .e
+            .ground(p, &instance, None, &accept, &child_ok, Some(g), &[false])
+            .or_else(|| {
+                // The wide walk, over only the options of instances that can end within `g`'s
+                // reach: a finished label `g` lies within lies within the instance's end too.
+                let useful = self
+                    .e
+                    .useful_options(p, &pre.layers, |end| self.e.ctx.within(g, end));
+                self.e.ground_in(
+                    p,
+                    &instance,
+                    None,
+                    &accept,
+                    &child_ok,
+                    Some(g),
+                    &[true],
+                    Some(&useful),
+                )
+            });
+        let (ground, out) = found?;
         Some(self.node_of(p, ground, out, None))
     }
 
@@ -608,6 +637,24 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                 .iter()
                 .any(|l| self.e.ctx.within(g, l))
             {
+                if std::env::var("GQL_DEBUG_REACHED").is_ok_and(|n| n == self.cfg().name(nt)) {
+                    let live: Vec<String> = self.e.labels[nt as usize]
+                        .keys()
+                        .filter(|l| self.e.live(nt as usize, l) && self.e.ctx.within(g, l))
+                        .map(|l| self.e.ctx.show(l))
+                        .collect();
+                    let reached: Vec<String> = self.reached[nt as usize]
+                        .iter()
+                        .map(|l| self.e.ctx.show(l))
+                        .collect();
+                    eprintln!(
+                        "not reached: <{}> [{}]; live labels it lies within: {:?}; reached: {:?}",
+                        self.cfg().name(nt),
+                        self.e.ctx.show(g),
+                        live,
+                        reached
+                    );
+                }
                 return None;
             }
             // The parents cheapest first, by the smallest context each gives (its siblings at
@@ -712,6 +759,40 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
         Some(found(ground, out))
     }
 
+    /// Debugging the closure: the first node of `x`, top down, whose label lies within no
+    /// reached live label, with its parent.
+    fn check_reached(&self, x: &XNode<C::Label>, parent: Option<(&XNode<C::Label>, usize)>) {
+        let nt = self.cfg().prods[x.prod as usize].lhs;
+        if !self.reached[nt as usize]
+            .iter()
+            .any(|l| self.e.ctx.within(&x.label, l))
+        {
+            let live: Vec<String> = self.e.labels[nt as usize]
+                .keys()
+                .filter(|l| self.e.live(nt as usize, l) && self.e.ctx.within(&x.label, l))
+                .map(|l| self.e.ctx.show(l))
+                .collect();
+            eprintln!(
+                "unreached node: <{}> [{}] (live {:?}) at position {} of {} [{}]",
+                self.cfg().name(nt),
+                self.e.ctx.show(&x.label),
+                live,
+                parent.map_or(0, |(_, j)| j),
+                parent.map_or("the top".to_string(), |(p, _)| crate::describe(
+                    self.cfg(),
+                    p.prod
+                )),
+                parent.map_or(String::new(), |(p, _)| self.e.ctx.show(&p.label)),
+            );
+            return;
+        }
+        for (j, c) in x.children.iter().enumerate() {
+            if let XChild::Node(n) = c {
+                self.check_reached(n, Some((x, j)));
+            }
+        }
+    }
+
     /// The tree a context and the node below it make.
     fn assemble(&self, ctx: &Ctx<C::Label>, below: Rc<XNode<C::Label>>) -> Rc<XNode<C::Label>> {
         match ctx {
@@ -760,11 +841,22 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
         let mut made: Vec<(u64, &C::Label)> =
             pre2.ends.iter().map(|(r, (k, _, _))| (*k, r)).collect();
         made.sort_by(|a, b| a.0.cmp(&b.0));
+        // Each child label is tried under `q` once: many grounds of many made labels end in
+        // the same one.
+        let mut tried: BTreeSet<C::Label> = BTreeSet::new();
         for (_, r) in made {
             for g in self.e.ctx.grounds(r) {
                 let Some(child) = self.witness_with(p2, r, &g) else {
                     continue;
                 };
+                if !tried.insert(child.label.clone()) {
+                    continue;
+                }
+                // A label with no context to the top has none under `q` either: `up` tries
+                // every parent with the same wide search, and it is memoised.
+                if self.up(c, &child.label).is_none() {
+                    continue;
+                }
                 // Only options with a part `p2` makes seed the search; the wide search takes
                 // any.
                 let only = |l: &C::Label| {
@@ -903,6 +995,9 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                            prods_seen: &mut BTreeSet<ProdId>|
          -> bool {
             let Some(x) = t else { return false };
+            if std::env::var("GQL_CHECK_REACHED").is_ok() {
+                self.check_reached(&x, None);
+            }
             let mut root = self.to_tree(&x, leaf, template, &mut rng);
             if let Err(err) = self.name(&x, &mut root, names, &spell) {
                 panic!("naming an extracted tree: {err}");
@@ -942,6 +1037,13 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                 let Target::Cdrc(occ, p2) = t else {
                     unreachable!()
                 };
+                let target_began = Instant::now();
+                let candidates_before = self.e.stats.borrow().emit.ground_candidates;
+                let by_prod_before = if progress {
+                    self.e.stats.borrow().emit.ground_by_prod.clone()
+                } else {
+                    BTreeMap::new()
+                };
                 let found = if *occ == ROOT {
                     extract(
                         self.production_tree(*p2),
@@ -971,6 +1073,38 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                 };
                 if !found {
                     cdrc.never.push(coverage::describe_target(cfg, t));
+                }
+                if progress && target_began.elapsed().as_secs() >= 2 {
+                    eprintln!(
+                        "slow target: cdrc {n} {} ({}) in {:?}, {} candidates",
+                        coverage::describe_target(cfg, t),
+                        if found { "found" } else { "never" },
+                        target_began.elapsed(),
+                        self.e.stats.borrow().emit.ground_candidates - candidates_before
+                    );
+                    let stats = self.e.stats.borrow();
+                    let mut spent: Vec<(u64, u64, u64, u32)> = stats
+                        .emit
+                        .ground_by_prod
+                        .iter()
+                        .map(|(&q, g)| {
+                            let b = by_prod_before.get(&q).cloned().unwrap_or_default();
+                            (
+                                g.candidates - b.candidates,
+                                g.narrow - b.narrow,
+                                g.wide - b.wide,
+                                q,
+                            )
+                        })
+                        .filter(|s| s.0 > 0)
+                        .collect();
+                    spent.sort_unstable_by(|a, b| b.cmp(a));
+                    for (candidates, narrow, wide, q) in spent.iter().take(6) {
+                        eprintln!(
+                            "  {candidates} candidates in {narrow} narrow, {wide} wide walks of {}",
+                            crate::describe(cfg, *q)
+                        );
+                    }
                 }
             }
             cdrc.covered = targets.iter().filter(|t| seen.contains(t)).count();
@@ -1061,15 +1195,43 @@ fn reach<C: Context>(
     let lhs_live = |p: ProdId, end: &C::Label| -> Option<C::Label> {
         live[cfg.prods[p as usize].lhs as usize].get(end).cloned()
     };
+    // For the progress line: rounds, and the time and count of each kind of pass.
+    let began = Instant::now();
+    let pushes = || {
+        e.stats
+            .borrow()
+            .prods
+            .values()
+            .map(|s| s.pushes)
+            .sum::<u64>()
+    };
+    let pushes_before = pushes();
+    let (mut rounds, mut firsts, mut fallbacks) = (0u64, 0u64, 0u64);
+    let (mut first_t, mut smallest_t, mut fallback_t) = (0u128, 0u128, 0u128);
+    // The reached labels by join key: an end is taken when it overlaps one, not only when
+    // its live label is one. A ground of a joined option can finish within a reached label
+    // the option's own end is not (joins group labels apart from how ends fall), and that
+    // ground's context is real.
+    let mut by_key: Vec<BTreeMap<Option<C::Label>, Vec<C::Label>>> =
+        vec![BTreeMap::new(); cfg.nts.len()];
     loop {
+        rounds += 1;
         while let Some((nt, l)) = queue.pop_front() {
+            by_key[nt as usize]
+                .entry(e.ctx.join_key(&l))
+                .or_default()
+                .push(l.clone());
             for &p in &cfg.nts[nt as usize].prods {
                 if !fillable[p as usize] {
                     continue;
                 }
                 let pre = &prepared[p as usize];
                 if passed.insert(p) {
-                    for ((pos, o), end, _) in e.instances(p, &pre.layers, |_| true, |_, _| true) {
+                    let t = Instant::now();
+                    firsts += 1;
+                    let found = e.cheapest_ends(p, &pre.layers, |_| true, |_, _| true);
+                    first_t += t.elapsed().as_nanos();
+                    for ((pos, o), end) in found {
                         open.entry(p).or_default().insert((pos, o.clone()));
                         if let Some(end) = lhs_live(p, &end) {
                             pending.entry((p, end)).or_default().push((pos, o));
@@ -1083,7 +1245,10 @@ fn reach<C: Context>(
                     None => vec![&l],
                 };
                 for r in made {
-                    let Some((opts, _)) = e.smallest(p, &pre.layers, &pre.ends, r) else {
+                    let t = Instant::now();
+                    let smallest = e.smallest(p, &pre.layers, &pre.ends, r);
+                    smallest_t += t.elapsed().as_nanos();
+                    let Some((opts, _)) = smallest else {
                         continue;
                     };
                     for (pos, o) in opts.iter().enumerate() {
@@ -1115,13 +1280,21 @@ fn reach<C: Context>(
             }
             tried.insert(p, known);
             let pre = &prepared[p as usize];
-            let found = e.instances(
+            let t = Instant::now();
+            fallbacks += 1;
+            let by_key = &by_key[lhs];
+            let found = e.cheapest_ends(
                 p,
                 &pre.layers,
-                |end| lhs_live(p, end).is_some_and(|l| reached[lhs].contains(&l)),
+                |end| {
+                    by_key
+                        .get(&e.ctx.join_key(end))
+                        .is_some_and(|ls| ls.iter().any(|l| e.ctx.overlaps(end, l)))
+                },
                 |pos, o| opens.contains(&(pos, o.clone())),
             );
-            for ((pos, o), _, _) in found {
+            fallback_t += t.elapsed().as_nanos();
+            for ((pos, o), _) in found {
                 opens.remove(&(pos, o.clone()));
                 if let (Sym::Nt(c), Opt::Label(cl)) = (cfg.prods[p as usize].rhs[pos], &o) {
                     if reached[c as usize].insert(cl.clone()) {
@@ -1134,6 +1307,17 @@ fn reach<C: Context>(
         if queue.is_empty() && !grew {
             break;
         }
+    }
+    if e.options.progress {
+        let ms = |n: u128| n / 1_000_000;
+        eprintln!(
+            "reach: {rounds} rounds, {firsts} first passes {} ms, smallest {} ms, {fallbacks} fallback passes {} ms, {} pushes, {:?} in all",
+            ms(first_t),
+            ms(smallest_t),
+            ms(fallback_t),
+            pushes() - pushes_before,
+            began.elapsed()
+        );
     }
     reached
 }

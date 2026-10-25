@@ -69,6 +69,10 @@ pub trait Under<A: Context> {
     fn within(&self, _a: &A::Label, x: &Self::Label, y: &Self::Label) -> bool {
         x == y
     }
+    /// As [`Context::overlaps`], under one label of `A`.
+    fn overlaps(&self, a: &A::Label, x: &Self::Label, y: &Self::Label) -> bool {
+        self.within(a, x, y) || self.within(a, y, x)
+    }
     /// As [`Context::partial_key`].
     fn partial_key(&self, _node: &Node, _pos: usize, _partial: &Self::Label) -> u32 {
         0
@@ -226,6 +230,10 @@ impl<A: Context, B: Under<A>> Context for Typed<A, B> {
 
     fn within(&self, (a, x): &Self::Label, (a2, y): &Self::Label) -> bool {
         a == a2 && self.b.within(a, x, y)
+    }
+
+    fn overlaps(&self, (a, x): &Self::Label, (a2, y): &Self::Label) -> bool {
+        a == a2 && self.b.overlaps(a, x, y)
     }
 
     /// `A`'s key in the high half, `B`'s in the low; compatible when both are.

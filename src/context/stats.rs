@@ -86,7 +86,17 @@ pub struct EmitStats {
     pub ground_accept_rejected: u64,
     /// Partial labels cut for already asking more than the target (`Context::narrower`).
     pub ground_narrowed: u64,
+    /// Per production walked: its walks and the candidates they tried themselves (not in
+    /// the searches they started), for finding where the searches spend.
+    pub ground_by_prod: BTreeMap<u32, GroundProd>,
     pub nanos: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct GroundProd {
+    pub narrow: u64,
+    pub wide: u64,
+    pub candidates: u64,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

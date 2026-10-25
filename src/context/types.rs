@@ -1711,6 +1711,10 @@ impl Under<Scope> for Types {
         x.alike(y) && x.vars.iter().zip(&y.vars).all(|(a, b)| within(*a, *b))
     }
 
+    fn overlaps(&self, _: &Scoped, x: &Label, y: &Label) -> bool {
+        x.alike(y) && x.vars.iter().zip(&y.vars).all(|(a, b)| overlap(*a, *b))
+    }
+
     fn partial_key(&self, node: &Node, pos: usize, l: &Label) -> u32 {
         let kid = |i: usize| l.kids.get(i).copied().flatten();
         match Site::of(node, pos) {
@@ -1821,6 +1825,15 @@ fn within(a: Entry, b: Entry) -> bool {
     match (a, b) {
         (_, Free) => true,
         (Allow(p), Allow(q)) => p & !q == 0,
+        (a, b) => a == b,
+    }
+}
+
+/// Whether some entry lies within both `a` and `b`: the sets meet.
+fn overlap(a: Entry, b: Entry) -> bool {
+    match (a, b) {
+        (_, Free) | (Free, _) => true,
+        (Allow(p), Allow(q)) => p & q != 0,
         (a, b) => a == b,
     }
 }
