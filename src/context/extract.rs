@@ -984,6 +984,17 @@ impl<'e, 'a, C: Context> Extractor<'e, 'a, C> {
                 .collect();
             cdrc.total = targets.len();
             for (n, t) in targets.iter().enumerate() {
+                // The phase's deadline: what was extracted so far is returned and reported.
+                if let Some(deadline) = self.e.options.deadline
+                    && began.elapsed() > deadline
+                {
+                    eprintln!(
+                        "extracting: deadline {deadline:?} reached at target {n} of {}, {} trees kept",
+                        targets.len(),
+                        trees.len()
+                    );
+                    break;
+                }
                 if progress && said.elapsed().as_secs() >= 5 {
                     eprintln!(
                         "extracting: cdrc {n} of {}, {} trees, {:?}",
