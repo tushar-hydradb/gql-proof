@@ -454,6 +454,38 @@ fn eleventh_review_findings() {
     bad_on_some_parse("RETURN CAST ( 1 IS NULL AS BOOL NOT NULL ) AS x", "20.8 SR 5 contains");
     fine("RETURN CAST ( CAST ( CURRENT_DATE AS DATE NOT NULL ) AS DATE NOT NULL ) AS x", "20.8 SR 5 contains");
     // 16.6 SR 8 (reading): no subquery in a selective path pattern
-    bad("MATCH ANY ( { a : EXISTS { <- } } ) FINISH", "16.6 SR 8");
-    fine("MATCH ( { a : EXISTS { <- } } ) FINISH", "16.6 SR 8");
+    bad("MATCH ANY ( { a : EXISTS { <- } } ) FINISH", "16.6 SR 8 nested");
+    fine("MATCH ( { a : EXISTS { <- } } ) FINISH", "16.6 SR 8 nested");
+}
+
+#[test]
+fn twelfth_review_findings() {
+    // 21.2 SR 73: a sign only on an unsigned numeric literal in a list literal.
+    bad_on_some_parse("FILTER [ - NULL ] IS NULL FINISH", "21.2 SR 73");
+    // delimited names as variables, fields, properties
+    bad_on_some_parse("RETURN { \"a\" : 1 } AS x", "21.3 SR 4 names");
+    bad_on_some_parse("VALUE x = EXISTS { <- } DROP GRAPH / a", "9.1 SR 5 nested");
+    bad_on_some_parse("RETURN 1 AS \"x\" NEXT YIELD \"x\" RETURN 1 AS y", "16.14 SR 4");
+    bad("MATCH ( x ) SET x . \"a\" = 1", "21.3 SR 4 names");
+    // a delimited graph name meets a bare one
+    bad_on_some_parse("CREATE GRAPH / x ANY AS COPY OF \"x\"", "12.4 SR 6");
+    // a GROUP LIST of ANY
+    bad_on_some_parse("FILTER SESSION_USER IS TYPED GROUP LIST FINISH", "18.9 SR 68");
+    // temporal shapes, durations of no field, URI schemes
+    bad_on_some_parse("RETURN DATE '2024-01- 1' AS x", "21.2 SR 59");
+    bad_on_some_parse("RETURN DURATION 'P' AS x", "21.2 SR 68");
+    // a combination past an unknown input
+    bad_on_some_parse("RETURN COALESCE ( $b , 8 , TRUE ) AS x", "22.19 SR 4");
+    // ELEMENT_ID in a set operation
+    bad_on_some_parse("MATCH ( x ) RETURN ELEMENT_ID ( x ) AS y UNION RETURN TRUE AS y", "20.10 SR 3");
+    // a closed union cast target
+    bad_on_some_parse("RETURN CAST ( 1 AS INT8 | BOOL ) AS x", "20.8 SR 9");
+    // a selective pattern references an outer variable
+    bad_on_some_parse("MATCH ( x ) WHERE EXISTS { MATCH ANY ( y WHERE y . a = x . a ) RETURN y } FINISH", "16.6 SR 8");
+    // a value variable as a bound INSERT node
+    bad("LET x = 1 INSERT ( x )", "16.5 SR 10");
+    // a nested TRIM's outer source
+    bad_on_some_parse("RETURN TRIM ( LTRIM ( SESSION_USER ) FROM X'00' ) AS x", "20.23 SR 2, 4");
+    // a temporal function's record argument
+    bad_on_some_parse("RETURN DATE ( { x : 1 , x : 2 } ) AS y", "20.19 SR 2");
 }

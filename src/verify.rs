@@ -40,6 +40,9 @@ pub const GATE_ONLY: &[&str] = &[
     "17.1 SR 2",
     "17.2 SR 2",
     "12.6 SR 7",
+    "21.3 SR 4 names",
+    "9.1 SR 5 nested",
+    "16.6 SR 8 nested",
     // 20.8 SR 5's "CO specifies NULL" read as containing one anywhere: the generator does not
     // follow NULLs below a cast operand
     "20.8 SR 5 contains",
@@ -198,6 +201,7 @@ impl<'b> Verifier<'b> {
         if let Some(id086) = self.syntax_rules {
             catalog_root(tree, &mut out);
             like_sources(tree, &mut out);
+            delimited_names(tree, &mut out);
             one_kind_per_name(tree, &mut out);
             syntax_rules(tree, id086, &mut Vec::new(), &mut out);
             out.extend(graph_type::check(tree));
@@ -437,8 +441,11 @@ impl<'b> Verifier<'b> {
                 let content =
                     quoted(node).ok_or(("21.2 SR 68", "not a plain quoted string".into()))?;
                 let chars: Vec<char> = content.chars().collect();
-                if self.chars_match("iso8601 years and months", &chars)
-                    || self.chars_match("iso8601 days and time", &chars)
+                // at least one field: `P` and `PT` alone match the productions (the twelfth
+                // review), and a duration of no field is none
+                if (self.chars_match("iso8601 years and months", &chars)
+                    || self.chars_match("iso8601 days and time", &chars))
+                    && chars.iter().any(|c| c.is_ascii_digit())
                 {
                     Ok(())
                 } else {
@@ -448,14 +455,17 @@ impl<'b> Verifier<'b> {
                     ))
                 }
             }
+            // the exact shape first: chrono skips spaces and takes one digit (the twelfth
+            // review: `'2024-01- 1'` passed)
             "date string" => temporal(node, "21.2 SR 59", |c| {
-                c.len() == 10 && NaiveDate::parse_from_str(c, "%Y-%m-%d").is_ok()
+                iso_shape(c, "dddd-dd-dd") && NaiveDate::parse_from_str(c, "%Y-%m-%d").is_ok()
             }),
             "time string" => temporal(node, "21.2 SR 62", |c| {
-                c.len() >= 8 && NaiveTime::parse_from_str(c, "%H:%M:%S%.f").is_ok()
+                iso_shape(c, "dd:dd:dd") && NaiveTime::parse_from_str(c, "%H:%M:%S%.f").is_ok()
             }),
             "datetime string" => temporal(node, "21.2 SR 64", |c| {
-                c.len() >= 19 && NaiveDateTime::parse_from_str(c, "%Y-%m-%dT%H:%M:%S%.f").is_ok()
+                iso_shape(c, "dddd-dd-ddTdd:dd:dd")
+                    && NaiveDateTime::parse_from_str(c, "%Y-%m-%dT%H:%M:%S%.f").is_ok()
             }),
             "time zone string" => temporal(node, "21.2 SR 61", |c| {
                 let b = c.as_bytes();
@@ -542,21 +552,30 @@ pub(crate) fn leaf_rule(def: &str, text: &str) -> Result<(), (&'static str, Stri
         "other language character" => {
             ok(one.is_some_and(|c| !gql_language_character(c)), "21.4 SR 1")
         }
+        // RFC 3986: a scheme (a letter, then letters, digits, + - .), a colon, something
+        // after it (the twelfth review: `1:x` passed)
         "external object reference" => ok(
-            text.contains(':') && !text.contains("//") && !text.chars().any(char::is_whitespace),
+            text.split_once(':').is_some_and(|(scheme, rest)| {
+                scheme.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                    && scheme.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+                    && !rest.is_empty()
+            }) && !text.contains("//")
+                && !text.chars().any(char::is_whitespace),
             "17.8 SR 2, 3",
         ),
         "SQL-datetime literal" => ok(
             text.strip_prefix("DATE '")
                 .and_then(|r| r.strip_suffix('\''))
-                .is_some_and(|d| d.len() == 10 && NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok()),
+                .is_some_and(|d| iso_shape(d, "dddd-dd-dd") && NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok()),
             "21.2 SR 69",
         ),
         "SQL-interval literal" => ok(
             text.strip_prefix("INTERVAL '")
                 .and_then(|r| r.split_once("' "))
                 .is_some_and(|(n, unit)| {
+                    // the default leading field precision is 2 (the twelfth review)
                     !n.is_empty()
+                        && n.len() <= 2
                         && n.chars().all(|c| c.is_ascii_digit())
                         && matches!(
                             unit,
@@ -567,6 +586,26 @@ pub(crate) fn leaf_rule(def: &str, text: &str) -> Result<(), (&'static str, Stri
         ),
         _ => Err(("no rule", format!("no checked rule for prose leaf <{def}>"))),
     }
+}
+
+/// Whether `c` has the shape `pattern` (`d` an ASCII digit, any other character itself),
+/// optionally followed by `.` and ASCII digits (a fraction of seconds).
+fn iso_shape(c: &str, pattern: &str) -> bool {
+    let n = pattern.len();
+    if c.len() < n || !c.is_char_boundary(n) {
+        return false;
+    }
+    let (head, tail) = c.split_at(n);
+    let head_ok = head
+        .chars()
+        .zip(pattern.chars())
+        .all(|(x, p)| if p == 'd' { x.is_ascii_digit() } else { x == p });
+    let tail_ok = tail.is_empty()
+        || (pattern.contains(':')
+            && tail.len() > 1
+            && tail.starts_with('.')
+            && tail[1..].chars().all(|x| x.is_ascii_digit()));
+    head_ok && tail_ok
 }
 
 /// 21.4: simple Latin letters, digits and the GQL special characters.
@@ -744,8 +783,10 @@ fn syntax_rules<'t>(
                 if own(node, "fixed length").map(integer_value) == Some(0) {
                     out.push(violation(&path, "18.9 SR 10", "a fixed length of 0".into()));
                 }
+                // a value past 64 bits saturates and is not compared (the twelfth review): such
+                // a length is refused, H2 bounding what S writes far below it
                 if let (Some(min), Some(max)) = (min, max)
-                    && min > max
+                    && (min > max || min == u64::MAX || max == u64::MAX)
                 {
                     let rule = if name == "character string type" {
                         "18.9 SR 13"
@@ -785,7 +826,7 @@ fn syntax_rules<'t>(
                 }
                 if !approximate
                     && let (Some(p), Some(s)) = (precision, scale)
-                    && s > p
+                    && (s > p || s == u64::MAX || p == u64::MAX)
                 {
                     out.push(violation(
                         &path,
@@ -894,7 +935,7 @@ fn syntax_rules<'t>(
                     {
                         out.push(violation(
                             &path,
-                            "16.6 SR 8",
+                            "16.6 SR 8 nested",
                             "a subquery inside a selective path pattern (reading)".into(),
                         ));
                     }
@@ -910,8 +951,14 @@ fn syntax_rules<'t>(
                 // 16.4 SR 6 with "contains" as written: a path pattern nested anywhere below.
                 let mut all = Vec::new();
                 find(node, "path pattern", &mut all);
+                let mut keeps = Vec::new();
+                find(node, "keep clause", &mut keeps);
+                let own_keep = own(node, "keep clause");
                 let nested_searched = all.iter().any(|pp| {
                     own(pp, "path pattern prefix").is_some_and(|p| contains(p, "path search prefix"))
+                }) || keeps.iter().any(|k| {
+                    // a nested graph pattern's own KEEP with a search prefix (the twelfth review)
+                    !own_keep.is_some_and(|o| std::ptr::eq(o, *k)) && contains(k, "path search prefix")
                 });
                 if keep && nested_searched && !searched {
                     out.push(violation(
@@ -1062,6 +1109,25 @@ fn syntax_rules<'t>(
                     .collect();
                 let catalog = kinds.iter().filter(|k| **k == "linear catalog-modifying statement").count();
                 let data = kinds.iter().filter(|k| **k == "linear data-modifying statement").count();
+                // a subquery in the catalog procedure's definitions holds statements it simply
+                // contains too (no catalog specification intervenes; the twelfth review)
+                let definition_statements = name == "catalog-modifying procedure specification" && {
+                    // this procedure's own body's definitions, not a nested CALL's
+                    let mut bodies = Vec::new();
+                    find(node, "procedure body", &mut bodies);
+                    bodies
+                        .first()
+                        .and_then(|pb| own(pb, "binding variable definition block"))
+                        // an EXISTS holds a statement after 19.4 SR 2, 3's replacement
+                        .is_some_and(|b| contains(b, "statement") || contains(b, "exists predicate"))
+                };
+                if definition_statements {
+                    out.push(violation(
+                        &path,
+                        "9.1 SR 5 nested",
+                        "a subquery's statement in a catalog procedure's definitions (reading)".into(),
+                    ));
+                }
                 let (rule, bad) = match name.as_str() {
                     "catalog-modifying procedure specification" => ("9.1 SR 5", catalog != kinds.len()),
                     "data-modifying procedure specification" => ("9.1 SR 6", catalog > 0 || data == 0),
@@ -1418,13 +1484,7 @@ fn syntax_rules<'t>(
                 let mut types = Vec::new();
                 find_simply(node, "value type", "value type", &mut types);
                 // SR 4 a, b: a <not null> without an intervening value type, or NOTHING.
-                let nn = |vt: &Plain| {
-                    let mut nots = Vec::new();
-                    find_simply(vt, "not null", "value type", &mut nots);
-                    find_simply(vt, "empty type", "value type", &mut nots);
-                    !nots.is_empty()
-                };
-                let known: Vec<bool> = types.iter().map(|t| nn(t)).collect();
+                let known: Vec<bool> = types.iter().map(|t| known_not_null(t)).collect();
                 if known.iter().any(|b| *b) && known.iter().any(|b| !*b) {
                     out.push(violation(
                         &path,
@@ -1691,11 +1751,15 @@ fn literal_shaped(node: &Plain) -> bool {
                 .all(|i| own(i, "value expression").is_none_or(literal_shaped))
         }
         // A sign on a number: <factor> ::= [ <sign> ] <numeric primary>.
+        // The Format of <literal> signs only an <unsigned numeric literal> (the twelfth review:
+        // `[ - NULL ]` passed).
         "factor" => {
             let tokens_ok = kids.iter().all(|k| matches!(k, Plain::Def { .. }));
+            let signed = defs.iter().any(|d| def_name(d) == Some("sign"));
             tokens_ok
                 && defs.iter().all(|d| {
-                    def_name(d) == Some("sign") || literal_shaped(d)
+                    def_name(d) == Some("sign")
+                        || if signed { numeric_literal_shaped(d) } else { literal_shaped(d) }
                 })
         }
         "sign" => true,
@@ -1704,6 +1768,35 @@ fn literal_shaped(node: &Plain) -> bool {
             kids.len() == 1 && defs.len() == 1 && literal_shaped(defs[0])
         }
     }
+}
+
+/// 18.9 SR 4, 85, 86: a value type known not nullable: a <not null> or NOTHING without an
+/// intervening value type, or a closed union every component of which is (the twelfth review:
+/// a nested `ANY < INT NOT NULL >` component was read as nullable).
+fn known_not_null(vt: &Plain) -> bool {
+    let mut nots = Vec::new();
+    find_simply(vt, "not null", "value type", &mut nots);
+    find_simply(vt, "empty type", "value type", &mut nots);
+    if !nots.is_empty() {
+        return true;
+    }
+    let mut unions = Vec::new();
+    find_simply(vt, "component type list", "value type", &mut unions);
+    unions.first().is_some_and(|ctl| {
+        let mut comps = Vec::new();
+        find_simply(ctl, "value type", "value type", &mut comps);
+        !comps.is_empty() && comps.iter().all(|c| known_not_null(c))
+    })
+}
+
+/// One-child wrappers down to an <unsigned numeric literal>.
+fn numeric_literal_shaped(node: &Plain) -> bool {
+    if def_name(node) == Some("unsigned numeric literal") {
+        return true;
+    }
+    let Plain::Def { children, .. } = node else { return false };
+    let kids = flat(children);
+    kids.len() == 1 && matches!(kids[0], Plain::Def { .. }) && numeric_literal_shaped(kids[0])
 }
 
 /// The <statement>s a procedure specification simply contains: those of its body's
@@ -2371,8 +2464,14 @@ fn one_kind_per_name(tree: &Plain, out: &mut Vec<Violation>) {
         let mut names = Vec::new();
         find(tree, kind, &mut names);
         match kind {
-            "graph name" => names.extend(bare_graphs.iter().copied()),
-            "binding table name" => names.extend(bare_tables.iter().copied()),
+            "graph name" => {
+                names.extend(bare_graphs.iter().copied());
+                find(tree, "delimited graph name", &mut names);
+            }
+            "binding table name" => {
+                names.extend(bare_tables.iter().copied());
+                find(tree, "delimited binding table name", &mut names);
+            }
             _ => {}
         }
         // schemas and directories share a directory's names, apart from the objects a
@@ -2395,6 +2494,34 @@ fn one_kind_per_name(tree: &Plain, out: &mut Vec<Violation>) {
                 }
             }
         }
+    }
+}
+
+/// Reading: no delimited identifier as a binding variable, a field, property or parameter
+/// name, or an alias. The checkers compare such names in many places, and a delimited one
+/// (`"x"`) stands for the same name as a regular one; refusing it keeps every comparison on
+/// one spelling (the twelfth review found raw-text comparisons in scope, LET, YIELD, records
+/// and SET). Labels, graph and type names keep their delimited forms (compared by
+/// representative form).
+fn delimited_names(tree: &Plain, out: &mut Vec<Violation>) {
+    let mut names = Vec::new();
+    for want in [
+        "binding variable",
+        "binding variable reference",
+        "field name",
+        "property name",
+        "parameter name",
+        "return item alias",
+        "select item alias",
+    ] {
+        find(tree, want, &mut names);
+    }
+    if names.iter().any(|n| contains(n, "delimited identifier")) {
+        out.push(Violation {
+            path: String::new(),
+            rule: "21.3 SR 4 names",
+            detail: "a delimited identifier as a variable, field, property or parameter name or an alias (reading)".into(),
+        });
     }
 }
 
@@ -2462,6 +2589,9 @@ fn created_names(tree: &Plain, out: &mut Vec<Violation>) {
     // a bare name in a graph or table expression names a catalog object too (11.1 SR 2,
     // 11.2 SR 3; the eleventh review)
     find(tree, "object name or binding variable", &mut all);
+    // a delimited graph or table name too (the twelfth review)
+    find(tree, "delimited graph name", &mut all);
+    find(tree, "delimited binding table name", &mut all);
     for (stmt, made, rule) in [
         ("create schema statement", "schema name", "12.2 SR 5"),
         ("create graph statement", "graph name", "12.4 SR 6"),
@@ -2483,7 +2613,19 @@ fn created_names(tree: &Plain, out: &mut Vec<Violation>) {
             let Some(m) = mades.first() else { continue };
             // representative forms (21.3 SR 3, 4): `"a"` and `a` are one name
             let text = graph_type::ident(m);
-            if all.iter().any(|o| !std::ptr::eq(*o, *m) && graph_type::ident(o) == text) {
+            // another name: not the made one, nor a node inside it (a `<graph name>` holds its
+            // `<delimited graph name>`)
+            let inside = |o: &Plain| {
+                fn holds(n: &Plain, o: &Plain) -> bool {
+                    std::ptr::eq(n, o)
+                        || match n {
+                            Plain::Def { children, .. } => children.iter().any(|c| holds(c, o)),
+                            _ => false,
+                        }
+                }
+                holds(m, o)
+            };
+            if all.iter().any(|o| !inside(o) && graph_type::ident(o) == text) {
                 out.push(Violation {
                     path: String::new(),
                     rule,

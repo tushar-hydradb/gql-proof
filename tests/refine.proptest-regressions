@@ -9,3 +9,4 @@ cc 71f2e5388a2d317daa1552a6b588cfd4a3b80cbad74a3231f3243c75333e48ea # shrinks to
 cc bdc1cb1aea58a5bef1a2d5bfb39e3d9922a293639d2a4e968f0b46bb075f64ff # shrinks to seed = 5274582403509234173, max_depth = 32, different = true
 cc 294f9799b8a6159e1f276416e1467b3a123970097660a500a0853812a56ee4c8 # shrinks to seed = 5280181008974326117, max_depth = 42, different = true
 cc 3b9125e38e1af54ac10880c91134c74d7247ac6a28d1c4c2de21192a0ed8003f # shrinks to seed = 13273828839325793289, max_depth = 35, different = true
+cc 3aeff418c0f60d8543309fd4eaf58e8a42a4bfe0c5c9f66caf8a06cf47a2cf31 # shrinks to seed = 8473503511573260898, max_depth = 58, different = true

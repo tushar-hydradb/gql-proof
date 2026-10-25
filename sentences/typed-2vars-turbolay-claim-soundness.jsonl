@@ -2449,7 +2449,7 @@
 {"sentence":"ORDER BY NULL FINISH","target":"cdrc <common value expression> ::= <duration value expression> at <common value expression> in <value expression>"}
 {"sentence":"ORDER BY NULL FINISH","target":"cdrc <common value expression> ::= <path value expression> at <common value expression> in <value expression>"}
 {"sentence":"ORDER BY NULL FINISH","target":"cdrc <common value expression> ::= <reference value expression> at <common value expression> in <value expression>"}
-{"sentence":"FILTER [ NULL ] IS NULL FINISH","target":"cdrc <common value expression^lit-value> ::= <numeric value expression^lit-value> at <common value expression> in <value expression>"}
+{"sentence":"FILTER [ 8 ] IS NULL FINISH","target":"cdrc <common value expression^lit-value> ::= <numeric value expression^lit-value> at <common value expression> in <value expression>"}
 {"sentence":"FILTER [ NULL ] IS NULL FINISH","target":"cdrc <common value expression^lit-value> ::= <string value expression^lit-value> at <common value expression> in <value expression>"}
 {"sentence":"FILTER [ NULL ] IS NULL FINISH","target":"cdrc <common value expression^lit-value> ::= <datetime value expression^lit-value> at <common value expression> in <value expression>"}
 {"sentence":"FILTER [ NULL ] IS NULL FINISH","target":"cdrc <common value expression^lit-value> ::= <list value expression^lit-value> at <common value expression> in <value expression>"}
@@ -2536,7 +2536,6 @@
 {"sentence":"FILTER LET x = CURRENT_DATE IN EXISTS { <- } END IS NULL FINISH","target":"cdrc <let value expression> ::= LET <let variable definition list> IN <value expression@'EXISTS..'9+'EXISTS..'10> END at <let value expression> in <non-parenthesized value expression primary special case>"}
 {"sentence":"FILTER LET x = CURRENT_DATE IN NOT EXISTS { <- } END IS NULL FINISH","target":"cdrc <let value expression> ::= LET <let variable definition list> IN <value expression@'NOT EXISTS..'10> END at <let value expression> in <non-parenthesized value expression primary special case>"}
 {"sentence":"ORDER BY 8 FINISH","target":"cdrc <unsigned literal> ::= <unsigned numeric literal> at <unsigned literal> in <unsigned value specification>"}
-{"sentence":"FILTER [ 8 ] IS NULL FINISH","target":"cdrc <unsigned literal^lit-value> ::= <unsigned numeric literal> at <unsigned literal> in <unsigned value specification>"}
 {"sentence":"ORDER BY $b FINISH","target":"cdrc <general value specification> ::= <dynamic parameter specification> at <general value specification> in <unsigned value specification>"}
 {"sentence":"LIMIT 0xA FINISH","target":"cdrc <unsigned integer> ::= <unsigned hexadecimal integer> at <unsigned integer> in <non-negative integer specification>"}
 {"sentence":"LIMIT 0o2 FINISH","target":"cdrc <unsigned integer> ::= <unsigned octal integer> at <unsigned integer> in <non-negative integer specification>"}
@@ -2900,7 +2899,7 @@
 {"sentence":"RETURN COUNT ( * ) AS x NEXT ORDER BY NULL - x / x FINISH","target":"cdrc <term> ::= <term@is<binding variable reference>> <solidus> <factor@is<binding variable reference>> at <term> in <numeric value expression>"}
 {"sentence":"RETURN TRIM ( NULL , $b - $b * $b ) AS x","target":"cdrc <term^in-count> ::= <term^in-count> <asterisk^in-count> <factor^in-count> at <term> in <numeric value expression>"}
 {"sentence":"ORDER BY + NULL FINISH","target":"cdrc <factor> ::= <factor/opt1> <numeric primary> at <factor> in <term>"}
-{"sentence":"FILTER [ + NULL ] IS NULL FINISH","target":"cdrc <factor^lit-value> ::= <factor/opt1^lit-value> <numeric primary^lit-value> at <factor> in <term>"}
+{"sentence":"FILTER [ + 8 ] IS NULL FINISH","target":"cdrc <factor^lit-value> ::= <factor/opt1^lit-value+lit-signed> <numeric primary^lit-value+lit-signed> at <factor> in <term>"}
 {"sentence":"RETURN TRIM ( NULL , + 8 ) AS x","target":"cdrc <factor^in-count> ::= <factor/opt1^in-count> <numeric primary^in-count> at <factor> in <term>"}
 {"sentence":"ORDER BY NULL * NULL * NULL FINISH","target":"cdrc <term> ::= <term> <asterisk> <factor> at <term> in <term>"}
 {"sentence":"RETURN COUNT ( * ) AS x NEXT ORDER BY x * NULL * NULL FINISH","target":"cdrc <term> ::= <term@is<binding variable reference>> <asterisk> <factor> at <term> in <term>"}
@@ -2925,7 +2924,7 @@
 {"sentence":"ORDER BY NULL / + NULL FINISH","target":"cdrc <factor> ::= <factor/opt1> <numeric primary> at <factor> in <term>"}
 {"sentence":"RETURN COUNT ( * ) AS x NEXT ORDER BY NULL / + x FINISH","target":"cdrc <factor> ::= <factor/opt1> <numeric primary@is<binding variable reference>> at <factor> in <term>"}
 {"sentence":"ORDER BY - NULL FINISH","target":"cdrc <sign> ::= <minus sign> at <sign> in <factor>"}
-{"sentence":"FILTER [ - NULL ] IS NULL FINISH","target":"cdrc <sign^lit-value> ::= <minus sign^lit-value> at <sign> in <factor>"}
+{"sentence":"FILTER [ - 8 ] IS NULL FINISH","target":"cdrc <sign^lit-value+lit-signed> ::= <minus sign^lit-value+lit-signed> at <sign> in <factor>"}
 {"sentence":"RETURN TRIM ( NULL , - 8 ) AS x","target":"cdrc <sign^in-count> ::= <minus sign^in-count> at <sign> in <factor>"}
 {"sentence":"RETURN TRIM ( NULL , CHAR_LENGTH ( SESSION_USER ) ) AS x","target":"cdrc <numeric primary^in-count> ::= <numeric value function^in-count> at <numeric primary> in <factor>"}
 {"sentence":"ORDER BY ( NULL ) FINISH","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <numeric primary>"}
@@ -3291,11 +3290,7 @@
 {"sentence":"MATCH <-/ `x` + /- FINISH","target":"cdrc <delimited identifier^in-quant> ::= <accent quoted character sequence@quoted^in-quant> at <delimited identifier> in <identifier>"}
 {"sentence":"ORDER BY @'' FINISH","target":"<single quoted character sequence> ::= <single quoted character sequence/opt1> <unbroken single quoted character sequence>"}
 {"sentence":"ORDER BY @\"\" FINISH","target":"<double quoted character sequence> ::= <double quoted character sequence/opt1> <unbroken double quoted character sequence>"}
-{"sentence":"LIMIT $@\"x\" FINISH","target":"<double quoted character sequence@quoted> ::= <double quoted character sequence/opt1> <unbroken double quoted character sequence@quoted>"}
-{"sentence":"LIMIT $@`x` FINISH","target":"<accent quoted character sequence@quoted> ::= <accent quoted character sequence/opt1> <unbroken accent quoted character sequence@quoted>"}
 {"sentence":"ORDER BY '''' FINISH","target":"<single quoted character representation> ::= <double single quote>"}
-{"sentence":"LIMIT $\"\"\"\" FINISH","target":"<double quoted character representation@quoted> ::= <double double quote>"}
-{"sentence":"LIMIT $```` FINISH","target":"<accent quoted character representation@quoted> ::= <double grave accent>"}
 {"sentence":"ORDER BY 8E8M FINISH","target":"<exact numeric literal> ::= <unsigned decimal in scientific notation> <exact number suffix>"}
 {"sentence":"ORDER BY .8M FINISH","target":"<exact numeric literal> ::= <unsigned decimal in common notation@is<unsigned decimal in common notation>> <exact numeric literal/opt1>"}
 {"sentence":"ORDER BY 8M FINISH","target":"<exact numeric literal> ::= <unsigned decimal integer> <exact number suffix>"}
@@ -3327,8 +3322,6 @@
 {"sentence":"LIMIT 6 FINISH","target":"<octal digit> ::= \"6\""}
 {"sentence":"LIMIT 7 FINISH","target":"<octal digit> ::= \"7\""}
 {"sentence":"LIMIT 0x_A FINISH","target":"<underscore> ::= \"_\""}
-{"sentence":"LIMIT $\"xx\" FINISH","target":"<unbroken double quoted character sequence/rep2@quoted> ::= <double quoted character representation@quoted> <unbroken double quoted character sequence/rep2@quoted>"}
-{"sentence":"LIMIT $`xx` FINISH","target":"<unbroken accent quoted character sequence/rep2@quoted> ::= <accent quoted character representation@quoted> <unbroken accent quoted character sequence/rep2@quoted>"}
 {"sentence":"ORDER BY X'  ' FINISH","target":"<byte string literal/rep2> ::= <space> <byte string literal/rep2>"}
 {"sentence":"ORDER BY X'A A' FINISH","target":"<byte string literal/rep4> ::= <hex digit> <byte string literal/opt5> <hex digit> <byte string literal/opt7@empty>"}
 {"sentence":"ORDER BY X'AA ' FINISH","target":"<byte string literal/rep4> ::= <hex digit> <byte string literal/opt5@empty> <hex digit> <byte string literal/opt7>"}

@@ -729,7 +729,8 @@ fn dynamic_casts() {
         "20.8 SR 11 d",
     );
     // a closed union source: some component casts
-    ok("RETURN CAST(CAST(1 AS ANY<INT | STRING>) AS DATE) AS y");
+    // (a closed union target is refused by the 20.8 SR 9 reading, the twelfth review)
+    bad("RETURN CAST(CAST(1 AS ANY<INT | STRING>) AS DATE) AS y", "20.8 SR 9");
     bad(
         "RETURN CAST(CAST(1 AS ANY<INT | STRING>) AS BYTES) AS y",
         "20.8 SR 10",
@@ -737,7 +738,7 @@ fn dynamic_casts() {
     // 20.8 SR 9: a cast to a dynamic union type from a subtype of it
     ok("RETURN CAST(1 AS ANY) AS y, CAST(1 AS ANY VALUE) AS z");
     ok("MATCH (x) RETURN CAST(x AS ANY) AS y, CAST(x.a AS ANY PROPERTY VALUE) AS z");
-    ok("RETURN CAST(1 AS ANY<INT | STRING>) AS y, CAST('a' AS INT | STRING) AS z");
+    bad("RETURN CAST(1 AS ANY<INT | STRING>) AS y, CAST('a' AS INT | STRING) AS z", "20.8 SR 9");
     bad("RETURN CAST(TRUE AS ANY<INT | STRING>) AS y", "20.8 SR 9");
     bad(
         "MATCH (x) RETURN CAST(x AS ANY PROPERTY VALUE) AS y",

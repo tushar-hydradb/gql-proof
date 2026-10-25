@@ -374,6 +374,12 @@ impl<'t> Checker<'t> {
             // statement's do (found by the fifth review: they were skipped).
             "linear catalog-modifying statement" => {
                 self.expr(inner, &Env::new(scope.merged()), At::default());
+                // a named CALL's YIELD (16.14 SR 4, 6; the twelfth review)
+                let mut ycs = Vec::new();
+                find(inner, "yield clause", &mut ycs);
+                for yc in ycs {
+                    self.yield_clause(yc, None);
+                }
                 None
             }
             _ => None,
@@ -519,6 +525,18 @@ impl<'t> Checker<'t> {
                     "16.3 SR 9",
                     format!("subpath variable {n} is a column of the table"),
                 );
+            }
+        }
+        // 16.10 SR 3: a yielded element variable reference names a node or edge variable.
+        if let Some(yc) = yc {
+            let mut evrs = Vec::new();
+            find(yc, "element variable reference", &mut evrs);
+            for evr in evrs {
+                if let Some(v) = globals.get(&evr.text())
+                    && !matches!(v.kind, Kind::Node | Kind::Edge)
+                {
+                    self.report(evr, "16.10 SR 3", format!("{} is not an element variable", evr.text()));
+                }
             }
         }
         // 16.9 SR 2, 3: a yielded path variable is a path of unconditional singleton degree.
@@ -771,8 +789,10 @@ impl<'t> Checker<'t> {
             let labelled = own(filler, "label and property set specification").is_some();
             if let Some(var) = incoming.get(&n) {
                 // SR 8, 10 a: a bound insert element pattern
+                // a node variable only (reading: a value variable's type is not followed here,
+                // the twelfth review: `LET x = 1 INSERT ( x )` passed)
                 if kind == Kind::Edge
-                    || !matches!(var.kind, Kind::Node | Kind::Value)
+                    || var.kind != Kind::Node
                     || var.degree == Degree::Group
                 {
                     self.report(ep, "16.5 SR 10", format!("{n} is bound and not a node"));
@@ -1016,6 +1036,9 @@ impl<'t> Checker<'t> {
         let gbc = own(body, "group by clause");
         let mut cols = Fields::new();
         let mut aggregating = false;
+        // 14.10 SR 4 c reads "contains" (5.3.2.1): an aggregate anywhere in the items, a
+        // subquery's included (the twelfth review)
+        let mut contains_aggregate = false;
         let mut grouping: Vec<(&Plain, String)> = Vec::new();
         if own(body, "asterisk").is_some() {
             // SR 6
@@ -1056,6 +1079,7 @@ impl<'t> Checker<'t> {
                 }
                 let agg = directly(ave, "aggregate function");
                 aggregating |= agg;
+                contains_aggregate |= contains(ave, "aggregate function");
                 named.push((item, ave, n, agg));
             }
             if let Some(gbc) = gbc {
@@ -1135,7 +1159,7 @@ impl<'t> Checker<'t> {
                         );
                     }
                 }
-            } else if !distinct && !aggregating {
+            } else if !distinct && !aggregating && !contains_aggregate {
                 let mut all = incoming.clone();
                 all.extend(refs);
                 refs = all;
@@ -1274,6 +1298,23 @@ impl<'t> Checker<'t> {
         let wheres = std::mem::take(&mut pat.wheres);
         for w in &wheres {
             let mut env = base.clone();
+            // an incoming name (an enclosing pattern's variable included) is declared outside
+            // a selective path pattern (16.6 SR 8), and a path variable is none to reference in
+            // a parenthesized WHERE (16.7 SR 24); reading, the stricter side for a name that
+            // is no graph pattern variable (the twelfth review)
+            for (n, var) in env.iter_mut() {
+                if w.ctx.selective.is_some() {
+                    var.bad = Some((
+                        "16.6 SR 8",
+                        format!("a selective path pattern references {n}, declared outside it"),
+                    ));
+                } else if var.kind == Kind::Path && !matches!(w.local, Local::Graph) {
+                    var.bad = Some((
+                        "16.7 SR 24",
+                        format!("path variable {n} in a parenthesized path pattern WHERE clause"),
+                    ));
+                }
+            }
             for (n, var) in &globals {
                 env.insert(n.clone(), self.verdict(n, var, w, &pat, &exposed));
             }
@@ -1529,7 +1570,9 @@ impl<'t> Checker<'t> {
                     exposed.insert(n.clone(), (sort, Exp::Single));
                 }
                 if let Some(predicate) = filler.and_then(|f| own(f, "element pattern predicate")) {
-                    if own(predicate, "element pattern where clause").is_some() && var.is_none() {
+                    // "contains" read with 5.3.2.1, a nested pattern's WHERE included (the
+                    // twelfth review)
+                    if contains(predicate, "element pattern where clause") && var.is_none() {
                         self.report(
                             node,
                             "16.7 SR 21",
@@ -1789,6 +1832,17 @@ impl<'t> Checker<'t> {
                 }
                 kids(node).into_iter().for_each(|k| self.expr(k, env, at));
             }
+            // 16.10 SR 3 wherever one stands (a CASE operand, an argument): a node or edge
+            // variable (the twelfth review)
+            "element variable reference" => {
+                if let Some(n) = bare(node)
+                    && let Some(v) = lookup(env, false, &n)
+                    && !matches!(v.kind, Kind::Node | Kind::Edge)
+                {
+                    self.report(node, "16.10 SR 3", format!("{n} is a {:?} variable, not an element variable", v.kind));
+                }
+                kids(node).into_iter().for_each(|k| self.expr(k, env, at));
+            }
             "directed predicate"
             | "labeled predicate"
             | "source/destination predicate"
@@ -1808,7 +1862,10 @@ impl<'t> Checker<'t> {
                 let mut refs = Vec::new();
                 find(node, "element variable reference", &mut refs);
                 for r in refs {
-                    self.singleton(r, env, at, rule);
+                    // singleton inside an aggregate too: a group variable has group degree there
+                    // as everywhere (the twelfth review; reading against the aggregate's
+                    // element view)
+                    self.singleton(r, env, At { agg: false, ..at }, rule);
                     // 16.10 SR 3: an element variable reference names a node or edge variable.
                     // A value variable does not, whatever its type (null, dynamic): the 4.14.4
                     // cure replaces value expressions, and this is a bare reference (the eighth

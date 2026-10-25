@@ -444,3 +444,35 @@ no-subquery-in-a-pattern premise of three readings was false, and 16.6 SR 8
 now refuses any subquery in a selective path pattern; 18.9 SR 11 read
 literally bounds STRING too, so 10.3 SR 8 b i 1 is a permission in H4; 6 SR 4
 is IW014 (H2), not a reading; `gql-proof cover` is noted as no check
+
+## 2026-10-26: the twelfth review (a sweep of every relied-on row)
+
+six agents, one per group of clauses, against the text. one printed family:
+`[ - NULL ]` read as a list literal (21.2 SR 73: a literal signs only an
+unsigned numeric literal), in all three sets; closed in the checker and in
+refine::LiteralElements. the rest unprinted, closed:
+
+- names: delimited identifiers refused as variables, fields, properties,
+  parameters and aliases (one spelling for every comparison); delimited graph
+  and table names in the created-name and one-kind checks and the respelling
+- clause 18: a saturating length or precision is refused; a GROUP LIST of ANY;
+  a nested union's NOT NULL components in the syntax-side SR 88; 18.9 SR 28
+  joins the SR 11 permission
+- clause 21: exact ISO shapes for date and time strings, a duration of at
+  least one field, an interval of at most two leading digits, a URI scheme
+- clause 14, 19, 22: a combination checks its known inputs past an unknown
+  one; DURATION records get their unit from their fields; ELEMENT_ID in a set
+  operation; singleton degree inside aggregates for element predicates; 14.10
+  SR 4 reads an aggregate anywhere in the items
+- clause 16: a nested KEEP search prefix; a value variable as a bound INSERT
+  node; ABS keeps NULL; incoming names under a selective pattern or a
+  parenthesized WHERE; every element variable reference, YIELD items
+  included; YIELD in catalog statements; 16.7 SR 21 read deeply
+- clause 20: a nested TRIM's outer source, a record's own fields, a nested
+  table's rows, temporal functions' record arguments, immaterial and nested
+  NOT NULL SESSION SET VALUE types, closed union cast targets (subtyping by
+  kind only)
+- clauses 7 to 12: a second SET of a table parameter, subquery statements in
+  a catalog procedure's definitions (9.1 SR 5)
+- claim: H1 states what a named procedure without YIELD returns; H2' names the
+  rows resting on the cure in clause 20; H4 adds 18.9 SR 28

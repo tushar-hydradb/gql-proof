@@ -2486,7 +2486,7 @@
 {"sentence":"RETURN COUNT ( * ) AS x NEXT RETURN AVG ( CASE SESSION_USER WHEN IS NFD NORMALIZED THEN NULL ELSE x END ) AS y","target":"cdrc <normal form> ::= NFD at <normal form> in <normalized predicate part 2>"}
 {"sentence":"RETURN COUNT ( * ) AS x NEXT RETURN AVG ( CASE SESSION_USER WHEN IS NFKC NORMALIZED THEN NULL ELSE x END ) AS y","target":"cdrc <normal form> ::= NFKC at <normal form> in <normalized predicate part 2>"}
 {"sentence":"RETURN COUNT ( * ) AS x NEXT RETURN AVG ( CASE SESSION_USER WHEN IS NFKD NORMALIZED THEN NULL ELSE x END ) AS y","target":"cdrc <normal form> ::= NFKD at <normal form> in <normalized predicate part 2>"}
-{"sentence":"RETURN COUNT ( [ NULL ] IS NULL ) AS x","target":"cdrc <common value expression^lit-value> ::= <numeric value expression^lit-value> at <common value expression> in <value expression>"}
+{"sentence":"RETURN COUNT ( [ 8 ] IS NULL ) AS x","target":"cdrc <common value expression^lit-value> ::= <numeric value expression^lit-value> at <common value expression> in <value expression>"}
 {"sentence":"RETURN COUNT ( [ NULL ] IS NULL ) AS x","target":"cdrc <common value expression^lit-value> ::= <string value expression^lit-value> at <common value expression> in <value expression>"}
 {"sentence":"RETURN COUNT ( [ NULL ] IS NULL ) AS x","target":"cdrc <common value expression^lit-value> ::= <datetime value expression^lit-value> at <common value expression> in <value expression>"}
 {"sentence":"RETURN COUNT ( [ NULL ] IS NULL ) AS x","target":"cdrc <common value expression^lit-value> ::= <list value expression^lit-value> at <common value expression> in <value expression>"}
@@ -2531,7 +2531,6 @@
 {"sentence":"RETURN COUNT ( [ RECORD { } ] IS NULL ) AS x","target":"cdrc <record constructor^lit-value> ::= <record constructor/opt1^lit-scope> <fields specification^lit-scope> at <record constructor> in <non-parenthesized value expression primary special case>"}
 {"sentence":"RETURN COUNT ( * ) AS x NEXT RETURN AVG ( NULLIF ( x , NULL ) ) AS y","target":"cdrc <case expression> ::= <case abbreviation> at <case expression> in <non-parenthesized value expression primary special case>"}
 {"sentence":"RETURN AVG ( 8 ) AS x","target":"cdrc <unsigned literal> ::= <unsigned numeric literal> at <unsigned literal> in <unsigned value specification>"}
-{"sentence":"RETURN COUNT ( [ 8 ] IS NULL ) AS x","target":"cdrc <unsigned literal^lit-value> ::= <unsigned numeric literal> at <unsigned literal> in <unsigned value specification>"}
 {"sentence":"LIMIT 0xA FINISH","target":"cdrc <unsigned integer> ::= <unsigned hexadecimal integer> at <unsigned integer> in <non-negative integer specification>"}
 {"sentence":"LIMIT 0o2 FINISH","target":"cdrc <unsigned integer> ::= <unsigned octal integer> at <unsigned integer> in <non-negative integer specification>"}
 {"sentence":"LIMIT 0b0 FINISH","target":"cdrc <unsigned integer> ::= <unsigned binary integer> at <unsigned integer> in <non-negative integer specification>"}
@@ -2639,7 +2638,7 @@
 {"sentence":"RETURN AVG ( NULL - NULL / NULL ) AS x","target":"cdrc <term> ::= <term> <solidus> <factor> at <term> in <numeric value expression>"}
 {"sentence":"RETURN COUNT ( TRIM ( NULL , $b - $b * $b ) ) AS x","target":"cdrc <term^in-count> ::= <term^in-count> <asterisk^in-count> <factor^in-count> at <term> in <numeric value expression>"}
 {"sentence":"RETURN AVG ( CARDINALITY ( ( + NULL ) ) ) AS x","target":"cdrc <factor> ::= <factor/opt1> <numeric primary> at <factor> in <term>"}
-{"sentence":"RETURN COUNT ( [ + NULL ] IS NULL ) AS x","target":"cdrc <factor^lit-value> ::= <factor/opt1^lit-value> <numeric primary^lit-value> at <factor> in <term>"}
+{"sentence":"RETURN COUNT ( [ + 8 ] IS NULL ) AS x","target":"cdrc <factor^lit-value> ::= <factor/opt1^lit-value+lit-signed> <numeric primary^lit-value+lit-signed> at <factor> in <term>"}
 {"sentence":"RETURN COUNT ( TRIM ( NULL , + 8 ) ) AS x","target":"cdrc <factor^in-count> ::= <factor/opt1^in-count> <numeric primary^in-count> at <factor> in <term>"}
 {"sentence":"RETURN AVG ( NULL * NULL * NULL ) AS x","target":"cdrc <term> ::= <term> <asterisk> <factor> at <term> in <term>"}
 {"sentence":"RETURN AVG ( NULL / NULL * NULL ) AS x","target":"cdrc <term> ::= <term> <solidus> <factor> at <term> in <term>"}
@@ -2650,7 +2649,7 @@
 {"sentence":"RETURN AVG ( NULL / NULL / NULL ) AS x","target":"cdrc <term> ::= <term> <solidus> <factor> at <term> in <term>"}
 {"sentence":"RETURN AVG ( NULL / + NULL ) AS x","target":"cdrc <factor> ::= <factor/opt1> <numeric primary> at <factor> in <term>"}
 {"sentence":"RETURN AVG ( CARDINALITY ( ( - NULL ) ) ) AS x","target":"cdrc <sign> ::= <minus sign> at <sign> in <factor>"}
-{"sentence":"RETURN COUNT ( [ - NULL ] IS NULL ) AS x","target":"cdrc <sign^lit-value> ::= <minus sign^lit-value> at <sign> in <factor>"}
+{"sentence":"RETURN COUNT ( [ - 8 ] IS NULL ) AS x","target":"cdrc <sign^lit-value+lit-signed> ::= <minus sign^lit-value+lit-signed> at <sign> in <factor>"}
 {"sentence":"RETURN COUNT ( TRIM ( NULL , - 8 ) ) AS x","target":"cdrc <sign^in-count> ::= <minus sign^in-count> at <sign> in <factor>"}
 {"sentence":"RETURN COUNT ( TRIM ( NULL , CHAR_LENGTH ( SESSION_USER ) ) ) AS x","target":"cdrc <numeric primary^in-count> ::= <numeric value function^in-count> at <numeric primary> in <factor>"}
 {"sentence":"RETURN AVG ( CARDINALITY ( ( ( NULL ) ) ) ) AS x","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <numeric primary>"}
@@ -2897,7 +2896,6 @@
 {"sentence":"RETURN AVG ( 8E8F ) AS x","target":"<approximate numeric literal> ::= <unsigned decimal in scientific notation> <approximate numeric literal/opt1>"}
 {"sentence":"RETURN AVG ( .8F ) AS x","target":"<approximate numeric literal> ::= <unsigned decimal in common notation> <approximate number suffix>"}
 {"sentence":"RETURN AVG ( 8D ) AS x","target":"<approximate number suffix> ::= \"D\""}
-{"sentence":"SESSION RESET $\"x\"","target":"<separated identifier> ::= <delimited identifier>"}
 {"sentence":"RETURN COUNT ( X''--\n'' ) AS x","target":"<double minus sign> ::= \"--\""}
 {"sentence":"RETURN COUNT ( X''//\n'' ) AS x","target":"<double solidus> ::= \"//\""}
 {"sentence":"RETURN COUNT ( X''/*\n*/'' ) AS x","target":"<comment> ::= <bracketed comment>"}

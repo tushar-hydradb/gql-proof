@@ -42,7 +42,9 @@ property of every printed sentence, by the gate in step 1
   graph a at both, as the text applies syntax rules to the whole program
   first). a parameter has the type the request gives it; one used at two
   incompatible types (`$b * 2` used as a graph) holds only if that type is
-  dynamic and H2' cures it. the `environment` rows of the audit hold under H1
+  dynamic and H2' cures it. a named procedure called without YIELD returns no
+  column named like a field of its incoming record (15.1 SR 9 through the
+  procedure's signature, which only the catalog gives). the `environment` rows of the audit hold under H1
   and only under it
 - **H2, implementation-defined choices.** the implementation-defined rules
   S's validity depends on take the choice that does not raise a syntax error:
@@ -58,7 +60,9 @@ property of every printed sentence, by the gate in step 1
   resting on it: 20.1 SR 2-6, 11.1 SR 3, 20.20 SR 3, 20.21 SR 3, 20.23 SR 2, 4,
   16.5 SR 6 c and 13.3 SR 3 a iv, b iii 2 (a dynamic property value inserted or
   set), 10.3 SR 8, 7.1 SR 6, 10.1 SR 8 and 10.2 SR 8 (a dynamic initializer
-  assigned to a declared type), and the dynamic element of a path constructor
+  assigned to a declared type), 20.9 SR 8, 20.13 SR 2, 20.15 SR 1, 20.16 SR 1,
+  20.24 SR 3, 4 and 20.28 SR 1, 3 (a dynamic operand of an aggregate, a path,
+  list, string or duration operation), and the dynamic element of a path constructor
   (`PATH [ x . a ]`). a combination (22.19 SR 2: CASE, COALESCE, NULLIF, a list
   constructor) is not cured: the checker refuses an input it types dynamic
   (a sign, ABS, MOD, LEFT, RIGHT, TRIM, UPPER, LOWER, NORMALIZE, arithmetic
@@ -67,6 +71,11 @@ property of every printed sentence, by the gate in step 1
   environment's (H1), passes. the
   cure never makes an operator's value a graph or a table: an operator, a
   function or a literal at a graph or table expression is refused on its tree
+  the checker lets a dynamic operand meet every type
+  requirement it checks (a dynamic type has no class to fail), so every row
+  whose requirement a dynamic operand meets rests on this hypothesis, the
+  ones named above and any other such site (the twelfth review found 19.8 SR
+  3, 19.10 SR 2, 3, 20.11 SR 2 b and 14.2 SR 10 among them).
   the generator could avoid every dynamic operand at a large cost in coverage;
   this is the hypothesis that it need not. without the cure these sentences
   are invalid. the cure can turn an operand into a run-time exception when no
@@ -228,7 +237,10 @@ review moved nine rows from `reading` to `permission`)
 - IA014: a NULL whose context fixes no type does not raise a syntax error (21.2
   SR 67 b); S holds many (`NULL + NULL`)
 - ID022, the default collation: two names compare equal only when their
-  representative forms are equal strings (18.1 SR 10, 18.5 SR 1 and the graph
+  representative forms are equal strings; the checker refuses a delimited
+  identifier wherever it compares names by spelling (variables, fields,
+  properties, parameters, aliases), and compares graph, type, label and
+  catalog names by representative form (18.1 SR 10, 18.5 SR 1 and the graph
   type rules)
 - nothing about IW022 (nullability inference): a NOT NULL site takes no
   computed value (4.17.4.2, the checker's reading), so none is needed
@@ -288,7 +300,8 @@ each line names its audit rows (status `permission`)
   bounds STRING and VARCHAR too, and no declared string type would be known
   to take a longer value (10.3 SR 8). it is read as applying to the forms
   whose production holds a <fixed length>, CHAR and BINARY, which the checker
-  then refuses as declared types. row: 10.3 SR 8 b i 1
+  then refuses as declared types. rows: 10.3 SR 8 b i 1, 18.9 SR 28 (a byte
+  string's min and max length, read without the implicit fixed length)
 - **a supported string supertype exists.** CASE, COALESCE and list
   constructors over character or byte strings need a supported string type
   that is a supertype of every input; S's strings are short and every

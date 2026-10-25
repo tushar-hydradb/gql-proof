@@ -456,11 +456,8 @@ fn focused_statements() {
     // 14.2 SR 5
     bad("MATCH (a) FINISH UNION MATCH (a) FINISH", "14.2 SR 5");
     bad("{ FINISH } UNION RETURN 1 AS x", "14.2 SR 5");
-    // 16.14 SR 4: an unaliased yield item is a binding variable
-    bad(
-        "RETURN 1 AS \"x\" NEXT YIELD \"x\" RETURN 1 AS y",
-        "16.14 SR 4",
-    );
+    // 16.14 SR 4 (an unaliased yield item is a binding variable): a delimited alias is
+    // refused first now, by the "21.3 SR 4 names" reading (tests/probes_checker.rs)
 }
 
 #[test]

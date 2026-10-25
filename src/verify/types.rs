@@ -352,7 +352,13 @@ fn combine(types: &[Ty]) -> Result<Ty, Apart> {
         // SR 4 a
         return Ok(Ty::Null);
     };
+    // an unknown input (the environment's) still leaves the known ones to combine (the
+    // twelfth review: `COALESCE ( $b , 8 , TRUE )` skipped the rest)
     if material.contains(&&Ty::Any) {
+        let known: Vec<Ty> = material.iter().filter(|t| ***t != Ty::Any).map(|t| (*t).clone()).collect();
+        if known.len() > 1 {
+            combine(&known)?;
+        }
         return Ok(Ty::Any);
     }
     let apart = Err(Apart::Apart);
@@ -825,14 +831,16 @@ impl<'t> Checker<'t> {
                 if own(node, "list value type name")
                     .is_some_and(|n| kids(n).iter().any(|k| keyword(k, "GROUP"))) =>
             {
-                if let Some(vt) = own(node, "value type")
-                    && !element_reference(vt)
-                {
-                    self.report(
+                match own(node, "value type") {
+                    Some(vt) if !element_reference(vt) => self.report(
                         vt,
                         "18.9 SR 68",
                         format!("a group list of {}", value_type(vt).ty),
-                    );
+                    ),
+                    // no element type written is ANY (SR 73 a ii), no node or edge type
+                    // (reading; the twelfth review)
+                    None => self.report(node, "18.9 SR 68", "a group list of ANY".into()),
+                    _ => {}
                 }
             }
             // SR 88, nullability by SR 4, 85-86
@@ -921,6 +929,14 @@ impl<'t> Checker<'t> {
                 let t = self.ty(ve, &env);
                 if let Some(vt) = own(otvi, "value type") {
                     let declared = value_type(vt);
+                    // as for a VALUE definition (the twelfth review): no immaterial declared
+                    // type (21.2 SR 67, 20.8 SR 4), no NOT NULL inside a list or record
+                    if matches!(declared.ty, Ty::Null | Ty::Nothing) || contains(vt, "immaterial value type") {
+                        self.report(node, "20.8 SR 4", format!("a declared {} type: its initializer is cast to an immaterial type", declared.ty));
+                    }
+                    if nested_not_null(vt) {
+                        self.report(node, "7.1 SR 6", "(reading) a NOT NULL inside a list or record type is not followed".into());
+                    }
                     if bounded_string(vt) {
                         self.report(
                             node,
@@ -1009,6 +1025,8 @@ impl<'t> Checker<'t> {
                 Some((dt, dt_closed)) => {
                     let fine = match dt_closed {
                         Some(written) => closed.as_deref() == Some(written.as_str()),
+                        // a table's columns are not followed here (the twelfth review)
+                        None if matches!(pvt.ty, Ty::Table) || matches!(dt.ty, Ty::Table) => false,
                         None => {
                             assignable(&pvt.ty, dt)
                                 && (dt.nullable || !pvt.nullable || matches!(pvt.ty, Ty::Nothing))
@@ -1544,7 +1562,27 @@ impl<'t> Checker<'t> {
                 // SR 10 a
                 match t {
                     Ty::List { elem, .. } => *elem,
-                    Ty::Table => Ty::Record(None),
+                    // a row of a nested query's table is a record of its columns (the twelfth
+                    // review: `FOR r IN TABLE { RETURN 1 AS a } RETURN r . b` passed); a catalog
+                    // table's columns are the environment's (H1)
+                    Ty::Table => match first(source, "procedure body") {
+                        Some(pb) => {
+                            let mut quiet = Checker {
+                                parent: HashMap::new(),
+                                out: Vec::new(),
+                                params: self.params.clone(),
+                            };
+                            let cols = quiet.body(
+                                pb,
+                                Scope {
+                                    record: env.vars.clone(),
+                                    table: Fields::new(),
+                                },
+                            );
+                            Ty::Record(cols)
+                        }
+                        None => Ty::Record(None),
+                    },
                     _ => Ty::Any,
                 }
             }
@@ -2162,6 +2200,18 @@ impl<'t> Checker<'t> {
                         _ => break,
                     }
                 }
+                // nor as a column a set operation combines with another (14.2 SR 10; the
+                // twelfth review)
+                if item {
+                    let mut up: &Plain = node;
+                    while let Some(&p) = self.parent.get(&(up as *const Plain)) {
+                        if name(p) == Some("composite query expression") && own(p, "query conjunction").is_some() {
+                            item = false;
+                            break;
+                        }
+                        up = p;
+                    }
+                }
                 if !item {
                     self.report(node, "20.10 SR 3", "(reading, ID076) ELEMENT_ID is taken only as a RETURN or SELECT item".into());
                 }
@@ -2264,8 +2314,9 @@ impl<'t> Checker<'t> {
             // 20.22 SR 4 and 20.29: ABS of a number or of a duration
             "absolute value expression" | "duration absolute value function" => {
                 let t = self.argument(node, env, &[Class::Numeric, Class::Duration], "20.21 SR 3");
-                // the operand's type, a dynamic one kept (the eighth review)
-                if t.wild() && !matches!(t, Ty::Dyn(_)) { Ty::Any } else { t }
+                // the operand's type, a dynamic or null one kept (the eighth and twelfth
+                // reviews: `ABS ( NULL )` reached a property site unknown)
+                kept(t)
             }
             // 20.22 SR 5
             "modulus expression" => {
@@ -2374,6 +2425,7 @@ impl<'t> Checker<'t> {
             | "datetime function"
             | "localdatetime function" => {
                 self.walk(node, env);
+                self.record_arguments(node, env);
                 match n {
                     "date function" => Ty::Date,
                     "time function" => Ty::ZonedTime,
@@ -2384,6 +2436,7 @@ impl<'t> Checker<'t> {
             }
             "duration function" => {
                 self.walk(node, env);
+                self.record_arguments(node, env);
                 Ty::Duration(duration_unit(node))
             }
             "datetime subtraction" => self.duration_between(node, env),
@@ -2703,6 +2756,16 @@ impl<'t> Checker<'t> {
         }
     }
 
+    /// A temporal function's record argument, which is no value expression `walk` would
+    /// reach: typed, so 20.19 SR 2 sees its fields (the twelfth review).
+    fn record_arguments(&mut self, node: &'t Plain, env: &Env) {
+        let mut rcs = Vec::new();
+        find(node, "record constructor", &mut rcs);
+        for rc in rcs {
+            self.ty(rc, env);
+        }
+    }
+
     /// 22.18 applied for `rule`: the combination, or a report and the unknown type.
     fn combined(&mut self, at: &Plain, types: &[Ty], rule: &'static str) -> Ty {
         match combine(types) {
@@ -2959,6 +3022,12 @@ impl<'t> Checker<'t> {
             }
             return td.ty;
         }
+        // SR 9 (reading): subtyping is followed by kind only, not by length, precision or
+        // width, so no closed union target is known to take a non-null value, at any depth
+        // (the twelfth review: `CAST ( v AS INT8 | BOOL )` with v INT64 passed)
+        if contains(target, "closed dynamic union type") {
+            self.report(target, "20.8 SR 9", "(reading) a closed union target: its subtyping is not followed".into());
+        }
         // SR 5's "CO specifies NULL", read with 5.3.2.1 (specify is contain): an operand
         // holding a NULL anywhere needs a nullable target (the eleventh review)
         if !td.nullable
@@ -3130,14 +3199,26 @@ impl<'t> Checker<'t> {
 
     /// 20.24 SR 3-4, 20.25 SR 2: the source of a trim, and a trim string comparable to it.
     fn trim(&mut self, f: &'t Plain, env: &Env) -> Ty {
+        // this function's own operands, not a nested trim's (the twelfth review: the outer
+        // source of `TRIM ( LTRIM ( .. ) FROM X'00' )` was never typed)
+        fn own_operands<'p>(n: &'p Plain, wants: &[&str], out: &mut Vec<&'p Plain>, top: bool) {
+            if let Some(nm) = name(n) {
+                if wants.contains(&nm) {
+                    out.push(n);
+                    return;
+                }
+                if !top && nm.ends_with("trim function") {
+                    return;
+                }
+            }
+            for k in kids(n) {
+                own_operands(k, wants, out, false);
+            }
+        }
         let mut sources = Vec::new();
-        find_any(f, &["trim source", "byte string trim source"], &mut sources);
+        own_operands(f, &["trim source", "byte string trim source"], &mut sources, true);
         let mut chars = Vec::new();
-        find_any(
-            f,
-            &["trim character string", "trim byte string"],
-            &mut chars,
-        );
+        own_operands(f, &["trim character string", "trim byte string"], &mut chars, true);
         // H3: the tree's own form; a byte string trim function takes bytes, the others
         // character strings.
         let classes: &[Class] = if name(f) == Some("byte string trim function") {
@@ -3261,6 +3342,20 @@ fn duration_unit(node: &Plain) -> Option<Unit> {
             Unit::DayTime
         });
     }
+    // DURATION ( { .. } ): the record's fields name the unit group (the twelfth review)
+    if let Some(rc) = first(node, "record constructor") {
+        let mut names = Vec::new();
+        find(rc, "field name", &mut names);
+        let names: Vec<String> = names.iter().map(|n| n.text().to_ascii_lowercase()).collect();
+        let ym = |n: &str| matches!(n, "years" | "months");
+        if !names.is_empty() && names.iter().all(|n| ym(n)) {
+            return Some(Unit::YearMonth);
+        }
+        if !names.is_empty() && names.iter().all(|n| !ym(n)) {
+            return Some(Unit::DayTime);
+        }
+        return None;
+    }
     let s = first(node, "duration string")?.text().to_uppercase();
     Some(if s.contains('T') || s.contains('D') {
         Unit::DayTime
@@ -3326,8 +3421,10 @@ fn value_type(node: &Plain) -> Declared {
         Some("record type") => match own(node, "field types specification") {
             Some(spec) => {
                 let mut fields = Fields::new();
-                let mut items = Vec::new();
-                find(spec, "field type", &mut items);
+                // this record's own fields, not a nested record's (the twelfth review)
+                let items = own(spec, "field type list")
+                    .map(|l| owns(l, "field type"))
+                    .unwrap_or_default();
                 for f in items {
                     let fname = own(f, "field name").map(ident).unwrap_or_default();
                     let t = own(f, "value type").map_or(Ty::Any, |v| value_type(v).ty);

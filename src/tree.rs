@@ -415,13 +415,15 @@ pub fn raised_bound(text: &str, lower: u64, rng: &mut ChaCha8Rng) -> String {
 /// a created name is re-spelled `ab`, `abb`, ... to the first spelling no other object name of
 /// the tree has, under its own definition.
 fn fresh_created_names(cfg: &Cfg, root: &mut Node, spell: &impl Fn(NtId, &str) -> Option<Node>) -> bool {
-    const NAMES: [&str; 6] = [
+    const NAMES: [&str; 8] = [
         "graph name",
         "graph type name",
         "binding table name",
         "procedure name",
         "schema name",
         "object name or binding variable",
+        "delimited graph name",
+        "delimited binding table name",
     ];
     // The representative form (21.3 SR 3, 4): a delimited name without its quotes, doubled
     // quotes undoubled, so `"a"` and `a` are one name.

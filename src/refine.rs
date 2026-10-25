@@ -1628,6 +1628,9 @@ pub struct LiteralElements;
 
 const LIT_SCOPE: Fact = 79;
 const LIT_VALUE: Fact = 80;
+/// Below a sign in a literal: the Format of <literal> signs only an <unsigned numeric literal>
+/// (the twelfth review: `[ - NULL ]` was printed as a list literal).
+const LIT_SIGNED: Fact = 85;
 const LITERAL_LEAVES: [&str; 3] = ["unsigned literal", "unsigned numeric literal", "general literal"];
 const LITERAL_NESTS: [&str; 2] = ["list value constructor", "record constructor"];
 
@@ -1641,7 +1644,7 @@ impl Rule for LiteralElements {
     }
 
     fn labels(&self) -> Vec<(Fact, String)> {
-        labels(&[(LIT_SCOPE, "lit-scope"), (LIT_VALUE, "lit-value")])
+        labels(&[(LIT_SCOPE, "lit-scope"), (LIT_VALUE, "lit-value"), (LIT_SIGNED, "lit-signed")])
     }
 
     fn bookkeeping(&self) -> bool {
@@ -1666,6 +1669,10 @@ impl Rule for LiteralElements {
         }
         if inh.has(LIT_VALUE) && !LITERAL_LEAVES.contains(&owner) {
             out.set(LIT_VALUE, true);
+            // a factor of two children carries its optional sign (a variant production)
+            if inh.has(LIT_SIGNED) || (owner == "factor" && node.items.len() > 1) {
+                out.set(LIT_SIGNED, true);
+            }
         }
     }
 
@@ -1674,6 +1681,13 @@ impl Rule for LiteralElements {
             return false;
         }
         let owner = node.def.split('/').next().unwrap_or(node.def);
+        if inh.has(LIT_SIGNED)
+            && (LITERAL_NESTS.contains(&owner)
+                || owner == "general literal"
+                || (owner == "unsigned literal" && node.items.contains(&Item::Def("general literal"))))
+        {
+            return true;
+        }
         if LITERAL_LEAVES.contains(&owner) || LITERAL_NESTS.contains(&owner) {
             return false;
         }

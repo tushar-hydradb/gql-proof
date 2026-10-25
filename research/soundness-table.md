@@ -6,7 +6,7 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 
 | kind | generated | reading | permission | checked | grammar | hypothesis | open |
 |---|---|---|---|---|---|---|---|
-| constraint | 116 | 49 | 7 | 31 | 10 | 1 | 0 |
+| constraint | 114 | 49 | 8 | 32 | 10 | 1 | 0 |
 | type | 42 | 26 | 9 | 16 | 0 | 2 | 0 |
 | environment | 0 | 0 | 0 | 0 | 0 | 74 | 0 |
 
@@ -21,7 +21,7 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 | 7.1 SR 6 d i | environment | hypothesis | when the parameter is already defined in the session, the new value type is assignable to the parameter's value type |  |
 | 7.1 SR 6 d ii 1 B | type | checked | when an earlier session set command in the program set the same (undefined) parameter name, the new value type is assignable to that command's declared type | src/verify/types.rs "7.1 SR 6" (reading: every later SET of a name matches the first type) |
 | 8.2 SR 2 | constraint | generated | the characteristics hold exactly one transaction access mode | src/verify.rs:syntax_rules "transaction characteristics" arm, reports "8.2 SR 2" |
-| 9.1 SR 5 | constraint | generated | every statement simply contained in a catalog-modifying procedure specification is a linear catalog-modifying statement | src/verify.rs:syntax_rules "9.1 SR 5" |
+| 9.1 SR 5 | constraint | generated | every statement simply contained in a catalog-modifying procedure specification is a linear catalog-modifying statement | src/verify.rs:syntax_rules "9.1 SR 5"; src/verify.rs:syntax_rules, a subquery statement in |
 | 9.1 SR 6 sentence 1 | constraint | generated | every statement simply contained in a data-modifying procedure specification is a linear data-modifying statement or a composite query statement | src/verify.rs:syntax_rules "9.1 SR 6" |
 | 9.1 SR 6 sentence 2 | constraint | generated | at least one statement simply contained in a data-modifying procedure specification is a linear data-modifying statement | src/verify.rs:syntax_rules "linear data-modifying statement" arm with modifies(), reports  |
 | 9.1 SR 7 | constraint | generated | every statement simply contained in a query specification is a composite query statement | src/verify.rs:syntax_rules "9.1 SR 7" |
@@ -241,7 +241,7 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 | 18.9 SR 10 | constraint | generated | a fixed length is at least 1 | src/verify.rs:syntax_rules: "18.9 SR 10" (a fixed length of 0) |
 | 18.9 SR 13 | constraint | generated | in a character string type the min length, given or implicit, is at most the max length | src/verify.rs:syntax_rules: "18.9 SR 13" (the min length is above the max length) |
 | 18.9 SR 21 | constraint | generated | in a byte string type the min length, given or implicit, is at most the max length | src/verify.rs:syntax_rules: "18.9 SR 21" (the min length is above the max length) |
-| 18.9 SR 28 | constraint | generated | a byte string type's minimum length is at most its maximum length | src/verify.rs:syntax_rules: "18.9 SR 21" |
+| 18.9 SR 28 | constraint | permission | a byte string type's minimum length is at most its maximum length | src/verify.rs:syntax_rules: "18.9 SR 21" |
 | 18.9 SR 29 | constraint | generated | a precision is at least 1 | src/verify.rs:syntax_rules: "18.9 SR 29" (a precision of 0) |
 | 18.9 SR 37 | constraint | grammar | a scale is at least 0 | src/verify.rs:Verifier::check_def "ISO BNF" (every node matches its ISO definition) |
 | 18.9 SR 38 | constraint | generated | an exact numeric type's scale is at most its precision | src/verify.rs:syntax_rules: "18.9 SR 38" (the scale is above the precision) |
@@ -351,7 +351,7 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 | 21.3 SR 3 | constraint | grammar | A non-delimited identifier is not empty. | src/verify.rs:Verifier::check_def "ISO BNF" (every node matches its ISO definition) |
 | 21.3 SR 4 | constraint | generated | A delimited identifier is not empty. | src/verify.rs:syntax_rules "21.3 SR 4" |
 | 21.3 SR 5 b | constraint | checked | An identifier's representative form has at most 16383 characters. | src/verify.rs:syntax_rules "21.3 SR 5" |
-| 21.3 SR 5 c | constraint | generated | An identifier's representative form holds no character of category Cc, Cf, Cn, Cs, Zl or Zp. | src/verify.rs:leaf_rule "21.3 SR 1", "21.3 SR 2" (XID excludes them), "21.2 SR 31-33, 41"  |
+| 21.3 SR 5 c | constraint | checked | An identifier's representative form holds no character of category Cc, Cf, Cn, Cs, Zl or Zp. | src/verify.rs:syntax_rules "21.3 SR 5" (Cf, Zl, Zp; in verify::GATE_ONLY) |
 | 21.3 SR 5 d | constraint | checked | An identifier's representative form holds no space separator other than the space itself. | src/verify.rs:syntax_rules "21.3 SR 5" |
 | 21.3 SR 6 | constraint | generated | Whitespace is a run of White_Space characters. | src/verify.rs:leaf_rule "21.3 SR 6" |
 | 21.3 SR 8 | constraint | generated | A bidirectional control character is one of nine named Cf characters. | src/verify.rs:leaf_rule "21.3 SR 8" |
