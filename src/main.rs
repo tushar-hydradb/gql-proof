@@ -1482,6 +1482,19 @@ fn names_in(p: &gql_proof::verify::Plain, out: &mut BTreeSet<String>) {
     }
 }
 
+/// The scope rule at a slot cap, for the oracle's typed parse.
+struct Scope4;
+impl Scope4 {
+    fn new(slots: usize) -> gql_proof::context::scope::Scope {
+        gql_proof::context::scope::Scope {
+            caps: gql_proof::context::scope::Caps {
+                slots,
+                references: slots,
+            },
+        }
+    }
+}
+
 fn oracle(args: OracleArgs) -> Result<()> {
     let bnf = read_grammar(&None)?;
     let cfg = Cfg::from_bnf(&bnf);
@@ -1490,8 +1503,9 @@ fn oracle(args: OracleArgs) -> Result<()> {
         .stack_size(1 << 30)
         .build()?;
     let mut out = io::stdout().lock();
-    let (mut witness, mut status, mut unsat, mut unparsed) = (0usize, 0usize, 0usize, 0usize);
+    let (mut bag, mut exceptions, mut witness, mut status, mut unsat, mut unparsed) = (0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
     let mut reasons: BTreeMap<String, usize> = BTreeMap::new();
+    let mut stops: BTreeMap<String, usize> = BTreeMap::new();
     let mut unloadable: BTreeMap<String, usize> = BTreeMap::new();
     for path in &args.files {
         let sentences = read_records(path)?;
@@ -1512,13 +1526,23 @@ fn oracle(args: OracleArgs) -> Result<()> {
                         let verifier = Verifier::new(Grammar::new(&bnf));
                         let parser = gql_proof::parse::Parser::new(&cfg, &tokens, &args.start)
                             .expect("the iso grammar builds");
-                        (parser, verifier)
+                        // The typed rules pick the derivation the generator made: a sentence
+                        // like `1 + 2 * 3` also parses as duration arithmetic, which types
+                        // refuse.
+                        let scope = Scope4::new(2);
+                        let types = gql_proof::context::types::Types::with_typed(&cfg, 2);
+                        let typed = gql_proof::context::pair::Typed::new(scope, types);
+                        (parser, verifier, typed)
                     },
-                    |(parser, verifier), (s, vars, params)| {
-                        let accept = |n: &gql_proof::tree::Node| {
+                    |(parser, verifier, typed), (s, vars, params)| {
+                        let syntax = |n: &gql_proof::tree::Node| {
                             verifier.verify(&n.export(&cfg), &n.render(&cfg)).is_empty()
                         };
-                        let record = parser.parse(s, accept).ok().map(|p| {
+                        let well_typed = |n: &gql_proof::tree::Node| {
+                            syntax(n) && gql_proof::context::accepts(typed, &n.export(&cfg)).is_ok()
+                        };
+                        let parsed = parser.parse(s, well_typed).or_else(|_| parser.parse(s, syntax));
+                        let record = parsed.ok().map(|p| {
                             gql_proof::oracle::oracle(s, &p.tree.export(&cfg), *vars, *params, id086)
                         });
                         (s.to_string(), record)
@@ -1536,9 +1560,15 @@ fn oracle(args: OracleArgs) -> Result<()> {
                 continue;
             };
             match (record.expect.tier, record.expect.rows) {
+                (gql_proof::oracle::Tier::Bag, _) if record.expect.outcome == "exception" => exceptions += 1,
+                (gql_proof::oracle::Tier::Bag, _) => bag += 1,
                 (_, Some(0)) => unsat += 1,
                 (gql_proof::oracle::Tier::Witness, _) => witness += 1,
                 (gql_proof::oracle::Tier::Status, _) => status += 1,
+            }
+            if let Some(stop) = &record.expect.evaluator {
+                let key = stop.split(':').next().unwrap_or(stop).to_string();
+                *stops.entry(key).or_default() += 1;
             }
             for why in &record.why {
                 // The reason without its sentence specific tail, to count families.
@@ -1554,9 +1584,15 @@ fn oracle(args: OracleArgs) -> Result<()> {
         }
     }
     eprintln!(
-        "witness {witness}, status only {status}, unsatisfiable on every graph {unsat}, no parse {unparsed}"
+        "bag {bag} (of which exceptions {exceptions}), witness {witness}, status only {status}, unsatisfiable on every graph {unsat}, no parse {unparsed}"
     );
-    eprintln!("out of the core by reason:");
+    eprintln!("the evaluator stopped at:");
+    let mut stops: Vec<(String, usize)> = stops.into_iter().collect();
+    stops.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    for (why, n) in stops.iter().take(40) {
+        eprintln!("  {n:6}  {why}");
+    }
+    eprintln!("out of the witness core by reason:");
     let mut reasons: Vec<(String, usize)> = reasons.into_iter().collect();
     reasons.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
     for (why, n) in reasons {

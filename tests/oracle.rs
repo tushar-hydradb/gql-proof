@@ -2,7 +2,7 @@
 //! verdicts the construction gives (`research/oracle-witness-2026-10-23.md`).
 
 use gql_proof::cfg::Cfg;
-use gql_proof::oracle::{Bound, Oracle, Tier, oracle};
+use gql_proof::oracle::{Oracle, Tier, oracle};
 use gql_proof::parse::Parser;
 use gql_proof::tokens::Grammar;
 use gql_proof::verify::Verifier;
@@ -12,22 +12,48 @@ use std::sync::LazyLock;
 static ISO_BNF: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static ISO: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO_BNF));
 
+/// The record of a sentence, parsed as the oracle command parses it: the derivation the
+/// typed rules accept when there is one.
 fn record(text: &str, mode: MatchModeDefault) -> Oracle {
     let tokens = Grammar::new(&ISO_BNF);
     let verifier = Verifier::new(Grammar::new(&ISO_BNF));
     let parser = Parser::new(&ISO, &tokens, "GQL-program").unwrap();
+    let scope = gql_proof::context::scope::Scope {
+        caps: gql_proof::context::scope::Caps { slots: 4, references: 4 },
+    };
+    let types = gql_proof::context::types::Types::with_typed(&ISO, 4);
+    let typed = gql_proof::context::pair::Typed::new(scope, types);
+    let syntax = |n: &gql_proof::tree::Node| verifier.verify(&n.export(&ISO), &n.render(&ISO)).is_empty();
     let parsed = parser
-        .parse(text, |n| {
-            verifier.verify(&n.export(&ISO), &n.render(&ISO)).is_empty()
-        })
+        .parse(text, |n| syntax(n) && gql_proof::context::accepts(&typed, &n.export(&ISO)).is_ok())
+        .or_else(|_| parser.parse(text, syntax))
         .unwrap_or_else(|e| panic!("{text}: {e}"));
     oracle(text, &parsed.tree.export(&ISO), None, None, mode)
 }
 
+/// A record whose expectation is backed by a theorem: the bag (theorem 2) or the witness
+/// (theorem 1), never the status alone.
 fn witness(text: &str) -> Oracle {
     let r = record(text, MatchModeDefault::DifferentEdges);
-    assert_eq!(r.expect.tier, Tier::Witness, "{text}: {:?}", r.why);
+    assert_ne!(r.expect.tier, Tier::Status, "{text}: {:?} {:?}", r.why, r.expect.evaluator);
     r
+}
+
+/// The one row the record claims, as json: the bag's only row, or the witness row.
+fn row(r: &Oracle) -> serde_json::Value {
+    if let Some(bag) = &r.expect.bag {
+        assert_eq!(bag.len(), 1, "{}: {bag:?}", r.sentence);
+        return serde_json::to_value(&bag[0]).unwrap();
+    }
+    serde_json::to_value(r.expect.row.as_ref().expect("a row")).unwrap()
+}
+
+fn node(id: usize) -> serde_json::Value {
+    serde_json::json!({ "kind": "Node", "value": id })
+}
+
+fn edge(id: usize) -> serde_json::Value {
+    serde_json::json!({ "kind": "Edge", "value": id })
 }
 
 #[test]
@@ -42,9 +68,9 @@ fn a_pattern_with_labels_properties_and_a_where_clause() {
     let e = &r.graph.edges[0];
     assert!(e.directed && e.labels.contains("T"));
     assert_eq!((e.source, e.target), (0, 1));
-    let row = r.expect.row.unwrap();
-    assert_eq!(row["x"], Bound::Node(0));
-    assert_eq!(row["y"], Bound::Edge(2));
+    let row = row(&r);
+    assert_eq!(row["x"], node(0));
+    assert_eq!(row["y"], edge(2));
     assert_eq!(r.setup.gql.unwrap()[0], "INSERT ( n0 :a { _id : 0 , b : 1 , c : 2 } ) , ( n1 :L1 { _id : 1 } ) , ( n0 ) -[ :T { _id : 2 } ]-> ( n1 )");
 }
 
@@ -53,7 +79,7 @@ fn juxtaposed_node_patterns_are_one_node() {
     // 22.2 GR 16 b: two node bindings with no edge between them bind the same node.
     let r = witness("MATCH ( x ) ( y ) RETURN x , y");
     assert_eq!(r.graph.nodes.len(), 1);
-    let row = r.expect.row.unwrap();
+    let row = row(&r);
     assert_eq!(row["x"], row["y"]);
 }
 
@@ -92,6 +118,7 @@ fn edge_directions_follow_the_kind() {
     let r = witness("MATCH ( x ) <-[ y ]- ( z ) RETURN x , y , z");
     let e = &r.graph.edges[0];
     assert_eq!((e.source, e.target), (1, 0));
+    assert_eq!(r.expect.rows, Some(1));
     let r = witness("MATCH ( x ) ~[ y ]~ ( z ) RETURN y");
     assert!(!r.graph.edges[0].directed);
     assert!(r.setup.cypher.is_none() && r.setup.unloadable.contains_key("cypher"));
@@ -104,7 +131,7 @@ fn a_direction_predicate_that_contradicts_the_pattern_never_matches() {
     let r = witness("MATCH ( x ) <-[ y ]- RETURN x , y NEXT FILTER x IS SOURCE OF y FINISH");
     assert_eq!(r.expect.rows, Some(0));
     let r = witness("MATCH ( x ) <-[ y ]- RETURN x , y NEXT FILTER x IS DESTINATION OF y FINISH");
-    assert_eq!(r.expect.rows, None);
+    assert_eq!(r.expect.rows, Some(1));
 }
 
 #[test]
@@ -112,9 +139,9 @@ fn quantifiers_unroll_to_the_lower_bound() {
     let r = witness("MATCH ( ( x ) -[ y ]-> ( ) ) { 2 } RETURN x , y");
     assert_eq!(r.graph.nodes.len(), 3);
     assert_eq!(r.graph.edges.len(), 2);
-    let row = r.expect.row.unwrap();
-    assert_eq!(row["x"], Bound::List(vec![Bound::Node(0), Bound::Node(1)]));
-    assert_eq!(row["y"], Bound::List(vec![Bound::Edge(3), Bound::Edge(4)]));
+    let row = row(&r);
+    assert_eq!(row["x"], serde_json::json!({ "kind": "List", "value": [node(0), node(1)] }));
+    assert_eq!(row["y"], serde_json::json!({ "kind": "List", "value": [edge(3), edge(4)] }));
     // `*` and `?` iterate zero times and the nodes around them merge.
     let r = witness("MATCH ( x ) ( -> ) * ( y ) RETURN x , y");
     assert_eq!(r.graph.nodes.len(), 1);
@@ -126,9 +153,10 @@ fn quantifiers_unroll_to_the_lower_bound() {
 #[test]
 fn a_union_takes_its_first_operand_and_nulls_the_rest() {
     let r = witness("MATCH ( x ) -[ y ]-> ( ) | ( x ) <-[ z ]- ( ) RETURN x , y , z");
-    let row = r.expect.row.unwrap();
-    assert_eq!(row["y"], Bound::Edge(2));
-    assert_eq!(row["z"], Bound::Null);
+    // The evaluator finds both operands' matches on the witness graph: the first operand's
+    // edge, and the second operand's reading of the same edge where `<-` reverses it.
+    let bag = r.expect.bag.as_ref().expect("a bag");
+    assert!(bag.iter().any(|row| serde_json::to_value(&row["y"]).unwrap() == edge(2) && serde_json::to_value(&row["z"]).unwrap() == serde_json::json!({ "kind": "Null" })), "{bag:?}");
 }
 
 #[test]
@@ -151,7 +179,7 @@ fn simplified_path_patterns_are_edge_patterns() {
 #[test]
 fn paths_and_subpaths_are_the_compressed_binding() {
     let r = witness("MATCH p = ( x ) -> ( ) -> ( ) RETURN p");
-    assert_eq!(r.expect.row.unwrap()["p"], Bound::Path(vec![0, 3, 1, 4, 2]));
+    assert_eq!(row(&r)["p"], serde_json::json!({ "kind": "Path", "value": [0, 3, 1, 4, 2] }));
 }
 
 #[test]
@@ -165,21 +193,57 @@ fn an_edge_variable_declared_twice_depends_on_the_match_mode() {
 #[test]
 fn chains_keep_the_record_and_paging_leaves_the_core() {
     let r = witness("MATCH ( x ) RETURN x NEXT RETURN x AS y LIMIT 8");
-    assert_eq!(r.expect.row.unwrap()["y"], Bound::Node(0));
+    assert_eq!(row(&r)["y"], node(0));
+    // The evaluator knows OFFSET drops the one row.
     let r = record("MATCH ( x ) RETURN x NEXT RETURN x OFFSET 8", MatchModeDefault::DifferentEdges);
-    assert_eq!(r.expect.tier, Tier::Status);
+    assert_eq!(r.expect.tier, Tier::Bag);
+    assert_eq!(r.expect.rows, Some(0));
     let r = record("MATCH ( x ) RETURN x NEXT FILTER x : ! % FINISH", MatchModeDefault::DifferentEdges);
     assert_eq!(r.expect.rows, Some(0));
 }
 
 #[test]
-fn what_is_out_of_the_core_still_gets_a_graph() {
+fn the_evaluator_reaches_past_the_witness_core() {
+    // A selective prefix: the one match is the shortest.
     let r = record("MATCH ALL SHORTEST ( x ) -> ( y ) RETURN x", MatchModeDefault::DifferentEdges);
-    assert_eq!(r.expect.tier, Tier::Status);
+    assert_eq!(r.expect.tier, Tier::Bag, "{:?}", r.expect.evaluator);
+    assert_eq!(r.expect.rows, Some(1));
     assert_eq!(r.graph.edges.len(), 1);
+    // No graph at all: expressions on the unit table.
     let r = record("RETURN TRUE AS x NEXT FILTER x OR TRUE FINISH", MatchModeDefault::DifferentEdges);
-    assert_eq!(r.expect.tier, Tier::Status);
+    assert_eq!(r.expect.tier, Tier::Bag, "{:?}", r.expect.evaluator);
+    assert!(!r.expect.result);
     assert!(r.graph.nodes.is_empty());
+    let r = record("RETURN 1 + 2 * 3 AS x , 'a' || 'b' AS y , NULL = NULL AS z", MatchModeDefault::DifferentEdges);
+    assert_eq!(r.expect.tier, Tier::Bag, "{:?}", r.expect.evaluator);
+    let row = row(&r);
+    assert_eq!(row["x"], serde_json::json!({ "kind": "Int", "value": 7 }));
+    assert_eq!(row["y"], serde_json::json!({ "kind": "Str", "value": "ab" }));
+    assert_eq!(row["z"], serde_json::json!({ "kind": "Null" }));
+    // An exception the rules raise is the expected outcome.
+    let r = record("RETURN 1 / 0 AS x", MatchModeDefault::DifferentEdges);
+    assert_eq!(r.expect.outcome, "exception");
+    assert_eq!(r.expect.status.as_deref(), Some("22012"));
+    // What the implementation decides stays out: which rows LIMIT keeps without an order.
+    let r = record("MATCH ( x ) , ( y ) RETURN x LIMIT 1", MatchModeDefault::DifferentEdges);
+    assert_ne!(r.expect.tier, Tier::Bag);
+}
+
+#[test]
+fn three_variables_bind_and_join_alike() {
+    // The construction and the evaluator are not bound to two variables: three nodes in a
+    // path, joined across two path patterns, with a shared variable.
+    let r = witness("MATCH ( x ) -[ y ]-> ( z ) , ( z ) -[ w ]-> ( x ) RETURN x , y , z , w");
+    assert_eq!(r.graph.nodes.len(), 2);
+    assert_eq!(r.graph.edges.len(), 2);
+    // The two-cycle matches twice: once from each node.
+    let bag = r.expect.bag.as_ref().expect("a bag");
+    assert_eq!(bag.len(), 2);
+    let first = serde_json::to_value(&bag[0]).unwrap();
+    let both = [node(0), node(1)];
+    assert!(both.contains(&first["x"]) && both.contains(&first["z"]) && first["x"] != first["z"]);
+    let r2 = witness("MATCH ( x : a ) -[ y ]-> ( z : b ) -[ w ]-> ( v : c ) WHERE x . k = 1 AND v . k = 2 RETURN x , z , v NEXT FILTER x : a AND v : c RETURN z");
+    assert_eq!(row(&r2)["z"], node(1));
 }
 
 #[test]
@@ -194,7 +258,7 @@ fn parameters_get_a_value_of_an_admitted_class() {
     let params = serde_json::json!([{ "name": "$b", "classes": ["exact"] }]);
     let r = oracle(text, &parsed.tree.export(&ISO), None, Some(&params), MatchModeDefault::DifferentEdges);
     assert_eq!(r.parameters["b"], gql_proof::oracle::Value::Int(1));
-    assert_eq!(r.expect.tier, Tier::Witness, "{:?}", r.why);
+    assert_ne!(r.expect.tier, Tier::Status, "{:?} {:?}", r.why, r.expect.evaluator);
     let r = oracle(text, &parsed.tree.export(&ISO), None, None, MatchModeDefault::DifferentEdges);
     assert_eq!(r.expect.tier, Tier::Status);
     let params = serde_json::json!([{ "name": "$b", "classes": ["list"] }]);
@@ -213,7 +277,7 @@ fn the_generation_record_is_checked_against_the_witness() {
         .unwrap();
     let agree = serde_json::json!([{ "name": "x", "decl": ["node"], "out": ["node"] }]);
     let r = oracle(text, &parsed.tree.export(&ISO), Some(&agree), None, MatchModeDefault::DifferentEdges);
-    assert_eq!(r.expect.tier, Tier::Witness);
+    assert_ne!(r.expect.tier, Tier::Status);
     let disagree = serde_json::json!([{ "name": "x", "decl": ["edge"] }]);
     let r = oracle(text, &parsed.tree.export(&ISO), Some(&disagree), None, MatchModeDefault::DifferentEdges);
     assert!(r.why.iter().any(|w| w.contains("generation record")), "{:?}", r.why);

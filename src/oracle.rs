@@ -14,6 +14,8 @@
 //! (implicit node patterns, abbreviated edges as full ones, an element where clause as a
 //! parenthesized one) are applied while walking, not by rewriting the tree.
 
+pub mod eval;
+
 use crate::verify::Plain;
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -83,6 +85,8 @@ pub use crate::MatchModeDefault;
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Tier {
+    /// Theorem 2: the evaluator computed the whole result (`bag`, or the exception).
+    Bag,
     /// Theorem 1: the witness record is in the result, or the pattern never matches.
     Witness,
     /// Out of the core: the query completes with status 00000, no claim on rows.
@@ -93,8 +97,18 @@ pub enum Tier {
 #[derive(Serialize, Clone, Debug)]
 pub struct Expect {
     pub tier: Tier,
-    /// `ok` (status 00000), or an exception class later.
+    /// `ok` (a status of class 00), or `exception`.
     pub outcome: &'static str,
+    /// The exception class when the outcome is one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    /// The whole result, in the bag tier: every row, ordered when `ordered`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bag: Option<Vec<eval::Row>>,
+    pub ordered: bool,
+    /// Why the evaluator stopped, when the record is not of the bag tier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evaluator: Option<String>,
     /// The witness record after the last MATCH: variable to what it holds.
     pub binding: BTreeMap<String, Bound>,
     /// `Some(0)` when the pattern is unsatisfiable on every graph, `Some(n)` when the bag
@@ -136,6 +150,9 @@ pub struct Observe {
     pub rows: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub row: Option<BTreeMap<String, Bound>>,
+    /// In the bag tier: the whole result of the observation query.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bag: Option<Vec<eval::Row>>,
 }
 
 /// The setup statements per engine; a missing entry is unloadable there, with the reason.
@@ -154,7 +171,7 @@ pub struct Setup {
 // label expressions and their models (22.5)
 
 #[derive(Clone, Debug, PartialEq)]
-enum LabelExpr {
+pub(crate) enum LabelExpr {
     Name(String),
     Wildcard,
     Not(Box<LabelExpr>),
@@ -164,7 +181,7 @@ enum LabelExpr {
 
 impl LabelExpr {
     /// 22.5 SR 2: whether `set` satisfies the expression.
-    fn holds(&self, set: &BTreeSet<String>) -> bool {
+    pub(crate) fn holds(&self, set: &BTreeSet<String>) -> bool {
         match self {
             LabelExpr::Name(n) => set.contains(n),
             LabelExpr::Wildcard => !set.is_empty(),
@@ -193,7 +210,7 @@ impl LabelExpr {
 /// subsets of the names mentioned plus one fresh name (so `!a` is met by the fresh one), by
 /// size; every label set is non-empty (22.5 NOTE 399), so the fresh name stands in when
 /// nothing is required.
-fn label_model(exprs: &[LabelExpr], fresh: &str) -> Option<BTreeSet<String>> {
+pub(crate) fn label_model(exprs: &[LabelExpr], fresh: &str) -> Option<BTreeSet<String>> {
     let mut names = BTreeSet::new();
     for e in exprs {
         e.names(&mut names);
@@ -217,7 +234,7 @@ fn label_model(exprs: &[LabelExpr], fresh: &str) -> Option<BTreeSet<String>> {
 }
 
 /// A label expression from its tree (16.8).
-fn label_expr(p: &Plain) -> Option<LabelExpr> {
+pub(crate) fn label_expr(p: &Plain) -> Option<LabelExpr> {
     let kids = logical(p);
     match def_name(p)? {
         "label expression" | "label term" | "label factor" | "label primary" => {
@@ -242,7 +259,7 @@ fn label_expr(p: &Plain) -> Option<LabelExpr> {
 // ---------------------------------------------------------------------------------------------
 // tree helpers
 
-fn def_name(p: &Plain) -> Option<&str> {
+pub(crate) fn def_name(p: &Plain) -> Option<&str> {
     match p {
         Plain::Def { name, .. } => Some(name),
         _ => None,
@@ -251,7 +268,7 @@ fn def_name(p: &Plain) -> Option<&str> {
 
 /// The children of `p` with the synthetic grouping nodes of desugaring looked through: what
 /// the standard's production lists.
-fn logical(p: &Plain) -> Vec<&Plain> {
+pub(crate) fn logical(p: &Plain) -> Vec<&Plain> {
     let mut out = Vec::new();
     fn go<'a>(p: &'a Plain, out: &mut Vec<&'a Plain>) {
         if let Plain::Def { children, .. } = p {
@@ -270,19 +287,19 @@ fn logical(p: &Plain) -> Vec<&Plain> {
 }
 
 /// The first logical child that is a definition named `name`.
-fn child<'a>(p: &'a Plain, name: &str) -> Option<&'a Plain> {
+pub(crate) fn child<'a>(p: &'a Plain, name: &str) -> Option<&'a Plain> {
     logical(p).into_iter().find(|c| def_name(c) == Some(name))
 }
 
 /// Whether a keyword `kw` is a logical child.
-fn has_kw(p: &Plain, kw: &str) -> bool {
+pub(crate) fn has_kw(p: &Plain, kw: &str) -> bool {
     logical(p)
         .into_iter()
         .any(|c| matches!(c, Plain::Kw(k) if k == kw))
 }
 
 /// Every descendant definition named `name`, outermost first, not descending into one found.
-fn find_all<'a>(p: &'a Plain, name: &str, out: &mut Vec<&'a Plain>) {
+pub(crate) fn find_all<'a>(p: &'a Plain, name: &str, out: &mut Vec<&'a Plain>) {
     if def_name(p) == Some(name) {
         out.push(p);
         return;
@@ -294,7 +311,7 @@ fn find_all<'a>(p: &'a Plain, name: &str, out: &mut Vec<&'a Plain>) {
 
 /// The one descendant named `name` whose text is all of `p`'s text: `p` is exactly that
 /// construct, reached through single-child productions.
-fn exactly<'a>(p: &'a Plain, name: &str) -> Option<&'a Plain> {
+pub(crate) fn exactly<'a>(p: &'a Plain, name: &str) -> Option<&'a Plain> {
     let text = p.text();
     let mut found = Vec::new();
     find_all(p, name, &mut found);
@@ -303,7 +320,7 @@ fn exactly<'a>(p: &'a Plain, name: &str) -> Option<&'a Plain> {
 
 /// The spelling of an identifier: a delimited one without its quotes and with a doubled
 /// delimiter inside read as one (21.3: ```` is the name made of one backtick), else as is.
-fn identifier(p: &Plain) -> String {
+pub(crate) fn identifier(p: &Plain) -> String {
     let t = p.text();
     for q in ['`', '"'] {
         if t.len() >= 2 && t.starts_with(q) && t.ends_with(q) {
@@ -314,7 +331,7 @@ fn identifier(p: &Plain) -> String {
 }
 
 /// The variable an `<element variable declaration>` declares, and whether it is TEMP.
-fn declared(p: &Plain) -> Option<(String, bool)> {
+pub(crate) fn declared(p: &Plain) -> Option<(String, bool)> {
     let d = child(p, "element variable declaration")?;
     let temp = has_kw(d, "TEMP");
     let v = child(d, "element variable")?;
@@ -322,7 +339,7 @@ fn declared(p: &Plain) -> Option<(String, bool)> {
 }
 
 /// An `<unsigned integer>` in any radix, underscores dropped.
-fn unsigned(text: &str) -> Option<u64> {
+pub(crate) fn unsigned(text: &str) -> Option<u64> {
     let t: String = text.chars().filter(|c| *c != '_').collect();
     let lower = t.to_ascii_lowercase();
     if let Some(h) = lower.strip_prefix("0x") {
@@ -338,7 +355,7 @@ fn unsigned(text: &str) -> Option<u64> {
 
 /// A literal of the test classes from a `<value expression>` that is exactly one, else the
 /// reason it is not.
-fn literal(p: &Plain) -> Result<Value, String> {
+pub(crate) fn literal(p: &Plain) -> Result<Value, String> {
     if exactly(p, "null literal").is_some() {
         return Ok(Value::Null);
     }
@@ -452,7 +469,7 @@ enum Slot {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Mode {
+pub(crate) enum Mode {
     Walk,
     Trail,
     Simple,
@@ -1461,7 +1478,8 @@ impl Builder {
                     unsat.get_or_insert_with(|| {
                         "a node's label expressions have no model (22.5)".to_string()
                     });
-                    BTreeSet::new()
+                    // Every label set is non-empty (22.5 NOTE 399): the graph stays legal.
+                    BTreeSet::from([fresh.clone()])
                 }
             };
             let mut properties: BTreeMap<String, Value> = self.nodes[i]
@@ -1487,7 +1505,7 @@ impl Builder {
                     unsat.get_or_insert_with(|| {
                         "an edge's label expressions have no model (22.5)".to_string()
                     });
-                    BTreeSet::new()
+                    BTreeSet::from([fresh.clone()])
                 }
             };
             let mut properties: BTreeMap<String, Value> = e
@@ -1547,7 +1565,7 @@ fn first_element(binding: &[Bind]) -> Option<Bind> {
         .cloned()
 }
 
-fn path_mode(p: &Plain) -> Mode {
+pub(crate) fn path_mode(p: &Plain) -> Mode {
     match p.text().to_ascii_uppercase().as_str() {
         "TRAIL" => Mode::Trail,
         "SIMPLE" => Mode::Simple,
@@ -1557,7 +1575,7 @@ fn path_mode(p: &Plain) -> Mode {
 }
 
 /// The lower bound of a quantifier: `*` 0, `+` 1, `{n}` n, `{m,n}` m, `{,n}` 0.
-fn quantifier_lower(q: &Plain) -> Option<u64> {
+pub(crate) fn quantifier_lower(q: &Plain) -> Option<u64> {
     for c in logical(q) {
         match def_name(c) {
             Some("asterisk") => return Some(0),
@@ -1582,7 +1600,7 @@ fn quantifier_lower(q: &Plain) -> Option<u64> {
 }
 
 /// 16.12 Table 3: the default edge kind of a simplified path pattern's delimiters.
-fn simplified_kind(p: &Plain) -> EdgeKind {
+pub(crate) fn simplified_kind(p: &Plain) -> EdgeKind {
     for c in logical(p) {
         return match def_name(c) {
             Some("simplified defaulting left") => EdgeKind::Left,
@@ -1601,7 +1619,7 @@ fn simplified_kind(p: &Plain) -> EdgeKind {
 /// A simplified conjunction, negation, primary or union read as the label expression it
 /// becomes (16.12 NOTE 255, 257): `None` where it holds something a label expression cannot
 /// (a concatenation, a quantifier, an override).
-fn simplified_label(p: &Plain) -> Option<LabelExpr> {
+pub(crate) fn simplified_label(p: &Plain) -> Option<LabelExpr> {
     let kids = logical(p);
     match def_name(p)? {
         "simplified contents" | "simplified term" | "simplified factor low"
@@ -1633,7 +1651,7 @@ fn simplified_label(p: &Plain) -> Option<LabelExpr> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum EdgeKind {
+pub(crate) enum EdgeKind {
     Left,
     Undirected,
     Right,
@@ -1645,7 +1663,7 @@ enum EdgeKind {
 
 /// The kind of an edge pattern (16.7 SR 14 e maps abbreviated ones to full ones) and its
 /// full form's node, if any, whose filler applies.
-fn edge_kind(ep: &Plain) -> (EdgeKind, Option<&Plain>) {
+pub(crate) fn edge_kind(ep: &Plain) -> (EdgeKind, Option<&Plain>) {
     if let Some(full) = child(ep, "full edge pattern") {
         for c in logical(full) {
             let kind = match def_name(c) {
@@ -1770,17 +1788,55 @@ pub fn oracle(
         }
         _ => None,
     };
-    let expect = Expect {
+    let mut expect = Expect {
         tier,
         outcome: "ok",
+        status: None,
+        bag: None,
+        ordered: false,
+        evaluator: None,
         binding,
         rows,
         row: if tier == Tier::Witness && rows.is_none() { row } else { None },
         result,
     };
+    // Theorem 2: the evaluator over the witness graph gives the whole result where it
+    // reaches; the witness tier stands where it stops.
+    let mut observed_bag: Option<Vec<eval::Row>> = None;
+    match eval::evaluate(tree, &graph, &parameters, mode_default) {
+        Ok(eval::Outcome::Table(table)) => {
+            expect.tier = Tier::Bag;
+            expect.rows = Some(table.rows.len());
+            expect.ordered = table.ordered;
+            expect.bag = Some(table.rows);
+            expect.row = None;
+            expect.result = true;
+        }
+        Ok(eval::Outcome::NoResult) => {
+            expect.tier = Tier::Bag;
+            expect.result = false;
+            expect.row = None;
+            if let Ok(eval::Outcome::Table(table)) = eval::evaluate_observing(tree, &graph, &parameters, mode_default) {
+                expect.rows = Some(table.rows.len());
+                observed_bag = Some(table.rows);
+            }
+        }
+        Ok(eval::Outcome::Exception(status)) => {
+            expect.tier = Tier::Bag;
+            expect.outcome = "exception";
+            expect.status = Some(status);
+            expect.result = false;
+            expect.row = None;
+            expect.rows = None;
+        }
+        Err(reason) => {
+            expect.evaluator = Some(reason);
+        }
+    }
+    let tier = expect.tier;
     let setup = emit(&graph);
     let observe = match (&shape, tier, sentence.strip_suffix(" FINISH")) {
-        (Shape::Finish, Tier::Witness, Some(head)) if had_match => {
+        (Shape::Finish, Tier::Witness | Tier::Bag, Some(head)) if had_match || tier == Tier::Bag => {
             let names: Vec<String> = expect.binding.keys().cloned().collect();
             let (query, row) = if names.is_empty() {
                 (
@@ -1797,10 +1853,20 @@ pub fn oracle(
                         .collect(),
                 )
             };
+            let bag = observed_bag.map(|rows| {
+                if names.is_empty() {
+                    rows.into_iter()
+                        .map(|_| BTreeMap::from([("n".to_string(), eval::Val::Int(1))]))
+                        .collect()
+                } else {
+                    rows
+                }
+            });
             Some(Observe {
                 query,
-                rows: rows.filter(|r| *r == 0),
-                row: if rows.is_none() { Some(row) } else { None },
+                rows: if tier == Tier::Bag { bag.as_ref().map(Vec::len) } else { rows.filter(|r| *r == 0) },
+                row: if tier == Tier::Witness && rows.is_none() { Some(row) } else { None },
+                bag,
             })
         }
         _ => None,
@@ -1876,7 +1942,7 @@ fn parameter_values(
 
 /// The key a parameter is passed under: the name without `$`, a delimited name unquoted,
 /// a separated one (`@x`) without its `@`.
-fn parameter_key(name: &str) -> String {
+pub(crate) fn parameter_key(name: &str) -> String {
     let t = name.strip_prefix('@').unwrap_or(name);
     identifier(&Plain::Term(t.to_string()))
 }
@@ -2078,7 +2144,7 @@ fn gql_value(v: &Value) -> String {
     }
 }
 
-fn gql_name(n: &str) -> String {
+pub(crate) fn gql_name(n: &str) -> String {
     if !n.is_empty()
         && n.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
         && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')

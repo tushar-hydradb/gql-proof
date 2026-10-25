@@ -61,20 +61,23 @@ fn storage(setup: &Value) -> MemoryStorage {
     MemoryStorage::with_graph(vertices, relationships)
 }
 
-/// A result value as json the oracle's bindings compare with: elements by id.
+/// A result value in the oracle's own shape (`{kind, value}`, elements by id), so a row
+/// compares with the record's `bag`, `row` and `binding` directly.
 fn to_json(v: &QueryValue) -> Value {
     match v {
-        QueryValue::Null => Value::Null,
-        QueryValue::VertexId(id) => json!({ "node": id }),
-        QueryValue::RelationshipId(id) => json!({ "edge": id }),
-        QueryValue::Count(n) => json!(n),
+        QueryValue::Null => json!({ "kind": "Null" }),
+        QueryValue::VertexId(id) => json!({ "kind": "Node", "value": id }),
+        QueryValue::RelationshipId(id) => json!({ "kind": "Edge", "value": id }),
+        QueryValue::Count(n) => json!({ "kind": "Int", "value": n }),
         QueryValue::Scalar(s) => match s {
-            ScalarValue::Null => Value::Null,
-            ScalarValue::Boolean(b) => json!(b),
-            ScalarValue::Integer(i) => json!(i),
-            other => json!(format!("{other:?}")),
+            ScalarValue::Null => json!({ "kind": "Null" }),
+            ScalarValue::Boolean(b) => json!({ "kind": "Bool", "value": b }),
+            ScalarValue::Integer(i) => json!({ "kind": "Int", "value": i }),
+            ScalarValue::Float(f) => json!({ "kind": "Float", "value": f.parse::<f64>().unwrap_or(f64::NAN) }),
+            ScalarValue::String(s) => json!({ "kind": "Str", "value": s }),
+            other => json!({ "kind": "Other", "value": format!("{other:?}") }),
         },
-        QueryValue::List(items) => Value::Array(items.iter().map(to_json).collect()),
+        QueryValue::List(items) => json!({ "kind": "List", "value": items.iter().map(to_json).collect::<Vec<_>>() }),
         QueryValue::Path(p) => {
             let mut ids = Vec::new();
             for (i, n) in p.nodes.iter().enumerate() {
@@ -83,30 +86,86 @@ fn to_json(v: &QueryValue) -> Value {
                     ids.push(json!(r.id));
                 }
             }
-            json!({ "path": ids })
+            json!({ "kind": "Path", "value": ids })
         }
-        other => json!(format!("{other:?}")),
+        QueryValue::Record(fields) => {
+            let m: serde_json::Map<String, Value> = fields.iter().map(|(k, v)| (k.to_string(), to_json(v))).collect();
+            json!({ "kind": "Record", "value": m })
+        }
+        other => json!({ "kind": "Other", "value": format!("{other:?}") }),
     }
 }
 
-/// Whether a returned value is the expected binding (`{kind, value}` of the oracle).
+/// Whether a returned value is the expected one: same kind and value, floats within a
+/// relative tolerance, lists and records element by element.
 fn matches(expected: &Value, got: &Value) -> bool {
-    let value = &expected["value"];
-    match expected["kind"].as_str() {
-        Some("Null") => got.is_null(),
-        Some("Int") => got == value,
-        Some("Node") => got.get("node") == Some(value),
-        Some("Edge") => got.get("edge") == Some(value),
-        Some("Path") => got.get("path") == Some(value),
-        Some("List") => match (value.as_array(), got.as_array()) {
+    let (ek, gk) = (expected["kind"].as_str(), got["kind"].as_str());
+    if ek != gk {
+        // An exact literal 1 against an engine's float 1.0 is a finding, not a match.
+        return false;
+    }
+    let (ev, gv) = (&expected["value"], &got["value"]);
+    match ek {
+        Some("Null") => true,
+        Some("Float") => match (ev.as_f64(), gv.as_f64()) {
+            (Some(a), Some(b)) => (a - b).abs() <= 1e-9 * a.abs().max(b.abs()).max(1.0),
+            _ => false,
+        },
+        Some("List") => match (ev.as_array(), gv.as_array()) {
             (Some(e), Some(g)) => e.len() == g.len() && e.iter().zip(g).all(|(e, g)| matches(e, g)),
             _ => false,
         },
-        _ => false,
+        Some("Record") => match (ev.as_object(), gv.as_object()) {
+            (Some(e), Some(g)) => e.len() == g.len() && e.iter().all(|(k, v)| g.get(k).is_some_and(|w| matches(v, w))),
+            _ => false,
+        },
+        _ => ev == gv,
     }
 }
 
+/// Whether two rows (column name to value) match column by column.
+fn row_matches(expected: &serde_json::Map<String, Value>, columns: &[String], got: &[Value]) -> bool {
+    if expected.len() != columns.len() {
+        return false;
+    }
+    expected.iter().all(|(col, v)| {
+        columns.iter().position(|c| c == col).is_some_and(|i| matches(v, &got[i]))
+    })
+}
+
+/// Bag equality: every expected row matched by a distinct returned row, in order when the
+/// expectation is ordered.
+fn bag_matches(expected: &[Value], ordered: bool, columns: &[String], rows: &[Vec<Value>]) -> Result<(), String> {
+    if expected.len() != rows.len() {
+        return Err(format!("expected {} rows, got {}", expected.len(), rows.len()));
+    }
+    if ordered {
+        for (i, (e, g)) in expected.iter().zip(rows).enumerate() {
+            let Some(e) = e.as_object() else { return Err("a malformed expected row".to_string()) };
+            if !row_matches(e, columns, g) {
+                return Err(format!("row {i} differs: expected {e:?}, got {g:?}"));
+            }
+        }
+        return Ok(());
+    }
+    let mut used = vec![false; rows.len()];
+    for e in expected {
+        let Some(e) = e.as_object() else { return Err("a malformed expected row".to_string()) };
+        match rows.iter().enumerate().position(|(i, g)| !used[i] && row_matches(e, columns, g)) {
+            Some(i) => used[i] = true,
+            None => return Err(format!("expected row {e:?} not among the rows: {:?}", rows.iter().take(3).collect::<Vec<_>>())),
+        }
+    }
+    Ok(())
+}
+
 fn judge(expect: &Value, columns: &[String], rows: &[Vec<Value>]) -> (&'static str, String) {
+    if let Some(bag) = expect["bag"].as_array() {
+        return match bag_matches(bag, expect["ordered"] == json!(true), columns, rows) {
+            Ok(()) => ("agree", format!("the whole bag of {} rows", bag.len())),
+            Err(why) => ("disagree", why),
+        };
+    }
     if expect["rows"] == json!(0) {
         return if rows.is_empty() {
             ("agree", "no rows, as expected".to_string())
@@ -150,6 +209,7 @@ async fn run_oracle_records() {
             continue;
         }
         let witness = record["expect"]["tier"] == json!("witness");
+        let _ = witness;
         let parameters: ParameterMap = properties(&record["parameters"]);
         let engine = CypherEngine::new(storage(setup));
         let prepared = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -192,7 +252,21 @@ async fn run_oracle_records() {
             }
         };
         let mut observed: Vec<Vec<Value>> = Vec::new();
-        let (verdict, detail) = match (outcome, witness) {
+        let expected_exception = record["expect"]["outcome"] == json!("exception");
+        let judged = record["expect"]["tier"] == json!("bag") || witness;
+        let (verdict, detail) = match (outcome, judged) {
+            (_, true) if expected_exception => {
+                let want = record["expect"]["status"].as_str().unwrap_or("");
+                if outcome == "failed" && status == want {
+                    ("agree", format!("raised {status} as expected"))
+                } else if outcome == "failed" && status.get(..2) == want.get(..2) {
+                    ("agree", format!("raised {status} for expected {want}: same class, another subclass"))
+                } else if outcome == "failed" {
+                    ("disagree", format!("expected {want}, raised {status}: {message}"))
+                } else {
+                    ("disagree", format!("expected {want}, outcome {outcome}: {message}"))
+                }
+            }
             ("ok", true) if !record["observe"].is_null() => {
                 // The observation query: the same patterns with their variables returned.
                 let query = record["observe"]["query"].as_str().unwrap_or("").to_string();
