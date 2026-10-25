@@ -44,6 +44,7 @@
 
 use super::{Context, FactSpec, Link, Masks, Projection, Slot};
 use crate::refine::{Item, Node};
+use smallvec::SmallVec;
 
 /// The most variables one label holds, and one that only references them (an expression).
 /// Some bound keeps the labels finite: an expression may reference ever more variables.
@@ -258,7 +259,9 @@ impl Var {
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Default)]
 pub struct Label {
-    vars: Vec<Var>,
+    /// Inline up to four: a label is cloned on every push, and three variables plus a local
+    /// one fit without an allocation.
+    vars: SmallVec<[Var; 4]>,
     flags: u32,
 }
 
