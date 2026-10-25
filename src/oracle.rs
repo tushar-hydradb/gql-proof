@@ -154,9 +154,12 @@ pub struct NearMiss {
     pub change: &'static str,
     /// The element changed.
     pub id: usize,
-    /// The label or property dropped.
+    /// The label or property dropped, added or changed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// The property's new value under `change_property`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<Value>,
     pub outcome: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
@@ -168,14 +171,15 @@ pub struct NearMiss {
 
 impl Graph {
     /// Every one-element change of the graph: an edge dropped, a directed edge flipped, a
-    /// label dropped (never the last: label sets are non-empty), a property dropped (never
-    /// `_id`).
-    pub fn mutations(&self) -> Vec<(NearMiss, Graph)> {
+    /// label dropped (never the last: label sets are non-empty) or added (one the query
+    /// names), a property dropped (never `_id`) or moved off its value.
+    pub fn mutations(&self, mentioned: &BTreeSet<String>) -> Vec<(NearMiss, Graph)> {
         let mut out = Vec::new();
         let miss = |change, id, name: Option<String>| NearMiss {
             change,
             id,
             name,
+            value: None,
             outcome: "ok",
             status: None,
             rows: None,
@@ -212,14 +216,51 @@ impl Graph {
                     out.push((miss("drop_label", n.id, Some(label.clone())), g));
                 }
             }
-            for key in n.properties.keys().filter(|k| *k != ID_PROPERTY) {
+            for label in mentioned.iter().filter(|l| !n.labels.contains(*l)).take(2) {
+                let mut g = self.clone();
+                g.nodes[k].labels.insert(label.clone());
+                out.push((miss("add_label", n.id, Some(label.clone())), g));
+            }
+            for (key, value) in n.properties.iter().filter(|(k, _)| *k != ID_PROPERTY) {
                 let mut g = self.clone();
                 g.nodes[k].properties.remove(key);
                 out.push((miss("drop_property", n.id, Some(key.clone())), g));
+                let mut g = self.clone();
+                g.nodes[k].properties.insert(key.clone(), moved(value));
+                let mut m = miss("change_property", n.id, Some(key.clone()));
+                m.value = Some(moved(value));
+                out.push((m, g));
+            }
+        }
+        for (k, e) in self.edges.iter().enumerate() {
+            for (key, value) in e.properties.iter().filter(|(k, _)| *k != ID_PROPERTY) {
+                let mut g = self.clone();
+                g.edges[k].properties.insert(key.clone(), moved(value));
+                let mut m = miss("change_property", e.id, Some(key.clone()));
+                m.value = Some(moved(value));
+                out.push((m, g));
             }
         }
         out
     }
+}
+
+/// A value of the same class that differs from `v`.
+fn moved(v: &Value) -> Value {
+    match v {
+        Value::Null => Value::Int(1),
+        Value::Bool(b) => Value::Bool(!b),
+        Value::Int(i) => Value::Int(i + 1),
+        Value::Float(f) => Value::Float(f + 1.0),
+        Value::Str(s) => Value::Str(format!("{s}x")),
+    }
+}
+
+/// The label names a sentence mentions.
+fn label_names(tree: &Plain) -> BTreeSet<String> {
+    let mut names = Vec::new();
+    find_all(tree, "label name", &mut names);
+    names.iter().map(|n| identifier(n)).collect()
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -475,6 +516,18 @@ pub(crate) fn literal(p: &Plain) -> Result<Value, String> {
             .parse()
             .map(Value::Float)
             .map_err(|_| "a decimal out of range".to_string());
+    }
+    if let Some(n) = exactly(p, "exact numeric literal").or_else(|| exactly(p, "approximate numeric literal")) {
+        // A suffix: M makes an exact decimal (not a test class), F and D an approximate.
+        let t = n.text().replace('_', "");
+        if let Some(body) = t.strip_suffix(['F', 'D', 'f', 'd']) {
+            if let Ok(f) = body.parse::<f64>() {
+                return Ok(Value::Float(f));
+            }
+        }
+        if t.ends_with(['M', 'm']) {
+            return Err("an exact decimal literal, a class the harness has no values of".to_string());
+        }
     }
     if p.text().is_empty() {
         return Err("an empty value".to_string());
@@ -1814,6 +1867,7 @@ pub fn oracle(
     vars: Option<&serde_json::Value>,
     params: Option<&serde_json::Value>,
     mode_default: MatchModeDefault,
+    declared: &eval::Declarations,
 ) -> Oracle {
     let mut b = Builder::new(mode_default);
     let (parameters, parameter_problems) = parameter_values(tree, params);
@@ -1891,7 +1945,9 @@ pub fn oracle(
     // Theorem 2: the evaluator over the witness graph gives the whole result where it
     // reaches; the witness tier stands where it stops.
     let mut observed_bag: Option<Vec<eval::Row>> = None;
-    match eval::evaluate(tree, &graph, &parameters, mode_default) {
+    // The columns of the table a FINISH dropped, for the observation query.
+    let mut observed_columns: Option<Vec<String>> = None;
+    match eval::evaluate(tree, &graph, &parameters, mode_default, declared) {
         Ok(eval::Outcome::Table(table)) => {
             expect.tier = Tier::Bag;
             expect.rows = Some(table.rows.len());
@@ -1904,8 +1960,13 @@ pub fn oracle(
             expect.tier = Tier::Bag;
             expect.result = false;
             expect.row = None;
-            if let Ok(eval::Outcome::Table(table)) = eval::evaluate_observing(tree, &graph, &parameters, mode_default) {
+            if let Ok(eval::Outcome::Table(table)) = eval::evaluate_observing(tree, &graph, &parameters, mode_default, declared) {
                 expect.rows = Some(table.rows.len());
+                let mut columns: BTreeSet<String> = BTreeSet::new();
+                for r in &table.rows {
+                    columns.extend(r.keys().cloned());
+                }
+                observed_columns = Some(columns.into_iter().collect());
                 observed_bag = Some(table.rows);
             }
         }
@@ -1923,8 +1984,34 @@ pub fn oracle(
     }
     let tier = expect.tier;
     let setup = emit(&graph);
+    // The observation of a FINISH sentence: in the bag tier the evaluator's own table says
+    // which columns are in scope; in the witness tier the builder's record does.
     let observe = match (&shape, tier, sentence.strip_suffix(" FINISH")) {
-        (Shape::Finish, Tier::Witness | Tier::Bag, Some(head)) if had_match || tier == Tier::Bag => {
+        (_, Tier::Bag, Some(head)) if !expect.result && observed_columns.is_some() => {
+            let names: Vec<String> = observed_columns.clone().unwrap_or_default();
+            let query = if names.is_empty() {
+                format!("{head} RETURN 1 AS n")
+            } else {
+                let items: Vec<String> = names.iter().map(|n| gql_name(n)).collect();
+                format!("{head} RETURN {}", items.join(" , "))
+            };
+            let bag = observed_bag.map(|rows| {
+                if names.is_empty() {
+                    rows.into_iter()
+                        .map(|_| BTreeMap::from([("n".to_string(), eval::Val::Int(1))]))
+                        .collect()
+                } else {
+                    rows
+                }
+            });
+            Some(Observe {
+                query,
+                rows: bag.as_ref().map(Vec::len),
+                row: None,
+                bag,
+            })
+        }
+        (Shape::Finish, Tier::Witness, Some(head)) if had_match => {
             let names: Vec<String> = expect.binding.keys().cloned().collect();
             let (query, row) = if names.is_empty() {
                 (
@@ -1941,39 +2028,31 @@ pub fn oracle(
                         .collect(),
                 )
             };
-            let bag = observed_bag.map(|rows| {
-                if names.is_empty() {
-                    rows.into_iter()
-                        .map(|_| BTreeMap::from([("n".to_string(), eval::Val::Int(1))]))
-                        .collect()
-                } else {
-                    rows
-                }
-            });
             Some(Observe {
                 query,
-                rows: if tier == Tier::Bag { bag.as_ref().map(Vec::len) } else { rows.filter(|r| *r == 0) },
-                row: if tier == Tier::Witness && rows.is_none() { Some(row) } else { None },
-                bag,
+                rows: rows.filter(|r| *r == 0),
+                row: if rows.is_none() { Some(row) } else { None },
+                bag: None,
             })
         }
         _ => None,
     };
     // Near misses: the evaluator on every one-element change, up to a handful.
     let mut near_misses = Vec::new();
-    if expect.tier == Tier::Bag && !graph.nodes.is_empty() {
+    if expect.tier == Tier::Bag && !graph.nodes.is_empty() && (expect.result || observe.is_some()) {
         let finish = !expect.result;
-        for (mut miss, mutated) in graph.mutations().into_iter().take(12) {
+        let mentioned = label_names(tree);
+        for (mut miss, mutated) in graph.mutations(&mentioned).into_iter().take(12) {
             let outcome = if finish {
-                eval::evaluate_observing(tree, &mutated, &parameters, mode_default)
+                eval::evaluate_observing(tree, &mutated, &parameters, mode_default, declared)
             } else {
-                eval::evaluate(tree, &mutated, &parameters, mode_default)
+                eval::evaluate(tree, &mutated, &parameters, mode_default, declared)
             };
             match outcome {
                 Ok(eval::Outcome::Table(table)) => {
                     miss.rows = Some(table.rows.len());
                     // An observation of a FINISH without variables is `RETURN 1 AS n`.
-                    miss.bag = Some(if finish && expect.binding.is_empty() {
+                    miss.bag = Some(if finish && observed_columns.as_ref().is_some_and(Vec::is_empty) {
                         table
                             .rows
                             .into_iter()

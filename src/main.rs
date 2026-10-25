@@ -58,6 +58,10 @@ struct OracleArgs {
     /// The match mode a `<graph pattern>` without one gets on the engine (ID086).
     #[arg(long, value_enum, default_value_t = Id086::Portable)]
     match_mode_default: Id086,
+    /// What the engine declares for behaviour the standard leaves to it (json: see
+    /// `claims/turbolay.declarations.json`); absent, such values stay opaque.
+    #[arg(long)]
+    declarations: Option<PathBuf>,
     /// Only the summary on stderr, no records.
     #[arg(long)]
     summary: bool,
@@ -1499,6 +1503,11 @@ fn oracle(args: OracleArgs) -> Result<()> {
     let bnf = read_grammar(&None)?;
     let cfg = Cfg::from_bnf(&bnf);
     let id086 = MatchModeDefault::from(args.match_mode_default);
+    let declared: gql_proof::oracle::eval::Declarations = match &args.declarations {
+        Some(path) => serde_json::from_str(&std::fs::read_to_string(path)?)?,
+        None => Default::default(),
+    };
+    let declared = &declared;
     let pool = rayon::ThreadPoolBuilder::new()
         .stack_size(1 << 30)
         .build()?;
@@ -1543,7 +1552,7 @@ fn oracle(args: OracleArgs) -> Result<()> {
                         };
                         let parsed = parser.parse(s, well_typed).or_else(|_| parser.parse(s, syntax));
                         let record = parsed.ok().map(|p| {
-                            gql_proof::oracle::oracle(s, &p.tree.export(&cfg), *vars, *params, id086)
+                            gql_proof::oracle::oracle(s, &p.tree.export(&cfg), *vars, *params, id086, declared)
                         });
                         (s.to_string(), record)
                     },

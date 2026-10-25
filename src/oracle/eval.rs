@@ -43,14 +43,6 @@ pub enum Val {
 }
 
 impl Val {
-    fn has_opaque(&self) -> bool {
-        match self {
-            Val::Opaque(_) => true,
-            Val::List(l) => l.iter().any(Val::has_opaque),
-            Val::Record(r) => r.values().any(Val::has_opaque),
-            _ => false,
-        }
-    }
 
     fn from_ir(v: &Value) -> Val {
         match v {
@@ -104,6 +96,24 @@ pub enum Outcome {
     Exception(String),
 }
 
+/// What an engine declares for the behaviour the standard leaves to it (annex: the
+/// implementation-defined items). Absent, the value stays opaque or the evaluator stops.
+#[derive(Clone, Debug, Default, serde::Deserialize, Serialize)]
+pub struct Declarations {
+    /// The value of SESSION_USER.
+    #[serde(default)]
+    pub session_user: Option<String>,
+    /// Division of exact numerics with a remainder: `truncate` (toward zero) or `float`.
+    #[serde(default)]
+    pub exact_division: Option<String>,
+    /// AVG over exact numerics: `float` or `exact` (truncated).
+    #[serde(default)]
+    pub avg_exact: Option<String>,
+    /// ELEMENT_ID's spelling: a format with `{kind}` (node or edge) and `{id}`.
+    #[serde(default)]
+    pub element_id: Option<String>,
+}
+
 /// Evaluates the whole sentence on `graph`; `Err` with the reason where the evaluator does
 /// not reach.
 pub fn evaluate(
@@ -111,9 +121,10 @@ pub fn evaluate(
     graph: &Graph,
     params: &BTreeMap<String, Value>,
     mode: MatchModeDefault,
+    declared: &Declarations,
 ) -> Result<Outcome, String> {
     let params: BTreeMap<String, Val> = params.iter().map(|(k, v)| (k.clone(), Val::from_ir(v))).collect();
-    let env = Env { graph, params: &params, mode, observing: false, group: Default::default() };
+    let env = Env { graph: std::cell::RefCell::new(graph.clone()), deleted: Default::default(), params: &params, mode, observing: false, group: Default::default(), declared };
     env.run(tree)
 }
 
@@ -124,20 +135,25 @@ pub fn evaluate_observing(
     graph: &Graph,
     params: &BTreeMap<String, Value>,
     mode: MatchModeDefault,
+    declared: &Declarations,
 ) -> Result<Outcome, String> {
     let params: BTreeMap<String, Val> = params.iter().map(|(k, v)| (k.clone(), Val::from_ir(v))).collect();
-    let env = Env { graph, params: &params, mode, observing: true, group: Default::default() };
+    let env = Env { graph: std::cell::RefCell::new(graph.clone()), deleted: Default::default(), params: &params, mode, observing: true, group: Default::default(), declared };
     env.run(tree)
 }
 
 struct Env<'a> {
-    graph: &'a Graph,
+    /// The graph as the statements so far left it: data modification changes it.
+    graph: std::cell::RefCell<Graph>,
+    /// Elements a DELETE removed: a reference to one afterwards raises 22G11.
+    deleted: std::cell::RefCell<BTreeSet<usize>>,
     params: &'a BTreeMap<String, Val>,
     mode: MatchModeDefault,
     /// A final FINISH returns the working table instead of nothing.
     observing: bool,
     /// The members of the group a RETURN item is evaluated over, while it is.
     group: std::cell::RefCell<Option<Vec<Row>>>,
+    declared: &'a Declarations,
 }
 
 impl Env<'_> {
@@ -209,12 +225,8 @@ impl Env<'_> {
         let mut table = Some(incoming.clone());
         let last = statements.len().saturating_sub(1);
         for (i, (yield_clause, s)) in statements.into_iter().enumerate() {
-            let Some(current) = table.take() else {
-                // FINISH gave no table; what follows works on the unit table (14.x: an
-                // omitted result makes the next incoming table the unit table).
-                table = Some(Table { rows: vec![Row::new()], ordered: false });
-                continue;
-            };
+            // 9.2 GR 3 a: a statement after an omitted result starts from a new unit table.
+            let current = table.take().unwrap_or(Table { rows: vec![Row::new()], ordered: false });
             let current = match yield_clause {
                 Some(y) => self.yield_clause(y, current)?,
                 None => current,
@@ -272,6 +284,18 @@ impl Env<'_> {
     /// One `<statement>`: a linear query (its simple query statements then its result
     /// statement). Composite, catalog and data modifying statements are not reached.
     fn statement(&self, s: &Plain, incoming: Table) -> R<Option<Table>> {
+        if let Some(modifying) = child(s, "linear data-modifying statement") {
+            return self.data_modifying(modifying, incoming);
+        }
+        if let Some(catalog) = child(s, "linear catalog-modifying statement") {
+            // `CALL { ... }` alone is a catalog-modifying statement by the grammar.
+            let mut calls = Vec::new();
+            find_all(catalog, "call procedure statement", &mut calls);
+            if calls.len() == 1 && catalog.text() == calls[0].text() {
+                return Ok(Some(self.call_statement(calls[0], incoming)?));
+            }
+            return unsupported(format!("a catalog modifying statement: {}", head(s)));
+        }
         let Some(composite) = child(s, "composite query statement") else {
             return unsupported(format!("a statement that is not a query: {}", head(s)));
         };
@@ -326,8 +350,8 @@ impl Env<'_> {
     }
 
     fn simple_query(&self, q: &Plain, table: Table) -> R<Table> {
-        if child(q, "call query statement").is_some() {
-            return unsupported("a CALL statement");
+        if let Some(call) = child(q, "call query statement").and_then(|c| child(c, "call procedure statement")) {
+            return self.call_statement(call, table);
         }
         let Some(primitive) = child(q, "primitive query statement") else {
             return unsupported("no primitive query statement");
@@ -357,6 +381,400 @@ impl Env<'_> {
             };
         }
         unsupported("an empty primitive query statement")
+    }
+
+    /// 15.1, 15.2: an inline procedure call runs its body once per incoming record, with the
+    /// record restricted to the variables in scope; the body's result joins the record, an
+    /// omitted result leaves the record as it was, and OPTIONAL keeps a record the body
+    /// returns nothing for.
+    fn call_statement(&self, call: &Plain, table: Table) -> R<Table> {
+        let optional = has_kw(call, "OPTIONAL");
+        let Some(proc_call) = child(call, "procedure call") else {
+            return unsupported("CALL without a procedure call");
+        };
+        let Some(inline) = child(proc_call, "inline procedure call") else {
+            return unsupported("a named procedure call (the catalog)");
+        };
+        let scope: Option<Vec<String>> = child(inline, "variable scope clause").map(|vs| {
+            let mut refs = Vec::new();
+            find_all(vs, "binding variable reference", &mut refs);
+            refs.iter().map(|r| identifier(r)).collect()
+        });
+        let Some(spec) = child(inline, "nested procedure specification").and_then(|n| child(n, "procedure specification")) else {
+            return unsupported("an inline call without a procedure");
+        };
+        let mut bodies = Vec::new();
+        find_all(spec, "procedure body", &mut bodies);
+        let Some(body) = bodies.first() else {
+            return unsupported("an inline call without a body");
+        };
+        let mut rows = Vec::new();
+        for row in table.rows {
+            let visible: Row = match &scope {
+                Some(names) => row.iter().filter(|(k, _)| names.contains(k)).map(|(k, v)| (k.clone(), v.clone())).collect(),
+                None => row.clone(),
+            };
+            let result = self.procedure_body(body, &Table { rows: vec![visible], ordered: false })?;
+            match result {
+                None => rows.push(row),
+                Some(t) if t.rows.is_empty() => {
+                    if optional {
+                        rows.push(row);
+                    }
+                }
+                Some(t) => {
+                    for inner in t.rows {
+                        rows.push(join(&row, &inner));
+                    }
+                }
+            }
+        }
+        Ok(Table { rows, ordered: false })
+    }
+
+    /// A linear data-modifying statement: its data-accessing statements in order (queries,
+    /// INSERT, SET, REMOVE, DELETE, CALL), then its result statement; or a nested
+    /// data-modifying procedure.
+    fn data_modifying(&self, s: &Plain, incoming: Table) -> R<Option<Table>> {
+        if child(s, "focused linear data-modifying statement").is_some() {
+            return unsupported("a focused data-modifying statement (USE)");
+        }
+        let Some(ambient) = child(s, "ambient linear data-modifying statement") else {
+            return unsupported("a data-modifying statement that is not ambient");
+        };
+        if let Some(nested) = child(ambient, "nested data-modifying procedure specification") {
+            let mut bodies = Vec::new();
+            find_all(nested, "procedure body", &mut bodies);
+            let Some(body) = bodies.first() else { return unsupported("an empty nested procedure") };
+            return self.procedure_body(body, &incoming);
+        }
+        let Some(body) = child(ambient, "ambient linear data-modifying statement body") else {
+            return unsupported("a data-modifying statement without a body");
+        };
+        let mut table = incoming;
+        let mut accessing = Vec::new();
+        find_all(body, "simple data-accessing statement", &mut accessing);
+        for a in accessing {
+            if let Some(q) = child(a, "simple query statement") {
+                table = self.simple_query(q, table)?;
+            } else if let Some(m) = child(a, "simple data-modifying statement") {
+                table = self.simple_modifying(m, table)?;
+            }
+        }
+        match child(body, "primitive result statement") {
+            Some(result) => self.result_statement(result, table),
+            None => Ok(None),
+        }
+    }
+
+    fn simple_modifying(&self, m: &Plain, table: Table) -> R<Table> {
+        if let Some(call) = child(m, "call data-modifying procedure statement").and_then(|c| child(c, "call procedure statement")) {
+            return self.call_statement(call, table);
+        }
+        let Some(primitive) = child(m, "primitive data-modifying statement") else {
+            return unsupported("a data-modifying statement that is neither primitive nor a call");
+        };
+        for c in logical(primitive) {
+            return match def_name(c) {
+                Some("insert statement") => self.insert(c, table),
+                Some("set statement") => self.set(c, table),
+                Some("remove statement") => self.remove(c, table),
+                Some("delete statement") => self.delete(c, table),
+                Some(other) => unsupported(format!("a {other}")),
+                None => continue,
+            };
+        }
+        unsupported("an empty data-modifying statement")
+    }
+
+    fn fresh_id(&self) -> usize {
+        let g = self.graph.borrow();
+        g.nodes.iter().map(|n| n.id).chain(g.edges.iter().map(|e| e.id)).max().map_or(0, |m| m + 1)
+    }
+
+    /// 13.2: for each record, every insert path pattern's nodes (bound ones referenced, the
+    /// rest new) and edges (new); the record is amended with the new variables; the
+    /// result is omitted and the working table is the amended table.
+    fn insert(&self, s: &Plain, table: Table) -> R<Table> {
+        let Some(pattern) = child(s, "insert graph pattern") else {
+            return unsupported("INSERT without a pattern");
+        };
+        let mut paths = Vec::new();
+        find_all(pattern, "insert path pattern", &mut paths);
+        let mut rows = Vec::new();
+        for row in table.rows {
+            let mut row = row;
+            for path in &paths {
+                let mut last_node: Option<usize> = None;
+                let mut pending_edge: Option<(&Plain, Kind)> = None;
+                for item in logical(path) {
+                    match def_name(item) {
+                        Some("insert node pattern") => {
+                            let filler = child(item, "insert element pattern filler");
+                            let var = filler.and_then(|f| child(f, "element variable declaration")).and_then(|d| child(d, "element variable")).map(identifier);
+                            let id = match var.as_ref().and_then(|v| row.get(v)) {
+                                Some(Val::Node(n)) => {
+                                    if self.deleted.borrow().contains(n) {
+                                        return Err(Stop::Exception("G1002".to_string()));
+                                    }
+                                    *n
+                                }
+                                Some(other) => return unsupported(format!("an insert node pattern over a bound {}", class_of(other))),
+                                None => {
+                                    let (labels, properties) = self.insert_filler(filler, &row)?;
+                                    let id = self.fresh_id();
+                                    let mut properties = properties;
+                                    properties.insert(super::ID_PROPERTY.to_string(), Value::Int(id as i128));
+                                    let labels = if labels.is_empty() { BTreeSet::from([format!("L{id}")]) } else { labels };
+                                    self.graph.borrow_mut().nodes.push(super::Node { id, labels, properties });
+                                    if let Some(v) = &var {
+                                        row.insert(v.clone(), Val::Node(id));
+                                    }
+                                    id
+                                }
+                            };
+                            if let Some((edge, kind)) = pending_edge.take() {
+                                let left = last_node.expect("a node before an insert edge");
+                                let filler = child(edge, "insert element pattern filler");
+                                let var = filler.and_then(|f| child(f, "element variable declaration")).and_then(|d| child(d, "element variable")).map(identifier);
+                                let (labels, properties) = self.insert_filler(filler, &row)?;
+                                let eid = self.fresh_id();
+                                let mut properties = properties;
+                                properties.insert(super::ID_PROPERTY.to_string(), Value::Int(eid as i128));
+                                let labels = if labels.is_empty() { BTreeSet::from([format!("L{eid}")]) } else { labels };
+                                let (source, target, directed) = match kind {
+                                    Kind::Left => (id, left, true),
+                                    Kind::Undirected => (left, id, false),
+                                    _ => (left, id, true),
+                                };
+                                self.graph.borrow_mut().edges.push(super::Edge { id: eid, source, target, labels, directed, properties });
+                                if let Some(v) = var {
+                                    row.insert(v, Val::Edge(eid));
+                                }
+                            }
+                            last_node = Some(id);
+                        }
+                        Some("insert edge pattern") => {
+                            let kind = if child(item, "insert edge pointing left").is_some() {
+                                Kind::Left
+                            } else if child(item, "insert edge undirected").is_some() {
+                                Kind::Undirected
+                            } else {
+                                Kind::Right
+                            };
+                            let inner = logical(item).into_iter().find(|c| def_name(c).is_some()).unwrap_or(item);
+                            pending_edge = Some((inner, kind));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            rows.push(row);
+        }
+        Ok(Table { rows, ordered: false })
+    }
+
+    /// The label set and properties an insert filler specifies.
+    fn insert_filler(&self, filler: Option<&Plain>, row: &Row) -> R<(BTreeSet<String>, BTreeMap<String, Value>)> {
+        let mut labels = BTreeSet::new();
+        let mut properties = BTreeMap::new();
+        let Some(filler) = filler else { return Ok((labels, properties)) };
+        let mut names = Vec::new();
+        find_all(filler, "label name", &mut names);
+        labels.extend(names.iter().map(|n| identifier(n)));
+        let mut pairs = Vec::new();
+        find_all(filler, "property key value pair", &mut pairs);
+        for pair in pairs {
+            let kids = logical(pair);
+            let (Some(name), Some(expr)) = (kids.first(), kids.get(2)) else { continue };
+            match self.eval(expr, row)? {
+                Val::Null => {}
+                v => {
+                    properties.insert(identifier(name), to_ir(&v)?);
+                }
+            }
+        }
+        Ok((labels, properties))
+    }
+
+    /// 13.3: properties assigned (null removes), all properties replaced, labels added. The
+    /// result is omitted; the table stands.
+    fn set(&self, s: &Plain, table: Table) -> R<Table> {
+        let mut items = Vec::new();
+        find_all(s, "set item", &mut items);
+        for row in &table.rows {
+            for item in &items {
+                let Some(inner) = logical(item).into_iter().find(|c| def_name(c).is_some()) else { continue };
+                let Some(reference) = child(inner, "binding variable reference") else { continue };
+                let target = self.eval(reference, row)?;
+                let (node, id) = match target {
+                    Val::Null => continue,
+                    Val::Node(n) => (true, n),
+                    Val::Edge(e) => (false, e),
+                    other => return unsupported(format!("SET on a {}", class_of(&other))),
+                };
+                if self.deleted.borrow().contains(&id) {
+                    return Err(Stop::Exception("22G11".to_string()));
+                }
+                match def_name(inner) {
+                    Some("set property item") => {
+                        let (Some(name), Some(expr)) = (child(inner, "property name"), child(inner, "value expression")) else { continue };
+                        let v = self.eval(expr, row)?;
+                        let key = identifier(name);
+                        self.with_element(node, id, |labels_props| {
+                            let (_, props) = labels_props;
+                            match &v {
+                                Val::Null => {
+                                    props.remove(&key);
+                                    Ok(())
+                                }
+                                v => {
+                                    props.insert(key.clone(), to_ir(v)?);
+                                    Ok(())
+                                }
+                            }
+                        })?;
+                    }
+                    Some("set all properties item") => {
+                        let mut pairs = Vec::new();
+                        find_all(inner, "property key value pair", &mut pairs);
+                        let mut new_props = BTreeMap::new();
+                        for pair in pairs {
+                            let kids = logical(pair);
+                            let (Some(name), Some(expr)) = (kids.first(), kids.get(2)) else { continue };
+                            match self.eval(expr, row)? {
+                                Val::Null => {}
+                                v => {
+                                    new_props.insert(identifier(name), to_ir(&v)?);
+                                }
+                            }
+                        }
+                        self.with_element(node, id, |(_, props)| {
+                            let keep = props.get(super::ID_PROPERTY).cloned();
+                            *props = new_props.clone();
+                            if let Some(k) = keep {
+                                props.insert(super::ID_PROPERTY.to_string(), k);
+                            }
+                            Ok(())
+                        })?;
+                    }
+                    Some("set label item") => {
+                        let Some(name) = child(inner, "label name") else { continue };
+                        let label = identifier(name);
+                        self.with_element(node, id, |(labels, _)| {
+                            labels.insert(label.clone());
+                            Ok(())
+                        })?;
+                    }
+                    _ => return unsupported("a SET item that could not be read"),
+                }
+            }
+        }
+        Ok(table)
+    }
+
+    /// 13.4: a property or a label removed; a node's last label is 22G0N, an edge's 22G0Q
+    /// (label sets are non-empty, minimum cardinality 1).
+    fn remove(&self, s: &Plain, table: Table) -> R<Table> {
+        let mut items = Vec::new();
+        find_all(s, "remove item", &mut items);
+        for row in &table.rows {
+            for item in &items {
+                let Some(inner) = logical(item).into_iter().find(|c| def_name(c).is_some()) else { continue };
+                let Some(reference) = child(inner, "binding variable reference") else { continue };
+                let (node, id) = match self.eval(reference, row)? {
+                    Val::Null => continue,
+                    Val::Node(n) => (true, n),
+                    Val::Edge(e) => (false, e),
+                    other => return unsupported(format!("REMOVE on a {}", class_of(&other))),
+                };
+                if self.deleted.borrow().contains(&id) {
+                    return Err(Stop::Exception("22G11".to_string()));
+                }
+                match def_name(inner) {
+                    Some("remove property item") => {
+                        let Some(name) = child(inner, "property name") else { continue };
+                        let key = identifier(name);
+                        self.with_element(node, id, |(_, props)| {
+                            props.remove(&key);
+                            Ok(())
+                        })?;
+                    }
+                    Some("remove label item") => {
+                        let Some(name) = child(inner, "label name") else { continue };
+                        let label = identifier(name);
+                        self.with_element(node, id, |(labels, _)| {
+                            if labels.contains(&label) && labels.len() == 1 {
+                                return Err(Stop::Exception(if node { "22G0N" } else { "22G0Q" }.to_string()));
+                            }
+                            labels.remove(&label);
+                            Ok(())
+                        })?;
+                    }
+                    _ => return unsupported("a REMOVE item that could not be read"),
+                }
+            }
+        }
+        Ok(table)
+    }
+
+    fn with_element(
+        &self,
+        node: bool,
+        id: usize,
+        f: impl FnOnce((&mut BTreeSet<String>, &mut BTreeMap<String, Value>)) -> R<()>,
+    ) -> R<()> {
+        let mut g = self.graph.borrow_mut();
+        if node {
+            let Some(n) = g.nodes.iter_mut().find(|n| n.id == id) else { return Err(Stop::Exception("22G11".to_string())) };
+            f((&mut n.labels, &mut n.properties))
+        } else {
+            let Some(e) = g.edges.iter_mut().find(|e| e.id == id) else { return Err(Stop::Exception("22G11".to_string())) };
+            f((&mut e.labels, &mut e.properties))
+        }
+    }
+
+    /// 13.5: the elements every record's items name, deleted at once; DETACH takes a node's
+    /// edges with it, otherwise an edge left on a deleted node is G1001.
+    fn delete(&self, s: &Plain, table: Table) -> R<Table> {
+        let detach = has_kw(s, "DETACH") && !has_kw(s, "NODETACH");
+        let mut items = Vec::new();
+        find_all(s, "delete item", &mut items);
+        let mut nodes = BTreeSet::new();
+        let mut edges = BTreeSet::new();
+        for row in &table.rows {
+            for item in &items {
+                match self.eval(item, row)? {
+                    Val::Null => {}
+                    Val::Node(n) => {
+                        nodes.insert(n);
+                    }
+                    Val::Edge(e) => {
+                        edges.insert(e);
+                    }
+                    other => return unsupported(format!("DELETE of a {}", class_of(&other))),
+                }
+            }
+        }
+        {
+            let g = self.graph.borrow();
+            for e in &g.edges {
+                if nodes.contains(&e.source) || nodes.contains(&e.target) {
+                    if detach {
+                        edges.insert(e.id);
+                    } else if !edges.contains(&e.id) {
+                        return Err(Stop::Exception("G1001".to_string()));
+                    }
+                }
+            }
+        }
+        let mut g = self.graph.borrow_mut();
+        g.nodes.retain(|n| !nodes.contains(&n.id));
+        g.edges.retain(|e| !edges.contains(&e.id));
+        drop(g);
+        self.deleted.borrow_mut().extend(nodes);
+        self.deleted.borrow_mut().extend(edges);
+        Ok(table)
     }
 
     fn let_statement(&self, s: &Plain, table: Table) -> R<Table> {
@@ -539,9 +957,8 @@ impl Env<'_> {
             let mut seen = BTreeSet::new();
             rows.retain(|r| seen.insert(Val::Record(r.clone()).key()));
         }
-        if let Some(what) = rows.iter().flat_map(|r| r.values()).find(|v| v.has_opaque()) {
-            return unsupported(format!("{} in the result", class_of(what)));
-        }
+        // An opaque value in a result claims its class only; a probe checks the class and
+        // that the value is not null.
         Ok(Table { rows, ordered: false })
     }
 
@@ -778,16 +1195,26 @@ impl Env<'_> {
         let Some(gpbt) = child(simple, "graph pattern binding table") else {
             return unsupported("MATCH without a binding table");
         };
-        if child(gpbt, "graph pattern yield clause").is_some() {
-            return unsupported("a graph pattern YIELD");
-        }
+        let yielded: Option<Vec<String>> = child(gpbt, "graph pattern yield clause").map(|y| {
+            let mut vars = Vec::new();
+            find_all(y, "graph pattern yield item", &mut vars);
+            if vars.is_empty() {
+                find_all(y, "binding variable reference", &mut vars);
+            }
+            vars.iter().map(|v| identifier(v)).collect()
+        });
         let Some(gp) = child(gpbt, "graph pattern") else {
             return unsupported("MATCH without a graph pattern");
         };
-        // 16.3 GR 6: for each incoming record, the matches joined to it.
+        // 16.3 GR 6: for each incoming record, the matches joined to it; a YIELD keeps the
+        // named pattern variables only (16.14).
         let mut rows = Vec::new();
         for outer in &table.rows {
             for inner in self.matches(gp, outer)? {
+                let inner = match &yielded {
+                    Some(names) => inner.into_iter().filter(|(k, _)| names.contains(k)).collect(),
+                    None => inner,
+                };
                 rows.push(join(outer, &inner));
             }
         }
@@ -1623,7 +2050,8 @@ impl Matcher<'_, '_> {
     fn node_set(&self, pattern: Option<&Plain>) -> R<Vec<PB>> {
         let filler = pattern.and_then(|p| child(p, "node pattern")).and_then(|np| child(np, "element pattern filler"));
         let mut out = Vec::new();
-        for n in &self.env.graph.nodes {
+        let nodes = self.env.graph.borrow().nodes.clone();
+        for n in &nodes {
             let (sym, ok) = self.filler_matches(filler, true, n.id, &n.labels, &n.properties)?;
             if ok {
                 out.push(vec![(sym, Elem::Node(n.id))]);
@@ -1635,7 +2063,8 @@ impl Matcher<'_, '_> {
     fn edge_set(&self, kind: Kind, filler: Option<&Plain>, label: Option<&LabelExpr>) -> R<Vec<PB>> {
         let filler = filler.and_then(|f| child(f, "element pattern filler"));
         let mut out = Vec::new();
-        for e in &self.env.graph.edges {
+        let edges = self.env.graph.borrow().edges.clone();
+        for e in &edges {
             if let Some(l) = label {
                 if !l.holds(&e.labels) {
                     continue;
@@ -1757,7 +2186,7 @@ impl Matcher<'_, '_> {
     /// bounded by the graph under DIFFERENT EDGES (an edge binds once) and otherwise by a
     /// cap that the selective pattern or the mode must justify.
     fn power(&self, unit: Vec<PB>, lower: u64, upper: Option<u64>) -> R<Vec<PB>> {
-        let edges = self.env.graph.edges.len() as u64;
+        let edges = self.env.graph.borrow().edges.len() as u64;
         let bound = match upper {
             Some(u) => u,
             None if self.different_edges => edges.max(lower),
@@ -1877,7 +2306,7 @@ impl Matcher<'_, '_> {
     /// pattern's kind allows), non-separable node bindings bind one node, and every
     /// bracketed span respects its path mode.
     fn consistent(&self, pb: &PB) -> bool {
-        let graph = self.env.graph;
+        let graph = self.env.graph.borrow();
         // (b) and (c): walk the elements, remembering the last node and a pending edge.
         let mut last_node: Option<usize> = None;
         let mut pending: Option<(usize, Kind)> = None;
@@ -2183,13 +2612,17 @@ impl Env<'_> {
             | "cardinality expression argument" | "dependent value expression" | "independent value expression"
             | "trim operands" | "trim source" | "trim character string" | "length expression"
             | "reference value expression"
-            | "for item source" | "character string value expression 1" | "character string function 1" => {
+            | "for item source" | "character string value expression 1" | "character string function 1"
+            | "delete item" => {
                 let defs: Vec<&Plain> = kids.iter().copied().filter(|c| def_name(c).is_some() && !punctuation(c)).collect();
                 if defs.len() == 1 && kids.len() == 1 {
                     return self.eval(defs[0], row);
                 }
                 if name == "general value specification" && has_kw(p, "SESSION_USER") {
-                    return Ok(Val::Opaque("string".to_string()));
+                    return Ok(match &self.declared.session_user {
+                        Some(u) => Val::Str(u.clone()),
+                        None => Val::Opaque("string".to_string()),
+                    });
                 }
                 if name == "field" {
                     return unsupported("a bare field");
@@ -2266,8 +2699,8 @@ impl Env<'_> {
                 let key = identifier(pname);
                 Ok(match v {
                     Val::Null => Val::Null,
-                    Val::Node(n) => Val::Bool(self.node(n).properties.contains_key(&key)),
-                    Val::Edge(e) => Val::Bool(self.edge(e).properties.contains_key(&key)),
+                    Val::Node(n) => Val::Bool(self.node(n)?.properties.contains_key(&key)),
+                    Val::Edge(e) => Val::Bool(self.edge(e)?.properties.contains_key(&key)),
                     other => return unsupported(format!("PROPERTY_EXISTS on a {}", class_of(&other))),
                 })
             }
@@ -2295,7 +2728,7 @@ impl Env<'_> {
                 }
                 let a = self.eval(kids[0], row)?;
                 let b = self.eval(kids[2], row)?;
-                arithmetic(&kids[1].text(), a, b)
+                self.arithmetic(&kids[1].text(), a, b)
             }
             "factor" => {
                 let negative = child(p, "sign").is_some_and(|s| s.text() == "-");
@@ -2551,8 +2984,8 @@ impl Env<'_> {
                 let key = identifier(pname);
                 Ok(match v {
                     Val::Null => Val::Null,
-                    Val::Node(n) => self.node(n).properties.get(&key).map(Val::from_ir).unwrap_or(Val::Null),
-                    Val::Edge(e) => self.edge(e).properties.get(&key).map(Val::from_ir).unwrap_or(Val::Null),
+                    Val::Node(n) => self.node(n)?.properties.get(&key).map(Val::from_ir).unwrap_or(Val::Null),
+                    Val::Edge(e) => self.edge(e)?.properties.get(&key).map(Val::from_ir).unwrap_or(Val::Null),
                     Val::Record(r) => r.get(&key).cloned().unwrap_or(Val::Null),
                     other => return unsupported(format!("a property of a {}", class_of(&other))),
                 })
@@ -2570,6 +3003,7 @@ impl Env<'_> {
             | "exact numeric literal" | "approximate numeric literal" | "unsigned integer"
             | "unsigned decimal in common notation" => match literal(p) {
                 Ok(v) => Ok(Val::from_ir(&v)),
+                Err(why) if why.starts_with("an exact decimal") => Ok(Val::Opaque("decimal".to_string())),
                 Err(why) => unsupported(format!("a literal that is {why}")),
             },
             "byte string literal" => Ok(Val::Opaque("bytes".to_string())),
@@ -2582,6 +3016,41 @@ impl Env<'_> {
                     return unsupported("an empty temporal literal");
                 };
                 self.eval(inner, row)
+            }
+            "byte string function" | "byte string trim function" | "byte string substring function" => {
+                let mut vals = Vec::new();
+                for c in ["byte string value expression", "byte string trim source", "trim byte string", "string length"] {
+                    let mut found = Vec::new();
+                    find_all(p, c, &mut found);
+                    for f in found {
+                        vals.push(self.eval(f, row)?);
+                    }
+                }
+                if vals.iter().any(Val::is_null) {
+                    return Ok(Val::Null);
+                }
+                Ok(Val::Opaque("bytes".to_string()))
+            }
+            "byte string trim source" | "trim byte string" => {
+                let Some(inner) = kids.iter().find(|c| def_name(c).is_some()) else {
+                    return unsupported("an empty byte string operand");
+                };
+                self.eval(inner, row)
+            }
+            "byte length expression" => {
+                let Some(arg) = child(p, "byte string value expression") else {
+                    return unsupported("BYTE_LENGTH without an argument");
+                };
+                // A literal's length is its hex digit pairs; anything else stays a class.
+                if let Some(lit) = exactly(arg, "byte string literal") {
+                    let hex: String = lit.text().chars().filter(|c| c.is_ascii_hexdigit()).collect();
+                    return Ok(Val::Int((hex.len() / 2) as i128));
+                }
+                match self.eval(arg, row)? {
+                    Val::Null => Ok(Val::Null),
+                    Val::Opaque(_) => Ok(Val::Opaque("exact".to_string())),
+                    other => unsupported(format!("BYTE_LENGTH of a {}", class_of(&other))),
+                }
             }
             "byte string value expression" | "byte string primary" | "byte string concatenation" => {
                 let mut vals = Vec::new();
@@ -2612,6 +3081,12 @@ impl Env<'_> {
                         return Err(Stop::Exception("22G05".to_string()));
                     }
                     if let Some(inner) = logical(arg).into_iter().find(|c| def_name(c).is_some()) {
+                        // A string argument: its format decides between a value and 22G05.
+                        if matches!(def_name(inner), Some("datetime string" | "date string" | "time string" | "duration string")) {
+                            let text = inner.text();
+                            let body = text.trim_matches(|c| c == '\'' || c == '"');
+                            return temporal_string(&temporal_kind(name, &p.text()), body);
+                        }
                         let v = self.eval(inner, row)?;
                         return match v {
                             Val::Null => Ok(Val::Null),
@@ -2635,7 +3110,7 @@ impl Env<'_> {
                 }
                 Ok(Val::Opaque(temporal_kind(name, &p.text())))
             }
-            "datetime value expression" | "duration value expression" | "duration term" | "duration term 2" | "duration factor" | "duration primary" | "datetime primary" => {
+            "datetime value expression" | "duration value expression" | "duration value expression 1" | "duration addition and subtraction" | "duration term" | "duration term 2" | "duration factor" | "duration primary" | "datetime primary" => {
                 // Temporal arithmetic: null in, null out; else a temporal value we do not
                 // represent. A factor of exact or approximate class is read for exceptions.
                 let mut vals = Vec::new();
@@ -2713,7 +3188,7 @@ impl Env<'_> {
                     if let Some(e) = edges.get(i) {
                         let Val::Edge(eid) = e else { return unsupported("PATH[] with something not an edge") };
                         let Some(Val::Node(next)) = nodes.get(i + 1) else { return Err(Stop::Exception("22G0Z".to_string())) };
-                        let edge = self.edge(*eid);
+                        let edge = self.edge(*eid)?;
                         let connects = (edge.source == *nid && edge.target == *next) || (!edge.directed && edge.source == *next && edge.target == *nid) || (edge.directed && edge.source == *next && edge.target == *nid);
                         if !connects {
                             return Err(Stop::Exception("22G0Z".to_string()));
@@ -2761,7 +3236,22 @@ impl Env<'_> {
                 let v = self.eval(operand, row)?;
                 cast(v, &target.text())
             }
-            "element_id function" => unsupported("ELEMENT_ID's spelling is implementation-dependent"),
+            "element_id function" => {
+                let Some(reference) = child(p, "element variable reference") else {
+                    return unsupported("ELEMENT_ID without an argument");
+                };
+                let v = self.eval(reference, row)?;
+                let (kind, id) = match v {
+                    Val::Null => return Ok(Val::Null),
+                    Val::Node(n) => ("node", n),
+                    Val::Edge(e) => ("edge", e),
+                    other => return unsupported(format!("ELEMENT_ID of a {}", class_of(&other))),
+                };
+                Ok(match &self.declared.element_id {
+                    Some(format) => Val::Str(format.replace("{kind}", kind).replace("{id}", &id.to_string())),
+                    None => Val::Opaque("string".to_string()),
+                })
+            }
             "let value expression" => {
                 let mut defs = Vec::new();
                 find_all(p, "let variable definition", &mut defs);
@@ -2877,18 +3367,18 @@ impl Env<'_> {
         };
         let labels = match v {
             Val::Null => return Ok(Val::Null),
-            Val::Node(n) => &self.node(n).labels,
-            Val::Edge(e) => &self.edge(e).labels,
+            Val::Node(n) => self.node(n)?.labels,
+            Val::Edge(e) => self.edge(e)?.labels,
             other => return unsupported(format!("a labeled predicate on a {}", class_of(&other))),
         };
-        Ok(Val::Bool(e.holds(labels) != negated))
+        Ok(Val::Bool(e.holds(&labels) != negated))
     }
 
     fn directed_part2(&self, part2: &Plain, v: Val) -> R<Val> {
         let negated = has_kw(part2, "NOT");
         Ok(match v {
             Val::Null => Val::Null,
-            Val::Edge(e) => Val::Bool(self.edge(e).directed != negated),
+            Val::Edge(e) => Val::Bool(self.edge(e)?.directed != negated),
             other => return unsupported(format!("IS DIRECTED on a {}", class_of(&other))),
         })
     }
@@ -2906,7 +3396,7 @@ impl Env<'_> {
             }
             return unsupported("a source/destination predicate on something not a node and an edge");
         };
-        let edge = self.edge(*e);
+        let edge = self.edge(*e)?;
         // 19.10: on an undirected edge both nodes are source and destination.
         let holds = if !edge.directed {
             edge.source == *n || edge.target == *n
@@ -2944,12 +3434,19 @@ impl Env<'_> {
         unsupported("an EXISTS that could not be read")
     }
 
-    fn node(&self, id: usize) -> &super::Node {
-        self.graph.nodes.iter().find(|n| n.id == id).expect("a node of the graph")
+    /// A node by id; a deleted one raises 22G11 (use after delete).
+    fn node(&self, id: usize) -> R<super::Node> {
+        if self.deleted.borrow().contains(&id) {
+            return Err(Stop::Exception("22G11".to_string()));
+        }
+        self.graph.borrow().nodes.iter().find(|n| n.id == id).cloned().ok_or_else(|| Stop::Exception("22G11".to_string()))
     }
 
-    fn edge(&self, id: usize) -> &super::Edge {
-        self.graph.edges.iter().find(|e| e.id == id).expect("an edge of the graph")
+    fn edge(&self, id: usize) -> R<super::Edge> {
+        if self.deleted.borrow().contains(&id) {
+            return Err(Stop::Exception("22G11".to_string()));
+        }
+        self.graph.borrow().edges.iter().find(|e| e.id == id).cloned().ok_or_else(|| Stop::Exception("22G11".to_string()))
     }
 
     /// A return item over a group: aggregates folded over the members, everything else
@@ -3078,8 +3575,12 @@ impl Env<'_> {
                 let n = values.len() as i128;
                 match acc {
                     // 20.x leaves the declared type of AVG over exact numerics to the
-                    // implementation (turbolay answers a float).
-                    Val::Int(_) => unsupported("AVG of exact numerics: the result type is implementation-defined"),
+                    // implementation.
+                    Val::Int(i) => match self.declared.avg_exact.as_deref() {
+                        Some("float") => Ok(Val::Float(i as f64 / n as f64)),
+                        Some("exact") => Ok(Val::Int(i / n)),
+                        _ => unsupported("AVG of exact numerics: the result type is implementation-defined"),
+                    },
                     Val::Float(f) => Ok(Val::Float(f / n as f64)),
                     _ => unsupported("AVG of something not numeric"),
                 }
@@ -3104,6 +3605,56 @@ fn strip_nested(t: &str) -> String {
         }
     }
     out
+}
+
+/// A temporal function on a string literal: a value of its class when the string has the
+/// format of the class, 22G05 otherwise; a zoned function without an offset in the string
+/// takes the implementation's default zone and stays out.
+fn temporal_string(name: &str, s: &str) -> R<Val> {
+    let digits = |t: &str, n: usize| t.len() == n && t.chars().all(|c| c.is_ascii_digit());
+    let is_date = |t: &str| {
+        let parts: Vec<&str> = t.split('-').collect();
+        parts.len() == 3 && digits(parts[0], 4) && digits(parts[1], 2) && digits(parts[2], 2)
+            && (1..=12).contains(&parts[1].parse::<u32>().unwrap_or(0))
+            && (1..=31).contains(&parts[2].parse::<u32>().unwrap_or(0))
+    };
+    let is_time = |t: &str| {
+        let t = t.split('.').next().unwrap_or("");
+        let parts: Vec<&str> = t.split(':').collect();
+        (2..=3).contains(&parts.len()) && parts.iter().all(|p| digits(p, 2))
+            && parts[0].parse::<u32>().unwrap_or(99) < 24 && parts[1].parse::<u32>().unwrap_or(99) < 60
+    };
+    let (core, zone) = match s.find(|c| c == 'Z' || c == '+') {
+        Some(i) => (&s[..i], Some(&s[i..])),
+        None => match s.rfind('-') {
+            Some(i) if s.contains('T') && i > s.find('T').unwrap_or(0) => (&s[..i], Some(&s[i..])),
+            _ => (s, None),
+        },
+    };
+    match name {
+        "date" => if is_date(s) { Ok(Val::Opaque("date".to_string())) } else { Err(Stop::Exception("22G05".to_string())) },
+        "local time" => if is_time(s) { Ok(Val::Opaque("local time".to_string())) } else { Err(Stop::Exception("22G05".to_string())) },
+        "zoned time" => match zone {
+            Some(_) if is_time(core) => Ok(Val::Opaque("zoned time".to_string())),
+            None if is_time(core) => unsupported("a zoned time without an offset: the default zone is implementation-defined"),
+            _ => Err(Stop::Exception("22G05".to_string())),
+        },
+        "local datetime" | "zoned datetime" => {
+            let Some((d, t)) = core.split_once('T') else { return Err(Stop::Exception("22G05".to_string())) };
+            if !is_date(d) || !is_time(t) {
+                return Err(Stop::Exception("22G05".to_string()));
+            }
+            if name == "local datetime" {
+                Ok(Val::Opaque("local datetime".to_string()))
+            } else if zone.is_some() {
+                Ok(Val::Opaque("zoned datetime".to_string()))
+            } else {
+                unsupported("a zoned datetime without an offset: the default zone is implementation-defined")
+            }
+        }
+        "duration" => if s.starts_with('P') || s.starts_with("-P") { Ok(Val::Opaque("duration".to_string())) } else { Err(Stop::Exception("22G05".to_string())) },
+        _ => unsupported(format!("a {name} of a string")),
+    }
 }
 
 /// The class of a temporal function's value, from its name and spelling.
@@ -3220,7 +3771,8 @@ fn check_declared_type(v: &Val, declared: &str) -> R<()> {
         }
         return Ok(());
     }
-    let base = t.trim_start_matches("TYPED").trim_start_matches("::").trim();
+    let base = t.replace(' ', "");
+    let base = base.trim_start_matches("TYPED").trim_start_matches("::");
     let family = |prefixes: &[&str]| prefixes.iter().any(|p| base.starts_with(p));
     let fits = match v {
         Val::Int(_) => family(&["INT", "SIGNED", "UINT", "USMALLINT", "UBIGINT", "SMALLINT", "BIGINT", "FLOAT", "DOUBLE", "REAL", "DECIMAL", "DEC", "ANY"]),
@@ -3252,10 +3804,40 @@ fn check_declared_type(v: &Val, declared: &str) -> R<()> {
     }
 }
 
+/// A stored property value from an evaluator value: the literal classes only.
+fn to_ir(v: &Val) -> R<Value> {
+    Ok(match v {
+        Val::Null => Value::Null,
+        Val::Bool(b) => Value::Bool(*b),
+        Val::Int(i) => Value::Int(*i),
+        Val::Float(f) => Value::Float(*f),
+        Val::Str(s) => Value::Str(s.clone()),
+        other => return unsupported(format!("a {} stored as a property", class_of(other))),
+    })
+}
+
 fn three(v: Option<bool>) -> Val {
     match v {
         Some(b) => Val::Bool(b),
         None => Val::Null,
+    }
+}
+
+impl Env<'_> {
+    /// 20.x arithmetic: exact with exact stays exact, anything with approximate is
+    /// approximate, null propagates; division of exact numerics with a remainder is as the
+    /// engine declares.
+    fn arithmetic(&self, op: &str, a: Val, b: Val) -> R<Val> {
+        if let (Val::Int(x), Val::Int(y), "/") = (&a, &b, op) {
+            if *y != 0 && x % y != 0 {
+                return match self.declared.exact_division.as_deref() {
+                    Some("truncate") => Ok(Val::Int(x / y)),
+                    Some("float") => Ok(Val::Float(*x as f64 / *y as f64)),
+                    _ => unsupported("division of exact numerics with a remainder: the scale is implementation-defined"),
+                };
+            }
+        }
+        arithmetic(op, a, b)
     }
 }
 

@@ -73,14 +73,30 @@ fn mutate(setup: &Value, miss: &Value) -> Value {
                 }
             }
         }
-        Some("drop_property") => {
+        Some("drop_property") | Some("change_property") => {
+            let change = miss["change"].as_str().unwrap_or("");
             for list in ["vertices", "relationships"] {
                 if let Some(xs) = s[list].as_array_mut() {
                     for x in xs.iter_mut() {
                         if x["id"].as_u64() == Some(id) {
                             if let (Some(props), Some(n)) = (x["properties"].as_object_mut(), &name) {
-                                props.remove(n);
+                                if change == "drop_property" {
+                                    props.remove(n);
+                                } else {
+                                    props.insert(n.clone(), miss["value"].clone());
+                                }
                             }
+                        }
+                    }
+                }
+            }
+        }
+        Some("add_label") => {
+            if let Some(vs) = s["vertices"].as_array_mut() {
+                for v in vs.iter_mut() {
+                    if v["id"].as_u64() == Some(id) {
+                        if let (Some(labels), Some(n)) = (v["labels"].as_array_mut(), &name) {
+                            labels.push(json!(n));
                         }
                     }
                 }
@@ -151,6 +167,17 @@ fn to_json(v: &QueryValue) -> Value {
 /// relative tolerance, lists and records element by element.
 fn matches(expected: &Value, got: &Value) -> bool {
     let (ek, gk) = (expected["kind"].as_str(), got["kind"].as_str());
+    if ek == Some("Opaque") {
+        // The oracle claims the class only: a non-null value of it.
+        let hint = expected["value"].as_str().unwrap_or("");
+        let text = got["value"].as_str().unwrap_or("");
+        return match hint {
+            "string" => gk == Some("Str"),
+            "bytes" => gk == Some("Other") && text.contains("Bytes"),
+            "duration" => gk == Some("Other") && text.contains("Duration"),
+            _ => gk == Some("Other") && text.contains("Temporal") && !text.contains("Duration"),
+        };
+    }
     if ek != gk {
         // An exact literal 1 against an engine's float 1.0 is a finding, not a match.
         return false;

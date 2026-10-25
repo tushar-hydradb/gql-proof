@@ -28,7 +28,7 @@ fn record(text: &str, mode: MatchModeDefault) -> Oracle {
         .parse(text, |n| syntax(n) && gql_proof::context::accepts(&typed, &n.export(&ISO)).is_ok())
         .or_else(|_| parser.parse(text, syntax))
         .unwrap_or_else(|e| panic!("{text}: {e}"));
-    oracle(text, &parsed.tree.export(&ISO), None, None, mode)
+    oracle(text, &parsed.tree.export(&ISO), None, None, mode, &Default::default())
 }
 
 /// A record whose expectation is backed by a theorem: the bag (theorem 2) or the witness
@@ -256,13 +256,13 @@ fn parameters_get_a_value_of_an_admitted_class() {
         .parse(text, |n| verifier.verify(&n.export(&ISO), &n.render(&ISO)).is_empty())
         .unwrap();
     let params = serde_json::json!([{ "name": "$b", "classes": ["exact"] }]);
-    let r = oracle(text, &parsed.tree.export(&ISO), None, Some(&params), MatchModeDefault::DifferentEdges);
+    let r = oracle(text, &parsed.tree.export(&ISO), None, Some(&params), MatchModeDefault::DifferentEdges, &Default::default());
     assert_eq!(r.parameters["b"], gql_proof::oracle::Value::Int(1));
     assert_ne!(r.expect.tier, Tier::Status, "{:?} {:?}", r.why, r.expect.evaluator);
-    let r = oracle(text, &parsed.tree.export(&ISO), None, None, MatchModeDefault::DifferentEdges);
+    let r = oracle(text, &parsed.tree.export(&ISO), None, None, MatchModeDefault::DifferentEdges, &Default::default());
     assert_eq!(r.expect.tier, Tier::Status);
     let params = serde_json::json!([{ "name": "$b", "classes": ["list"] }]);
-    let r = oracle(text, &parsed.tree.export(&ISO), None, Some(&params), MatchModeDefault::DifferentEdges);
+    let r = oracle(text, &parsed.tree.export(&ISO), None, Some(&params), MatchModeDefault::DifferentEdges, &Default::default());
     assert_eq!(r.expect.tier, Tier::Status);
 }
 
@@ -276,9 +276,48 @@ fn the_generation_record_is_checked_against_the_witness() {
         .parse(text, |n| verifier.verify(&n.export(&ISO), &n.render(&ISO)).is_empty())
         .unwrap();
     let agree = serde_json::json!([{ "name": "x", "decl": ["node"], "out": ["node"] }]);
-    let r = oracle(text, &parsed.tree.export(&ISO), Some(&agree), None, MatchModeDefault::DifferentEdges);
+    let r = oracle(text, &parsed.tree.export(&ISO), Some(&agree), None, MatchModeDefault::DifferentEdges, &Default::default());
     assert_ne!(r.expect.tier, Tier::Status);
     let disagree = serde_json::json!([{ "name": "x", "decl": ["edge"] }]);
-    let r = oracle(text, &parsed.tree.export(&ISO), Some(&disagree), None, MatchModeDefault::DifferentEdges);
+    let r = oracle(text, &parsed.tree.export(&ISO), Some(&disagree), None, MatchModeDefault::DifferentEdges, &Default::default());
     assert!(r.why.iter().any(|w| w.contains("generation record")), "{:?}", r.why);
+}
+
+#[test]
+fn data_modification_runs_on_the_evaluators_graph() {
+    // 13.2: the inserted node is in the record and in the graph.
+    let r = record("INSERT ( x : a { k : 1 } ) RETURN x . k AS k", MatchModeDefault::DifferentEdges);
+    assert_eq!(r.expect.tier, Tier::Bag, "{:?}", r.expect.evaluator);
+    assert_eq!(row(&r)["k"], serde_json::json!({ "kind": "Int", "value": 1 }));
+    let r = record("INSERT ( : a ) NEXT MATCH ( x : a ) RETURN COUNT ( * ) AS n", MatchModeDefault::DifferentEdges);
+    assert_eq!(row(&r)["n"], serde_json::json!({ "kind": "Int", "value": 1 }));
+    // 13.3, 13.4: a property set and removed.
+    let r = record("MATCH ( x ) SET x . k = 2 RETURN x . k AS k", MatchModeDefault::DifferentEdges);
+    assert_eq!(row(&r)["k"], serde_json::json!({ "kind": "Int", "value": 2 }));
+    let r = record("MATCH ( x : a { k : 1 } ) REMOVE x . k RETURN x . k IS NULL AS gone", MatchModeDefault::DifferentEdges);
+    assert_eq!(row(&r)["gone"], serde_json::json!({ "kind": "Bool", "value": true }));
+    // 13.5: a reference after DELETE is 22G11; an edge left on a deleted node is G1001;
+    // DETACH takes the edge along.
+    let r = record("MATCH ( x ) DELETE x RETURN x . k AS k", MatchModeDefault::DifferentEdges);
+    assert_eq!(r.expect.status.as_deref(), Some("22G11"));
+    let r = record("MATCH ( x : a ) -[ y ]-> ( z : b ) DELETE x RETURN 1 AS n", MatchModeDefault::DifferentEdges);
+    assert_eq!(r.expect.status.as_deref(), Some("G1001"));
+    let r = record("MATCH ( x : a ) -[ y ]-> ( z : b ) DETACH DELETE x NEXT MATCH ( v ) RETURN COUNT ( * ) AS n", MatchModeDefault::DifferentEdges);
+    assert_eq!(row(&r)["n"], serde_json::json!({ "kind": "Int", "value": 1 }));
+}
+
+#[test]
+fn inline_calls_and_statements_after_finish() {
+    // 15.2: the body runs on the record restricted to the scope; its rows join the record.
+    let r = record("RETURN 2 AS a NEXT CALL ( a ) { RETURN a + 1 AS b } RETURN a , b", MatchModeDefault::DifferentEdges);
+    assert_eq!(row(&r)["b"], serde_json::json!({ "kind": "Int", "value": 3 }));
+    // An omitted result leaves the record; OPTIONAL keeps a record with no rows.
+    let r = record("CALL { FINISH } NEXT RETURN 1 AS n", MatchModeDefault::DifferentEdges);
+    assert_eq!(row(&r)["n"], serde_json::json!({ "kind": "Int", "value": 1 }));
+    // 9.2 GR 3 a ii: after an omitted result the next statement starts on the unit table.
+    let r = record("FINISH NEXT RETURN 1 AS n", MatchModeDefault::DifferentEdges);
+    assert_eq!(r.expect.rows, Some(1));
+    // 22G05 for a date string that is not a date.
+    let r = record("ORDER BY DATE ( '2024-13-01' ) FINISH", MatchModeDefault::DifferentEdges);
+    assert_eq!(r.expect.status.as_deref(), Some("22G05"));
 }
