@@ -351,17 +351,30 @@ the text and by direct queries on a three node chain:
 these are findings against turbolay to file with the sentences and graphs;
 none is a reading the evaluator should change
 
-## near misses, as a corollary
+## near misses, as a corollary (built)
 
 for every element the witness uses, one change removes `b(P)` from `SLM(P)`:
 drop an edge (16 a fails), flip a directed edge (3 f iii fails), remove a label
-the model needs or add one a negation forbids (22.5 fails), move a property
-value off its literal (GR 9 fails), make a forced-equal node pair two nodes.
-theorem 1 then says the witness row is gone; whether another row appears is
-theorem 2's question. so near misses are reported as "the witness row must
-not appear" until the evaluator lands, then as full bags. this is xdata's and
-sqlfpc's adequacy criterion (every predicate true and false, null included)
-restricted to the pattern
+the model needs (22.5 fails), drop a property a predicate reads (GR 9 fails).
+theorem 1 says the witness row is gone; theorem 2 says what remains. each
+record of the bag tier carries `near_misses`: up to twelve one-element changes
+of its graph (`drop_edge`, `flip_edge`, `drop_label` where a label set keeps
+one, `drop_property` other than `_id`) with the whole result on the changed
+graph, computed by the evaluator (for a `FINISH` sentence, the observation
+query's). the probe applies each change to the loaded graph and compares the
+bag. this is xdata's and sqlfpc's adequacy criterion (every predicate true and
+false) restricted to the pattern; a label added where a negation forbids it
+and a property value moved off its literal are the two mutations not emitted
+yet
+
+on the 2-variable set: 5,426 near misses over 1,860 records (2,724 edges
+dropped, 2,700 flipped, 2 properties dropped: the set has few property
+predicates, and label sets of one). turbolay: 4,047 agree, 383 disagree, of
+which 376 are the multiset alternation family, 4 the `?` family, and 3 new:
+`MATCH x = <- RETURN x NEXT ORDER BY PATH_LENGTH ( x ) FINISH` finds the one
+edge in one orientation and not after it is flipped, where `( ) <- ( )` with
+anonymous ends matches a single edge either way. with the near misses the
+run has 6,439 agreements on turbolay from 3,800 sentences
 
 ## the ir and the setup statements
 

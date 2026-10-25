@@ -40,6 +40,57 @@ fn properties(v: &Value) -> BTreeMap<String, ScalarValue> {
         .unwrap_or_default()
 }
 
+/// The turbolay setup with one near miss applied (the oracle's `change`, `id`, `name`).
+fn mutate(setup: &Value, miss: &Value) -> Value {
+    let mut s = setup.clone();
+    let id = miss["id"].as_u64().unwrap_or(u64::MAX);
+    let name = miss["name"].as_str().map(str::to_string);
+    match miss["change"].as_str() {
+        Some("drop_edge") => {
+            if let Some(rels) = s["relationships"].as_array_mut() {
+                rels.retain(|r| r["id"].as_u64() != Some(id));
+            }
+        }
+        Some("flip_edge") => {
+            if let Some(rels) = s["relationships"].as_array_mut() {
+                for r in rels.iter_mut() {
+                    if r["id"].as_u64() == Some(id) {
+                        let (src, dst) = (r["source"].clone(), r["target"].clone());
+                        r["source"] = dst;
+                        r["target"] = src;
+                    }
+                }
+            }
+        }
+        Some("drop_label") => {
+            if let Some(vs) = s["vertices"].as_array_mut() {
+                for v in vs.iter_mut() {
+                    if v["id"].as_u64() == Some(id) {
+                        if let Some(labels) = v["labels"].as_array_mut() {
+                            labels.retain(|l| l.as_str() != name.as_deref());
+                        }
+                    }
+                }
+            }
+        }
+        Some("drop_property") => {
+            for list in ["vertices", "relationships"] {
+                if let Some(xs) = s[list].as_array_mut() {
+                    for x in xs.iter_mut() {
+                        if x["id"].as_u64() == Some(id) {
+                            if let (Some(props), Some(n)) = (x["properties"].as_object_mut(), &name) {
+                                props.remove(n);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    s
+}
+
 fn storage(setup: &Value) -> MemoryStorage {
     let vertices = setup["vertices"].as_array().cloned().unwrap_or_default();
     let relationships = setup["relationships"].as_array().cloned().unwrap_or_default();
@@ -308,6 +359,53 @@ async fn run_oracle_records() {
         if !observed.is_empty() {
             rows_json = observed;
         }
+        // Near misses: the same query on each changed graph, judged against its bag.
+        let mut misses: Vec<Value> = Vec::new();
+        if verdict == "agree" || verdict == "disagree" {
+            if let Some(list) = record["near_misses"].as_array() {
+                let query = if record["observe"].is_null() {
+                    sentence.clone()
+                } else {
+                    record["observe"]["query"].as_str().unwrap_or(&sentence).to_string()
+                };
+                for miss in list {
+                    let engine = CypherEngine::new(storage(&mutate(setup, miss)));
+                    let prepared = engine.prepare_with_lists(&query, &parameters, &ListParameterMap::new());
+                    let (v, d) = match prepared {
+                        Err(e) => ("refused", format!("{}: {e}", e.gql_status())),
+                        Ok(p) => {
+                            let run = tokio::time::timeout(Duration::from_secs(5), async {
+                                engine.execute_prepared_with_status(&p).await.map(|o| {
+                                    let columns: Vec<String> = o.result.columns.iter().map(|c| c.name.clone()).collect();
+                                    let rows: Vec<Vec<Value>> = o.result.rows.iter().map(|r| r.values.iter().map(to_json).collect()).collect();
+                                    (columns, rows)
+                                })
+                            })
+                            .await;
+                            match run {
+                                Err(_) => ("timeout", String::new()),
+                                Ok(Err(e)) => {
+                                    let status = e.gql_status().to_string();
+                                    if miss["outcome"] == json!("exception") && status.get(..2) == miss["status"].as_str().and_then(|s| s.get(..2)) {
+                                        ("agree", format!("raised {status}"))
+                                    } else {
+                                        ("disagree", format!("raised {status}: {e}"))
+                                    }
+                                }
+                                Ok(Ok((c, r))) => {
+                                    if miss["outcome"] == json!("exception") {
+                                        ("disagree", format!("expected {}, got {} rows", miss["status"], r.len()))
+                                    } else {
+                                        judge(miss, &c, &r)
+                                    }
+                                }
+                            }
+                        }
+                    };
+                    misses.push(json!({ "change": miss["change"], "id": miss["id"], "name": miss["name"], "verdict": v, "detail": d }));
+                }
+            }
+        }
         let shown: Vec<&Vec<Value>> = rows_json.iter().take(3).collect();
         let row = json!({
             "sentence": sentence,
@@ -318,6 +416,7 @@ async fn run_oracle_records() {
             "detail": detail,
             "columns": columns,
             "rows": shown,
+            "near_misses": misses,
         });
         writeln!(out, "{row}").unwrap();
     }

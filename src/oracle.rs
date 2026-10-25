@@ -138,8 +138,88 @@ pub struct Oracle {
     /// the generation record's `params`): sent with the query by the probes.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub parameters: BTreeMap<String, Value>,
+    /// The graph with one element changed, and the whole result on it (the bag tier's
+    /// corollary): every predicate made false once. On a `FINISH` sentence the result is the
+    /// observation query's.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub near_misses: Vec<NearMiss>,
     /// Why the row is not of the witness tier, or why the pattern cannot match.
     pub why: Vec<String>,
+}
+
+/// One change to the witness graph and what the query returns on it.
+#[derive(Serialize, Clone, Debug)]
+pub struct NearMiss {
+    /// `drop_edge`, `flip_edge`, `drop_label`, `drop_property`.
+    pub change: &'static str,
+    /// The element changed.
+    pub id: usize,
+    /// The label or property dropped.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub outcome: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rows: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bag: Option<Vec<eval::Row>>,
+}
+
+impl Graph {
+    /// Every one-element change of the graph: an edge dropped, a directed edge flipped, a
+    /// label dropped (never the last: label sets are non-empty), a property dropped (never
+    /// `_id`).
+    pub fn mutations(&self) -> Vec<(NearMiss, Graph)> {
+        let mut out = Vec::new();
+        let miss = |change, id, name: Option<String>| NearMiss {
+            change,
+            id,
+            name,
+            outcome: "ok",
+            status: None,
+            rows: None,
+            bag: None,
+        };
+        for (k, e) in self.edges.iter().enumerate() {
+            let mut g = self.clone();
+            g.edges.remove(k);
+            out.push((miss("drop_edge", e.id, None), g));
+            if e.directed {
+                let mut g = self.clone();
+                let flipped = &mut g.edges[k];
+                std::mem::swap(&mut flipped.source, &mut flipped.target);
+                out.push((miss("flip_edge", e.id, None), g));
+            }
+            for label in &e.labels {
+                if e.labels.len() > 1 {
+                    let mut g = self.clone();
+                    g.edges[k].labels.remove(label);
+                    out.push((miss("drop_label", e.id, Some(label.clone())), g));
+                }
+            }
+            for key in e.properties.keys().filter(|k| *k != ID_PROPERTY) {
+                let mut g = self.clone();
+                g.edges[k].properties.remove(key);
+                out.push((miss("drop_property", e.id, Some(key.clone())), g));
+            }
+        }
+        for (k, n) in self.nodes.iter().enumerate() {
+            for label in &n.labels {
+                if n.labels.len() > 1 {
+                    let mut g = self.clone();
+                    g.nodes[k].labels.remove(label);
+                    out.push((miss("drop_label", n.id, Some(label.clone())), g));
+                }
+            }
+            for key in n.properties.keys().filter(|k| *k != ID_PROPERTY) {
+                let mut g = self.clone();
+                g.nodes[k].properties.remove(key);
+                out.push((miss("drop_property", n.id, Some(key.clone())), g));
+            }
+        }
+        out
+    }
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -1879,6 +1959,43 @@ pub fn oracle(
         }
         _ => None,
     };
+    // Near misses: the evaluator on every one-element change, up to a handful.
+    let mut near_misses = Vec::new();
+    if expect.tier == Tier::Bag && !graph.nodes.is_empty() {
+        let finish = !expect.result;
+        for (mut miss, mutated) in graph.mutations().into_iter().take(12) {
+            let outcome = if finish {
+                eval::evaluate_observing(tree, &mutated, &parameters, mode_default)
+            } else {
+                eval::evaluate(tree, &mutated, &parameters, mode_default)
+            };
+            match outcome {
+                Ok(eval::Outcome::Table(table)) => {
+                    miss.rows = Some(table.rows.len());
+                    // An observation of a FINISH without variables is `RETURN 1 AS n`.
+                    miss.bag = Some(if finish && expect.binding.is_empty() {
+                        table
+                            .rows
+                            .into_iter()
+                            .map(|_| BTreeMap::from([("n".to_string(), eval::Val::Int(1))]))
+                            .collect()
+                    } else {
+                        table.rows
+                    });
+                }
+                Ok(eval::Outcome::NoResult) => {
+                    miss.rows = Some(0);
+                    miss.bag = Some(Vec::new());
+                }
+                Ok(eval::Outcome::Exception(status)) => {
+                    miss.outcome = "exception";
+                    miss.status = Some(status);
+                }
+                Err(_) => continue,
+            }
+            near_misses.push(miss);
+        }
+    }
     Oracle {
         sentence: sentence.to_string(),
         graph,
@@ -1886,6 +2003,7 @@ pub fn oracle(
         expect,
         observe,
         parameters,
+        near_misses,
         why,
     }
 }

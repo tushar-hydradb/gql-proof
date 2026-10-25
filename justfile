@@ -131,4 +131,6 @@ turbolay-oracle worktree oracle="target/engines/oracle-typed.jsonl":
     rows = [json.loads(l) for l in open(sys.argv[1])]
     c = collections.Counter(r["verdict"] for r in rows)
     for k, n in c.most_common(): print(f"{n:6}  {k}")
+    m = collections.Counter(x["verdict"] for r in rows for x in r.get("near_misses", []))
+    if m: print("near misses: " + ", ".join(f"{n} {k}" for k, n in m.most_common()))
     PY
