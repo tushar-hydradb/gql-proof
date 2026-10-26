@@ -47,6 +47,14 @@ and `tools/inventory/violations.py` read them as they are
   cover, were 2,990 and 4,943), the never-covered counts unchanged at 153 and
   333. turbolay #243 (484d1a72) results in
   `research/static-semantics-path-minimums-2026-10-23.md`
+- `typed-3vars-turbolay-claim.jsonl`: the first complete three variable set.
+  the path minimums command with `--slots 3 --parallel` on `tushar/three-vars`
+  (2026-10-25, 2b759d3, main at 51d059a underneath). 3,857 rows, 3,823
+  distinct, 152 s, 6.3 GB peak. never covered: 141 productions and 305 cdrc
+  pairs, the counts `research/never-targets-2026-10-23.md` predicted from the
+  two variable audit (153 and 333 at two). 4 trees flagged by the types
+  checker only (`x + NULL` as a TRIM count), as at two. how the run got from
+  stalling to this: `research/three-variables-fast-2026-10-25.md`
 - `typed-2vars-whole-grammar-before-258437a.jsonl`: types under scope, 2
   variables, whole grammar (no claim), before extraction took the smallest
   context first. 1,228 distinct, each with the `targets` it covers. kept for

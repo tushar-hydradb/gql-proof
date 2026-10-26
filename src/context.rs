@@ -33,7 +33,8 @@ pub mod types;
 pub use live::{FactSpec, Masks};
 
 use stats::{ProdStats, RoundStats, Stats};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 
 use crate::cfg::{Cfg, Nonterminal, NtId, ProdId, Production, Sym};
 use crate::refine::{Item, Node, items_of};
@@ -41,6 +42,7 @@ use crate::tree;
 use crate::verify::Plain;
 use anyhow::{Result, bail};
 use petgraph::unionfind::UnionFind;
+use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fmt::Debug;
 use std::time::{Duration, Instant};
@@ -54,9 +56,10 @@ pub type Slot = u8;
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Link(pub Vec<Option<Slot>>);
 
-/// A context-sensitive rule over synthesized labels.
-pub trait Context {
-    type Label: Clone + Ord + Debug;
+/// A context-sensitive rule over synthesized labels. Shared across threads: productions are
+/// scanned in parallel once the fixed point is done.
+pub trait Context: Sync {
+    type Label: Clone + Ord + Debug + Send + Sync;
     fn name(&self) -> &str;
     /// How many slots `label` holds.
     fn slots(&self, label: &Self::Label) -> usize;
@@ -109,6 +112,11 @@ pub trait Context {
     /// made.
     fn within(&self, a: &Self::Label, b: &Self::Label) -> bool {
         a == b
+    }
+    /// Whether some ground label lies within both `a` and `b`. Two labels that overlap have
+    /// the same join key.
+    fn overlaps(&self, a: &Self::Label, b: &Self::Label) -> bool {
+        self.within(a, b) || self.within(b, a)
     }
     /// A key of partial label `partial` before the child at `pos`, for [`Context::compatible`].
     fn partial_key(&self, _node: &Node, _pos: usize, _partial: &Self::Label) -> u64 {
@@ -163,6 +171,38 @@ impl<L> Keyed<L> {
             .filter(move |(k, _)| ctx.compatible(node, pos, partial, **k))
             .flat_map(|(_, v)| v)
     }
+
+    /// As `compatible`, each option with its index among all of them in group order.
+    fn compatible_indexed<'s, C: Context<Label = L>>(
+        &'s self,
+        ctx: &'s C,
+        node: &'s Node<'s>,
+        pos: usize,
+        partial: u64,
+    ) -> impl Iterator<Item = (u32, &'s (Opt<L>, u64))> {
+        self.by
+            .iter()
+            .scan(0u32, |base, (k, v)| {
+                let at = *base;
+                *base += v.len() as u32;
+                Some((at, k, v))
+            })
+            .filter(move |(_, k, _)| ctx.compatible(node, pos, partial, **k))
+            .flat_map(|(at, _, v)| v.iter().enumerate().map(move |(i, o)| (at + i as u32, o)))
+    }
+
+    /// Every option and its size by the index `compatible_indexed` gives it.
+    fn indexed(&self) -> Vec<(&Opt<L>, u64)> {
+        self.by.values().flatten().map(|(o, s)| (o, *s)).collect()
+    }
+
+    /// Every option, in group order: what `compatible_indexed` indexes.
+    fn flat(&self) -> Vec<(Opt<L>, u64)>
+    where
+        L: Clone,
+    {
+        self.by.values().flatten().cloned().collect()
+    }
 }
 
 /// What [`Context::project`] makes of a label.
@@ -190,6 +230,12 @@ pub struct Options {
     pub join: bool,
     /// Pairs whose keys the rule says are incompatible are not pushed.
     pub keys: bool,
+    /// The fixed point's rounds scan their productions on every core, each against the
+    /// labels as the round began; what they found is added after, in production order.
+    /// Without it a scan sees what the scans before it in the round added. The labels a join
+    /// keeps can differ between the two (joins depend on the order labels come in); what
+    /// they stand for does not.
+    pub parallel: bool,
 }
 
 impl Default for Options {
@@ -203,6 +249,7 @@ impl Default for Options {
             single_pass: true,
             join: false,
             keys: false,
+            parallel: false,
         }
     }
 }
@@ -430,19 +477,155 @@ impl<'a, C: Context> Engine<'a, C> {
     }
 
     fn prod_stats<'s>(&self, stats: &'s mut Stats, p: ProdId) -> &'s mut ProdStats {
-        stats.prods.entry(p).or_insert_with(|| ProdStats {
-            describe: crate::describe(self.cfg, p),
-            ..ProdStats::default()
-        })
+        prod_stats(self.cfg, stats, p)
+    }
+
+    /// What a scan reads of the engine, shareable across threads.
+    fn view(&self) -> Scan<'_, 'a, C> {
+        Scan {
+            cfg: self.cfg,
+            ctx: self.ctx,
+            keys: self.options.keys,
+            shapes: &self.shapes,
+            labels: &self.labels,
+            order: &self.order,
+            subsumed: &self.subsumed,
+            masks: self.masks.as_deref(),
+            inner: false,
+        }
+    }
+
+    /// [`Scan::finish`], counted in the engine's stats.
+    fn finish(&self, p: ProdId, node: &Node, partial: &C::Label) -> Vec<(C::Label, Link)> {
+        self.view()
+            .finish(&mut self.stats.borrow_mut(), p, node, partial)
+    }
+
+    fn node(&self, p: ProdId) -> Node<'_> {
+        self.view().node(p)
+    }
+
+    /// The options at a right hand side position, with their sizes.
+    fn options(&self, sym: Sym) -> Vec<(Opt<C::Label>, u64)> {
+        self.view().options(sym)
+    }
+
+    /// [`Scan::push`], counted in the engine's stats.
+    fn push(
+        &self,
+        p: ProdId,
+        node: &Node,
+        pos: usize,
+        partial: &C::Label,
+        o: &Opt<C::Label>,
+    ) -> Vec<(C::Label, Link)> {
+        self.view()
+            .push(&mut self.stats.borrow_mut(), p, node, pos, partial, o)
+    }
+
+    /// `options` at `pos` of `node`, grouped by the rule's key.
+    fn keyed(
+        &self,
+        node: &Node,
+        pos: usize,
+        options: Vec<(Opt<C::Label>, u64)>,
+    ) -> Keyed<C::Label> {
+        self.view().keyed(node, pos, options)
+    }
+
+    /// The key of `partial` before `pos`, if the options there are in more than one group.
+    fn partial_key(
+        &self,
+        node: &Node,
+        pos: usize,
+        options: &Keyed<C::Label>,
+        partial: &C::Label,
+    ) -> u64 {
+        self.view().partial_key(node, pos, options, partial)
+    }
+}
+
+/// `f` over `items` on one plain thread per core, each taking the next item in order; the
+/// results in the items' order. Scans run here and split their pushes over rayon's pool: a
+/// thread outside the pool waiting for its pushes blocks, where a pool thread would take up
+/// another scan meanwhile and nest it on its stack.
+pub(crate) fn map_ordered<T: Send, R: Send>(items: Vec<T>, f: impl Fn(T) -> R + Sync) -> Vec<R> {
+    let n = items.len();
+    let items: Vec<std::sync::Mutex<Option<T>>> = items
+        .into_iter()
+        .map(|t| std::sync::Mutex::new(Some(t)))
+        .collect();
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let workers = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(n.max(1));
+    let mut out: Vec<(usize, R)> = std::thread::scope(|s| {
+        let handles: Vec<_> = (0..workers)
+            .map(|_| {
+                s.spawn(|| {
+                    let mut done = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        if i >= n {
+                            return done;
+                        }
+                        let item = items[i].lock().expect("unpoisoned").take().expect("once");
+                        done.push((i, f(item)));
+                    }
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().expect("a scan panicked"))
+            .collect()
+    });
+    out.sort_by_key(|(i, _)| *i);
+    out.into_iter().map(|(_, r)| r).collect()
+}
+
+/// The per production stats entry, made on first use.
+fn prod_stats<'s>(cfg: &Cfg, stats: &'s mut Stats, p: ProdId) -> &'s mut ProdStats {
+    stats.prods.entry(p).or_insert_with(|| ProdStats {
+        describe: crate::describe(cfg, p),
+        ..ProdStats::default()
+    })
+}
+
+/// What a scan of a production reads of the engine: the grammar, the rule and the labels,
+/// none of it changed by a scan, so scans run on several threads at once once the fixed
+/// point is done. Each counts into stats it is given.
+struct Scan<'e, 'a, C: Context> {
+    cfg: &'a Cfg,
+    ctx: &'a C,
+    keys: bool,
+    shapes: &'e [Vec<Item<'a>>],
+    labels: &'e [BTreeMap<C::Label, u64>],
+    order: &'e [Vec<C::Label>],
+    subsumed: &'e [BTreeSet<C::Label>],
+    masks: Option<&'e [Masks]>,
+    /// One scan's pushes on several threads too: only for scans run by [`map_ordered`].
+    inner: bool,
+}
+
+impl<'e, 'a, C: Context> Scan<'e, 'a, C> {
+    fn live(&self, nt: usize, l: &C::Label) -> bool {
+        !self.subsumed[nt].contains(l)
     }
 
     /// The rule's `finish` for production `p`, counted, each label then projected to what is
     /// still read above `p`'s left hand side.
-    fn finish(&self, p: ProdId, node: &Node, partial: &C::Label) -> Vec<(C::Label, Link)> {
+    fn finish(
+        &self,
+        stats: &mut Stats,
+        p: ProdId,
+        node: &Node,
+        partial: &C::Label,
+    ) -> Vec<(C::Label, Link)> {
         let began = Instant::now();
         let mut out = self.ctx.finish(node, partial);
         let (mut projected, mut doomed) = (0, 0);
-        if let Some(masks) = &self.masks {
+        if let Some(masks) = self.masks {
             let m = masks[self.cfg.prods[p as usize].lhs as usize];
             out = out
                 .into_iter()
@@ -486,16 +669,19 @@ impl<'a, C: Context> Engine<'a, C> {
             let mut seen = BTreeSet::new();
             out.retain(|(l, _)| seen.insert(l.clone()));
         }
-        let mut stats = self.stats.borrow_mut();
         stats.projected += projected;
         stats.doomed += doomed;
-        let d = stats.defs.entry(node.def.to_string()).or_default();
+        if !stats.defs.contains_key(node.def) {
+            stats.defs.insert(node.def.to_string(), Default::default());
+        }
+        let d = stats.defs.get_mut(node.def).expect("inserted above");
         d.finishes += 1;
         d.finished += out.len() as u64;
         d.finish_nanos += began.elapsed().as_nanos() as u64;
         out
     }
-    fn node(&self, p: ProdId) -> Node<'_> {
+
+    fn node(&self, p: ProdId) -> Node<'e> {
         let lhs = &self.cfg.nts[self.cfg.prods[p as usize].lhs as usize];
         Node {
             def: &lhs.base,
@@ -521,13 +707,14 @@ impl<'a, C: Context> Engine<'a, C> {
     /// the rule's keys rule out is skipped, not pushed.
     fn push(
         &self,
+        stats: &mut Stats,
         p: ProdId,
         node: &Node,
         pos: usize,
         partial: &C::Label,
         o: &Opt<C::Label>,
     ) -> Vec<(C::Label, Link)> {
-        if self.options.keys
+        if self.keys
             && let Opt::Label(child) = o
             && !self.ctx.compatible(
                 node,
@@ -536,7 +723,7 @@ impl<'a, C: Context> Engine<'a, C> {
                 self.ctx.child_key(node, pos, child),
             )
         {
-            self.stats.borrow_mut().skipped += 1;
+            stats.skipped += 1;
             return Vec::new();
         }
         let began = Instant::now();
@@ -545,12 +732,16 @@ impl<'a, C: Context> Engine<'a, C> {
             Opt::Label(l) => self.ctx.push(node, pos, partial, Some(l)),
         };
         let nanos = began.elapsed().as_nanos() as u64;
-        let mut stats = self.stats.borrow_mut();
-        let d = stats.defs.entry(node.def.to_string()).or_default();
+        // Looked up by the borrowed name: a push is the hot path, and the name is allocated
+        // only the first time.
+        if !stats.defs.contains_key(node.def) {
+            stats.defs.insert(node.def.to_string(), Default::default());
+        }
+        let d = stats.defs.get_mut(node.def).expect("inserted above");
         d.pushes += 1;
         d.pushed += out.len() as u64;
         d.push_nanos += nanos;
-        let ps = self.prod_stats(&mut stats, p);
+        let ps = prod_stats(self.cfg, stats, p);
         ps.pushes += 1;
         ps.pushed += out.len() as u64;
         out
@@ -567,7 +758,7 @@ impl<'a, C: Context> Engine<'a, C> {
         let mut by = BTreeMap::<u64, Vec<_>>::new();
         for (o, size) in options {
             let key = match &o {
-                Opt::Label(l) if self.options.keys => self.ctx.child_key(node, pos, l),
+                Opt::Label(l) if self.keys => self.ctx.child_key(node, pos, l),
                 _ => 0,
             };
             by.entry(key).or_default().push((o, size));
@@ -588,6 +779,290 @@ impl<'a, C: Context> Engine<'a, C> {
         } else {
             0
         }
+    }
+
+    /// [`Engine::layers`], with every step it took recorded as a [`Graph`]: the backward
+    /// passes over the layers that follow (tables, the closure, the options a walk needs)
+    /// then read the steps instead of pushing again.
+    fn layers_graph(&self, stats: &mut Stats, p: ProdId) -> (Layers<C::Label>, Graph<C::Label>) {
+        let _span = tracing::debug_span!("layers", p).entered();
+        let began = Instant::now();
+        let node = self.node(p);
+        let mut layers = vec![BTreeMap::from([(self.ctx.empty(&node), (1, None))])];
+        let mut opts = Vec::new();
+        let mut steps = Vec::new();
+        let mut links: Vec<Link> = Vec::new();
+        let mut link_ids: HashMap<Link, u32> = HashMap::new();
+        for (pos, &sym) in self.cfg.prods[p as usize].rhs.iter().enumerate() {
+            let options = self.keyed(&node, pos, self.options(sym));
+            let mut next: BTreeMap<C::Label, Back<C::Label>> = BTreeMap::new();
+            // Partial labels after this position numbered as they appear, renumbered in the
+            // layer's order once it is complete.
+            let mut seen: BTreeMap<C::Label, u32> = BTreeMap::new();
+            let mut here: Vec<Step> = Vec::new();
+            let refs: Vec<&C::Label> = layers[pos].keys().collect();
+            let costs: Vec<u64> = layers[pos].values().map(|(c, _)| *c).collect();
+            let indexed = options.indexed();
+            self.steps_from(stats, p, &node, pos, &options, &refs, |i, oi, q, link| {
+                let (o, size) = indexed[oi as usize];
+                let fresh = seen.len() as u32;
+                let at = *seen.entry(q.clone()).or_insert(fresh);
+                let li = *link_ids.entry(link.clone()).or_insert_with(|| {
+                    links.push(link.clone());
+                    links.len() as u32 - 1
+                });
+                here.push(Step {
+                    partial: i as u32,
+                    opt: oi,
+                    next: at,
+                    link: li,
+                });
+                let c = costs[i] + size;
+                if next.get(&q).is_none_or(|(old, _)| c < *old) {
+                    next.insert(q, (c, Some((refs[i].clone(), o.clone(), link))));
+                }
+            });
+            let mut rank = vec![0u32; seen.len()];
+            for (order, (_, at)) in seen.iter().enumerate() {
+                rank[*at as usize] = order as u32;
+            }
+            for s in &mut here {
+                s.next = rank[s.next as usize];
+            }
+            opts.push(options.flat());
+            steps.push(here);
+            layers.push(next);
+        }
+        let n = steps.len();
+        let finished = layers[n]
+            .keys()
+            .map(|q| self.finish(stats, p, &node, q))
+            .collect();
+        let ps = prod_stats(self.cfg, stats, p);
+        ps.scans += 1;
+        ps.nanos += began.elapsed().as_nanos() as u64;
+        for l in &layers {
+            ps.partials_max = ps.partials_max.max(l.len());
+            ps.partials_total += l.len() as u64;
+        }
+        let sizes = layers.iter().map(BTreeMap::len).collect();
+        (
+            layers,
+            Graph {
+                sizes,
+                opts,
+                steps,
+                links,
+                finished,
+            },
+        )
+    }
+
+    /// For each label `p` gives, the complete partial label of its smallest instance and the
+    /// finishing link, read off the graph's finishes.
+    fn ends(&self, layers: &Layers<C::Label>, g: &Graph<C::Label>) -> Ends<C::Label> {
+        let mut out: Ends<C::Label> = BTreeMap::new();
+        for ((q, (cost, _)), finished) in layers.last().unwrap().iter().zip(&g.finished) {
+            for (l, link) in finished {
+                if out.get(l).is_none_or(|(c, _, _)| cost < c) {
+                    out.insert(l.clone(), (*cost, q.clone(), link.clone()));
+                }
+            }
+        }
+        out
+    }
+}
+
+impl<'a, C: Context> Engine<'a, C> {
+    /// Per partial label after each position, by index: the cost of its cheapest completion
+    /// to a finished label `target` takes, and how (the step's index, or at the end the
+    /// finish's); the first cheapest in the scan's order, as [`Engine::ahead`] keeps it.
+    fn graph_back(
+        &self,
+        g: &Graph<C::Label>,
+        target: impl Fn(&C::Label) -> bool,
+    ) -> Vec<Vec<Option<(u64, u32)>>> {
+        let n = g.steps.len();
+        let mut best: Vec<Vec<Option<(u64, u32)>>> = vec![Vec::new(); n + 1];
+        best[n] = g
+            .finished
+            .iter()
+            .map(|fs| {
+                fs.iter()
+                    .position(|(l, _)| target(l))
+                    .map(|k| (0, k as u32))
+            })
+            .collect();
+        for pos in (0..n).rev() {
+            let mut here: Vec<Option<(u64, u32)>> = vec![None; g.sizes[pos]];
+            for (si, s) in g.steps[pos].iter().enumerate() {
+                let Some((rest, _)) = best[pos + 1][s.next as usize] else {
+                    continue;
+                };
+                let c = g.opts[pos][s.opt as usize].1 + rest;
+                let h = &mut here[s.partial as usize];
+                if h.is_none_or(|(b, _)| c < b) {
+                    *h = Some((c, si as u32));
+                }
+            }
+            best[pos] = here;
+        }
+        best
+    }
+
+    /// [`Engine::ahead`] read off the graph.
+    fn graph_ahead(
+        &self,
+        layers: &Layers<C::Label>,
+        g: &Graph<C::Label>,
+        target: impl Fn(&C::Label) -> bool,
+    ) -> AheadTable<C::Label> {
+        let best = self.graph_back(g, target);
+        let n = g.steps.len();
+        let keys: Vec<Vec<&C::Label>> = layers.iter().map(|l| l.keys().collect()).collect();
+        let mut ahead: Vec<Ahead<C::Label>> = vec![BTreeMap::new(); n + 1];
+        let mut ends = BTreeMap::new();
+        for (i, b) in best[n].iter().enumerate() {
+            if let Some((_, k)) = b {
+                let (l, link) = &g.finished[i][*k as usize];
+                ahead[n].insert(keys[n][i].clone(), (0, None, link.clone()));
+                ends.insert(keys[n][i].clone(), l.clone());
+            }
+        }
+        for pos in 0..n {
+            for (i, b) in best[pos].iter().enumerate() {
+                if let Some((c, si)) = b {
+                    let s = g.steps[pos][*si as usize];
+                    ahead[pos].insert(
+                        keys[pos][i].clone(),
+                        (
+                            *c,
+                            Some((
+                                g.opts[pos][s.opt as usize].0.clone(),
+                                keys[pos + 1][s.next as usize].clone(),
+                                g.links[s.link as usize].clone(),
+                            )),
+                            Link::default(),
+                        ),
+                    );
+                }
+            }
+        }
+        AheadTable { ahead, ends }
+    }
+
+    /// What [`Engine::instances`] gives without the instances: for every position and every
+    /// option there that `open` asks for, the label the smallest instance of `p` taking it
+    /// gives, among those `target` accepts. The choice per option is the one `taking` makes,
+    /// ties included: partial labels in order, each one's steps in order, the first cheapest
+    /// kept.
+    fn graph_cheapest_ends(
+        &self,
+        layers: &Layers<C::Label>,
+        g: &Graph<C::Label>,
+        target: impl Fn(&C::Label) -> bool,
+        open: impl Fn(usize, &Opt<C::Label>) -> bool,
+    ) -> Vec<(Choice<C::Label>, C::Label)> {
+        let n = g.steps.len();
+        let wanted: Vec<Vec<bool>> = (0..n)
+            .map(|pos| g.opts[pos].iter().map(|(o, _)| open(pos, o)).collect())
+            .collect();
+        if wanted.iter().all(|w| !w.contains(&true)) {
+            self.stats.borrow_mut().emit.backward_skipped += 1;
+            return Vec::new();
+        }
+        self.stats.borrow_mut().emit.backward_runs += 1;
+        let best = self.graph_back(g, target);
+        // Per partial label after each position: the finished label its cheapest completion
+        // gives, as (complete partial label, finish).
+        let mut end: Vec<Vec<Option<(u32, u32)>>> = vec![Vec::new(); n + 1];
+        end[n] = best[n]
+            .iter()
+            .enumerate()
+            .map(|(i, b)| b.map(|(_, k)| (i as u32, k)))
+            .collect();
+        for pos in (0..n).rev() {
+            end[pos] = best[pos]
+                .iter()
+                .map(|b| {
+                    b.and_then(|(_, si)| end[pos + 1][g.steps[pos][si as usize].next as usize])
+                })
+                .collect();
+        }
+        let mut out = Vec::new();
+        for pos in 0..n {
+            let costs: Vec<u64> = layers[pos].values().map(|(c, _)| *c).collect();
+            // Per option: the cheapest whole instance taking it here, first in scan order.
+            let mut chosen: Vec<Option<(u64, (u32, u32))>> = vec![None; g.opts[pos].len()];
+            for s in &g.steps[pos] {
+                if !wanted[pos][s.opt as usize] {
+                    continue;
+                }
+                let Some((rest, _)) = best[pos + 1][s.next as usize] else {
+                    continue;
+                };
+                let whole = costs[s.partial as usize] + g.opts[pos][s.opt as usize].1 + rest;
+                let ch = &mut chosen[s.opt as usize];
+                if ch.is_none_or(|(b, _)| whole < b) {
+                    let e = end[pos + 1][s.next as usize].expect("a completion has an end");
+                    *ch = Some((whole, e));
+                }
+            }
+            // In the order `instances` lists them: the options as `options` gives them.
+            let mut found: Vec<(&Opt<C::Label>, (u32, u32))> = chosen
+                .iter()
+                .enumerate()
+                .filter_map(|(oi, ch)| ch.map(|(_, e)| (&g.opts[pos][oi].0, e)))
+                .collect();
+            found.sort_by(|a, b| a.0.cmp(b.0));
+            for (o, (i, k)) in found {
+                out.push((
+                    (pos, o.clone()),
+                    g.finished[i as usize][k as usize].0.clone(),
+                ));
+            }
+        }
+        out
+    }
+
+    /// Per position of `p`, the options some instance takes there that ends in a label
+    /// `target` accepts. With `target` the labels a ground label overlaps, a ground tree of
+    /// `p` within that label takes at each position a ground of one of these: its children's
+    /// options make an instance whose partial labels hold the tree's, and whose end holds
+    /// its label.
+    fn graph_useful(
+        &self,
+        g: &Graph<C::Label>,
+        target: impl Fn(&C::Label) -> bool,
+    ) -> Vec<BTreeSet<Opt<C::Label>>> {
+        let began = Instant::now();
+        let n = g.steps.len();
+        let mut useful = vec![BTreeSet::new(); n];
+        let mut next: Vec<bool> = g
+            .finished
+            .iter()
+            .map(|fs| fs.iter().any(|(l, _)| target(l)))
+            .collect();
+        for pos in (0..n).rev() {
+            let mut here = vec![false; g.sizes[pos]];
+            let mut taken = vec![false; g.opts[pos].len()];
+            for s in &g.steps[pos] {
+                if next[s.next as usize] {
+                    here[s.partial as usize] = true;
+                    taken[s.opt as usize] = true;
+                }
+            }
+            for (oi, t) in taken.iter().enumerate() {
+                if *t {
+                    useful[pos].insert(g.opts[pos][oi].0.clone());
+                }
+            }
+            next = here;
+        }
+        let mut stats = self.stats.borrow_mut();
+        stats.emit.useful_runs += 1;
+        stats.emit.useful_nanos += began.elapsed().as_nanos() as u64;
+        useful
     }
 
     /// Every partial label reachable after each position of `p`, with its smallest size and
@@ -629,13 +1104,115 @@ impl<'a, C: Context> Engine<'a, C> {
     /// what involves a child label new since the last one (a new partial label with every
     /// option, an old one with the new options).
     fn scan(&self, p: ProdId) -> BTreeMap<C::Label, u64> {
+        let kept = self.cache.borrow_mut().remove(&p);
+        let (kept, out) = self.view().scan(&mut self.stats.borrow_mut(), p, kept);
+        self.cache.borrow_mut().insert(p, kept);
+        out
+    }
+
+    /// `p`'s partial labels as the fixed point left them, for emission.
+    fn kept_layers(&self, p: ProdId) -> Layers<C::Label> {
+        match self.cache.borrow_mut().remove(&p) {
+            Some(k) if k.layers.len() == self.cfg.prods[p as usize].rhs.len() + 1 => k.layers,
+            _ => self.layers(p),
+        }
+    }
+}
+
+impl<'e, 'a, C: Context> Scan<'e, 'a, C> {
+    /// Every step from each of `partials` at `pos` of `p` with the options the keys allow
+    /// there, handed to `apply` in order: the partial label's index in `partials`, the
+    /// option's index in group order, the partial label after, the link. Many partial labels
+    /// are pushed on several threads, a batch at a time, in chunks whose results come back
+    /// in order, so what `apply` builds is what one thread builds; a batch bounds what is
+    /// held at once.
+    fn steps_from(
+        &self,
+        stats: &mut Stats,
+        p: ProdId,
+        node: &Node,
+        pos: usize,
+        options: &Keyed<C::Label>,
+        partials: &[&C::Label],
+        mut apply: impl FnMut(usize, u32, C::Label, Link),
+    ) {
+        // Small: one partial label meets thousands of options at the widest positions, so a
+        // batch's results are its partial labels times that.
+        const BATCH: usize = 128;
+        let mut at = 0;
+        for batch in partials.chunks(BATCH) {
+            for (i, found) in self
+                .steps_batch(stats, p, node, pos, options, batch)
+                .into_iter()
+                .enumerate()
+            {
+                for (oi, q, link) in found {
+                    apply(at + i, oi, q, link);
+                }
+            }
+            at += batch.len();
+        }
+    }
+
+    /// [`Scan::steps_from`] for one batch, its steps returned per partial label.
+    fn steps_batch(
+        &self,
+        stats: &mut Stats,
+        p: ProdId,
+        node: &Node,
+        pos: usize,
+        options: &Keyed<C::Label>,
+        partials: &[&C::Label],
+    ) -> Vec<Vec<(u32, C::Label, Link)>> {
+        const CHUNK: usize = 8;
+        let run = |chunk: &[&C::Label], stats: &mut Stats| {
+            let mut out = Vec::with_capacity(chunk.len());
+            for &partial in chunk {
+                let key = self.partial_key(node, pos, options, partial);
+                let mut here = Vec::new();
+                for (oi, (o, _)) in options.compatible_indexed(self.ctx, node, pos, key) {
+                    for (q, link) in self.push(stats, p, node, pos, partial, o) {
+                        here.push((oi, q, link));
+                    }
+                }
+                out.push(here);
+            }
+            out
+        };
+        if !self.inner || partials.len() < 2 * CHUNK {
+            return run(partials, stats);
+        }
+        // On rayon's pool, from a scan on a thread of its own ([`map_ordered`]).
+        let chunks: Vec<_> = partials
+            .par_chunks(CHUNK)
+            .map(|chunk| {
+                let mut stats = Stats::default();
+                let out = run(chunk, &mut stats);
+                (out, stats)
+            })
+            .collect();
+        let mut out = Vec::with_capacity(partials.len());
+        for (found, s) in chunks {
+            stats.absorb(s);
+            out.extend(found);
+        }
+        out
+    }
+
+    /// [`Engine::scan`], given `p`'s kept partial labels (none before its first scan) and
+    /// handing them back.
+    fn scan(
+        &self,
+        stats: &mut Stats,
+        p: ProdId,
+        kept: Option<Kept<C::Label>>,
+    ) -> (Kept<C::Label>, BTreeMap<C::Label, u64>) {
         let _span = tracing::debug_span!("scan", p).entered();
         let began = Instant::now();
         let node = self.node(p);
         let rhs = &self.cfg.prods[p as usize].rhs;
-        let mut cache = self.cache.borrow_mut();
-        let first = !cache.contains_key(&p);
-        let kept = cache.entry(p).or_insert_with(|| Kept {
+        let first = kept.is_none();
+        let mut kept = kept.unwrap_or_else(|| Kept {
             layers: vec![BTreeMap::from([(self.ctx.empty(&node), (1, None))])],
             seen: vec![0; rhs.len()],
         });
@@ -677,28 +1254,22 @@ impl<'a, C: Context> Engine<'a, C> {
                 if options.len == 0 {
                     continue;
                 }
-                for (partial, cost) in partials {
-                    let key = self.partial_key(&node, pos, options, partial);
-                    for (o, size) in options.compatible(self.ctx, &node, pos, key) {
-                        for (q, link) in self.push(p, &node, pos, partial, o) {
-                            let c = cost + size;
-                            let next = &mut kept.layers[pos + 1];
-                            match next.get_mut(&q) {
-                                None => {
-                                    next.insert(
-                                        q.clone(),
-                                        (c, Some((partial.clone(), o.clone(), link))),
-                                    );
-                                    added.push(q);
-                                }
-                                Some(e) if c < e.0 => {
-                                    *e = (c, Some((partial.clone(), o.clone(), link)))
-                                }
-                                Some(_) => {}
-                            }
+                let refs: Vec<&C::Label> = partials.iter().map(|(l, _)| l).collect();
+                let indexed = options.indexed();
+                let next = &mut kept.layers[pos + 1];
+                self.steps_from(stats, p, &node, pos, options, &refs, |i, oi, q, link| {
+                    let (partial, cost) = &partials[i];
+                    let (o, size) = indexed[oi as usize];
+                    let c = cost + size;
+                    match next.get_mut(&q) {
+                        None => {
+                            next.insert(q.clone(), (c, Some((partial.clone(), o.clone(), link))));
+                            added.push(q);
                         }
+                        Some(e) if c < e.0 => *e = (c, Some((partial.clone(), o.clone(), link))),
+                        Some(_) => {}
                     }
-                }
+                });
             }
             fresh = added;
         }
@@ -706,32 +1277,24 @@ impl<'a, C: Context> Engine<'a, C> {
         let last = kept.layers.last().unwrap();
         let ends: Vec<(C::Label, u64)> = fresh.iter().map(|q| (q.clone(), last[q].0)).collect();
         let partials: Vec<usize> = kept.layers.iter().map(BTreeMap::len).collect();
-        drop(cache);
         for (partial, cost) in ends {
-            for (l, _) in self.finish(p, &node, &partial) {
+            for (l, _) in self.finish(stats, p, &node, &partial) {
                 let e = out.entry(l).or_insert(cost);
                 *e = (*e).min(cost);
             }
         }
-        let mut stats = self.stats.borrow_mut();
-        let ps = self.prod_stats(&mut stats, p);
+        let ps = prod_stats(self.cfg, stats, p);
         ps.scans += 1;
         ps.nanos += began.elapsed().as_nanos() as u64;
         for n in partials {
             ps.partials_max = ps.partials_max.max(n);
             ps.partials_total += n as u64;
         }
-        out
+        (kept, out)
     }
+}
 
-    /// `p`'s partial labels as the fixed point left them, for emission.
-    fn kept_layers(&self, p: ProdId) -> Layers<C::Label> {
-        match self.cache.borrow_mut().remove(&p) {
-            Some(k) if k.layers.len() == self.cfg.prods[p as usize].rhs.len() + 1 => k.layers,
-            _ => self.layers(p),
-        }
-    }
-
+impl<'a, C: Context> Engine<'a, C> {
     /// Live labels: the ones a join replaced are not counted.
     fn total(&self) -> usize {
         self.labels.iter().map(BTreeMap::len).sum::<usize>()
@@ -792,6 +1355,29 @@ impl<'a, C: Context> Engine<'a, C> {
             let before = self.total();
             let scanned = dirty.len();
             let mut changed = BTreeSet::new();
+            if self.options.parallel {
+                self.round_parallel(std::mem::take(&mut dirty), &mut changed);
+                if let Some(deadline) = self.options.deadline
+                    && began.elapsed() > deadline
+                {
+                    self.record_labels();
+                    bail!(
+                        "{}: no fixed point after {deadline:?}, round {round}, {} labels; the widest:{}",
+                        self.ctx.name(),
+                        self.total(),
+                        self.census()
+                    );
+                }
+                if self.options.progress {
+                    eprintln!(
+                        "{}: round {round}, {scanned} productions scanned, {} labels, {:?}; the widest is {}",
+                        self.ctx.name(),
+                        self.total(),
+                        began.elapsed(),
+                        self.widest()
+                    );
+                }
+            }
             for p in std::mem::take(&mut dirty) {
                 let lhs = self.cfg.prods[p as usize].lhs as usize;
                 for (l, size) in self.scan(p) {
@@ -841,6 +1427,48 @@ impl<'a, C: Context> Engine<'a, C> {
             .phases
             .insert("fixpoint".into(), began.elapsed().as_nanos() as u64);
         Ok(())
+    }
+
+    /// One round of the fixed point with its scans in parallel (`Options::parallel`): every
+    /// production in `todo` scanned against the labels as they are now, then what each found
+    /// added in production order; the left hand sides that changed into `changed`.
+    fn round_parallel(&mut self, todo: BTreeSet<ProdId>, changed: &mut BTreeSet<usize>) {
+        let mut cache = std::mem::take(self.cache.get_mut());
+        let mut jobs: Vec<(ProdId, Option<Kept<C::Label>>)> =
+            todo.into_iter().map(|p| (p, cache.remove(&p))).collect();
+        // The largest first (by what their scans made so far), so none runs alone at the end.
+        jobs.sort_by_key(|(p, _)| {
+            std::cmp::Reverse(
+                self.stats
+                    .get_mut()
+                    .prods
+                    .get(p)
+                    .map_or(0, |s| s.partials_total),
+            )
+        });
+        let mut done: Vec<(ProdId, Kept<C::Label>, BTreeMap<C::Label, u64>, Stats)> = {
+            let view = Scan {
+                inner: true,
+                ..self.view()
+            };
+            map_ordered(jobs, |(p, kept)| {
+                let mut stats = Stats::default();
+                let (kept, out) = view.scan(&mut stats, p, kept);
+                (p, kept, out, stats)
+            })
+        };
+        done.sort_by_key(|(p, ..)| *p);
+        for (p, kept, out, stats) in done {
+            cache.insert(p, kept);
+            self.stats.get_mut().absorb(stats);
+            let lhs = self.cfg.prods[p as usize].lhs as usize;
+            for (l, size) in out {
+                if self.add(lhs, l, size) {
+                    changed.insert(lhs);
+                }
+            }
+        }
+        *self.cache.get_mut() = cache;
     }
 
     /// Labels per nonterminal into the stats.
@@ -963,12 +1591,29 @@ impl<'a, C: Context> Engine<'a, C> {
     fn ground(
         &self,
         p: ProdId,
+        instance: &Instance<C::Label>,
+        fixed: Option<(usize, &Opt<C::Label>)>,
+        accept: &dyn Fn(&C::Label) -> bool,
+        child_ok: &dyn Fn(usize, &Opt<C::Label>) -> bool,
+        target: Option<&C::Label>,
+        modes: &[bool],
+    ) -> Option<(Instance<C::Label>, C::Label)> {
+        self.ground_in(p, instance, fixed, accept, child_ok, target, modes, None)
+    }
+
+    /// [`Engine::ground`], the wide walk taking at each position only the grounds of the
+    /// options `useful` lists there (all, without it): see [`Engine::graph_useful`].
+    #[allow(clippy::too_many_arguments)]
+    fn ground_in(
+        &self,
+        p: ProdId,
         (opts, shape): &Instance<C::Label>,
         fixed: Option<(usize, &Opt<C::Label>)>,
         accept: &dyn Fn(&C::Label) -> bool,
         child_ok: &dyn Fn(usize, &Opt<C::Label>) -> bool,
         target: Option<&C::Label>,
         modes: &[bool],
+        useful: Option<&[BTreeSet<Opt<C::Label>>]>,
     ) -> Option<(Instance<C::Label>, C::Label)> {
         let node = self.node(p);
         // First the instance's own options, made ground; failing that, any option at the
@@ -998,13 +1643,26 @@ impl<'a, C: Context> Engine<'a, C> {
                 failed: RefCell::new(BTreeSet::new()),
                 bad: RefCell::new(BTreeSet::new()),
                 good: RefCell::new(BTreeSet::new()),
+                taint: Cell::new(usize::MAX),
+                wide_options: RefCell::new(vec![None; opts.len()]),
+                tried: Cell::new(0),
+                useful,
             };
             let mut chosen = Vec::with_capacity(opts.len());
             let mut steps = Vec::with_capacity(opts.len());
             let empty = self.ctx.empty(&node);
-            if let Some((out, finish)) =
-                self.ground_from(&walk, empty.clone(), &mut chosen, &mut steps)
+            let found = self.ground_from(&walk, empty.clone(), &mut chosen, &mut steps);
             {
+                let mut stats = self.stats.borrow_mut();
+                let g = stats.emit.ground_by_prod.entry(p).or_default();
+                if wide {
+                    g.wide += 1;
+                } else {
+                    g.narrow += 1;
+                }
+                g.candidates += walk.tried.get();
+            }
+            if let Some((out, finish)) = found {
                 let mut partial = vec![self.ctx.slots(&empty)];
                 partial.extend(steps.iter().map(|(_, n)| *n));
                 let shape = Shape {
@@ -1058,6 +1716,7 @@ impl<'a, C: Context> Engine<'a, C> {
                 } else {
                     self.stats.borrow_mut().emit.ground_child_rejected += 1;
                     w.bad.borrow_mut().insert(key);
+                    w.taint.set(w.taint.get().min(i));
                     return None;
                 }
             }
@@ -1067,26 +1726,40 @@ impl<'a, C: Context> Engine<'a, C> {
             return None;
         }
         let sym = self.cfg.prods[w.p as usize].rhs[pos];
-        let candidates: Vec<Opt<C::Label>> = match w.fixed {
-            Some((at, o)) if at == pos => vec![o.clone()],
+        let candidates: Rc<Vec<Opt<C::Label>>> = match w.fixed {
+            Some((at, o)) if at == pos => Rc::new(vec![o.clone()]),
             _ if w.wide => {
-                let mut all = self.ground_options(sym, &w.opts[pos]);
-                let mut options = self.options(sym);
-                options.sort_by_key(|(_, size)| *size);
-                for (o, _) in options {
-                    all.extend(self.ground_options(sym, &o));
-                }
-                let mut seen = BTreeSet::new();
-                all.retain(|o| seen.insert(o.clone()));
-                all
+                let cached = w.wide_options.borrow()[pos].clone();
+                cached.unwrap_or_else(|| {
+                    let useful = |o: &Opt<C::Label>| w.useful.is_none_or(|u| u[pos].contains(o));
+                    let mut all = if useful(&w.opts[pos]) {
+                        self.ground_options(sym, &w.opts[pos])
+                    } else {
+                        Vec::new()
+                    };
+                    let mut options = self.options(sym);
+                    options.sort_by_key(|(_, size)| *size);
+                    for (o, _) in options {
+                        if useful(&o) {
+                            all.extend(self.ground_options(sym, &o));
+                        }
+                    }
+                    let mut seen = BTreeSet::new();
+                    all.retain(|o| seen.insert(o.clone()));
+                    let all = Rc::new(all);
+                    w.wide_options.borrow_mut()[pos] = Some(all.clone());
+                    all
+                })
             }
-            _ => self.ground_options(sym, &w.opts[pos]),
+            _ => Rc::new(self.ground_options(sym, &w.opts[pos])),
         };
-        for candidate in candidates {
+        let taint = w.taint.replace(usize::MAX);
+        for candidate in candidates.iter() {
             if w.bad.borrow().contains(&(pos, candidate.clone())) {
                 continue;
             }
             self.stats.borrow_mut().emit.ground_candidates += 1;
+            w.tried.set(w.tried.get() + 1);
             for (q, link) in self.push(w.p, w.node, pos, &partial, &candidate) {
                 if !w.wide && link != w.shape.links[pos] {
                     continue;
@@ -1125,7 +1798,13 @@ impl<'a, C: Context> Engine<'a, C> {
                 steps.pop();
             }
         }
-        w.failed.borrow_mut().insert((pos, partial));
+        // A failure caused by a child before this position without a witness is the
+        // prefix's: another prefix reaching the same partial label may still finish.
+        let below = w.taint.get();
+        if below >= pos {
+            w.failed.borrow_mut().insert((pos, partial));
+        }
+        w.taint.set(taint.min(below));
         None
     }
 
@@ -1306,6 +1985,31 @@ type Choice<L> = (usize, Opt<L>);
 /// The options an instance takes at each position, and how its slots link.
 type Instance<L> = (Vec<Opt<L>>, Shape);
 
+/// The steps of a production's layers, as [`Engine::layers_graph`] recorded them: every push
+/// that gave a partial label, by index. A backward pass over them is the pass the scan would
+/// make again, without the rule.
+struct Graph<L> {
+    /// Per position, the partial labels after it (the layer's size).
+    sizes: Vec<usize>,
+    /// Per position: the options in the order the scan tries them, with their sizes.
+    opts: Vec<Vec<(Opt<L>, u64)>>,
+    /// Per position: each step, in the order the scan made them.
+    steps: Vec<Vec<Step>>,
+    links: Vec<Link>,
+    /// Per complete partial label, by index: what `finish` gives it.
+    finished: Vec<Vec<(L, Link)>>,
+}
+
+/// A step of a [`Graph`]: the partial label before (by index in its layer), the option (by
+/// index among the position's), the partial label after, and the link (by index).
+#[derive(Clone, Copy)]
+struct Step {
+    partial: u32,
+    opt: u32,
+    next: u32,
+    link: u32,
+}
+
 /// Reached labels of one nonterminal by join key, with their emitted ids.
 type ReachedByKey<'a, L> = BTreeMap<Option<L>, Vec<(&'a L, NtId)>>;
 
@@ -1342,6 +2046,16 @@ struct Walk<'w, L> {
     /// candidate on a branch that never finishes is never searched for.
     bad: RefCell<BTreeSet<(usize, Opt<L>)>>,
     good: RefCell<BTreeSet<(usize, Opt<L>)>>,
+    /// The lowest position a completion found a candidate without a witness at, since the
+    /// frame that reads it began: a frame above that position failed because of its prefix,
+    /// not its partial label, and must not record the failure.
+    taint: Cell<usize>,
+    /// Per position, the candidates a wide walk tries, built on first use.
+    wide_options: RefCell<Vec<Option<Rc<Vec<Opt<L>>>>>>,
+    /// Candidates this walk tried itself, for the stats.
+    tried: Cell<u64>,
+    /// Per position, the only options whose grounds a wide walk tries, if known.
+    useful: Option<&'w [BTreeSet<Opt<L>>]>,
 }
 
 /// The grammar whose derivation trees are, up to the names of variables, exactly `cfg`'s
