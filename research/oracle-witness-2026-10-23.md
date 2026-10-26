@@ -703,6 +703,9 @@ two rows of the 2-variable set, read closely:
   quantifier bounds over 512, LIMIT without an order, and three singles
 - an engine that runs data modification, to check that part of the evaluator
   against something other than the rules
+- the artifact as a thing turbolay runs on its own: a lean writer, the probe
+  moved into turbolay's repo, the files published:
+  `oracle-artifact-follow-up-2026-10-26.md`
 - the `neo4j` runner compares witness rows only, not bags; neo4j parses almost
   none of the set anyway
 - value variables: `C` carries their class; the expression evaluator is where
