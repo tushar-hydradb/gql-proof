@@ -507,3 +507,18 @@ fn fourteenth_review_findings() {
     bad_on_some_parse("MATCH ( y ) MATCH ANY SHORTEST ( x ) -> ( y ) -> ( z ) RETURN x", "16.6 SR 7");
     bad_on_some_parse("MATCH ( x ) RETURN x ORDER BY LET z = x IN z END", "14.10 SR 4 let");
 }
+
+#[test]
+fn fifteenth_review_findings() {
+    bad_on_some_parse("RETURN INTERVAL '1' DAY AS x", "21.2 SR 72");
+    fine("RETURN DURATION 'P1D' AS x", "21.2 SR 72");
+    bad_on_some_parse("RETURN CURRENT_DATE + DURATION 'P1DT' AS x", "20.26 SR 1 moved");
+    fine("RETURN LOCAL_TIMESTAMP + DURATION 'P1DT' AS x", "20.26 SR 1 moved");
+    // H2's limits on the tree
+    bad_on_some_parse("MATCH <- { 256 } FINISH", "16.11 SR 1");
+    fine("MATCH <- { 255 } FINISH", "16.11 SR 1");
+    bad_on_some_parse("FILTER SESSION_USER IS TYPED VARCHAR ( 99999999999999999999 ) FINISH", "18.9 SR 17");
+    bad_on_some_parse("FILTER SESSION_USER IS TYPED BYTES ( 70000 ) FINISH", "18.9 SR 25");
+    bad_on_some_parse("FILTER SESSION_USER IS TYPED DECIMAL ( 40 ) FINISH", "18.9 SR 32");
+    bad_on_some_parse("FILTER SESSION_USER IS TYPED FLOAT ( 8 , 88 ) FINISH", "18.9 SR 42");
+}

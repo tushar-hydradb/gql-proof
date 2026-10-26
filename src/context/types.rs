@@ -1012,8 +1012,12 @@ impl Types {
                     Some(ZonedDatetime) => Some(ZonedDatetime),
                     _ => Some(LocalDatetime),
                 };
+                // 20.26 SR 1 read literally makes a date or a time moved by a duration a
+                // datetime, a defect (4.16.6.4 keeps a time's zone); neither is generated, only a
+                // datetime is moved (the fifteenth review)
                 check(
-                    fits(instant, Class::instant) && fits(duration, Class::duration),
+                    fits(instant, |c| matches!(c, LocalDatetime | ZonedDatetime))
+                        && fits(duration, Class::duration),
                     result,
                 )
             }

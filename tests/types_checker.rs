@@ -43,6 +43,7 @@ const PER_TREE: &[&str] = &[
     "20.28 SR 1 primary",
     "11.1 SR 3 primary",
     "11.2 SR 4 primary",
+    "20.26 SR 1 moved",
 ];
 
 /// The typing violations of every tree of `text` the verifier accepts.
@@ -219,7 +220,8 @@ fn string_expressions() {
 fn temporal_expressions() {
     // 4.16.6.4 Table 1, 20.26, 20.28
     // 'P1D' alone fails 21.2 SR 68 as the verifier reads <iso8601 days and time>
-    ok("RETURN CURRENT_DATE + DURATION 'P1DT0H' AS x");
+    // a date moved by a duration: refused by the 20.26 SR 1 reading (the fifteenth review)
+    bad_on_a_tree("RETURN CURRENT_DATE + DURATION 'P1DT0H' AS x", "20.26 SR 1 moved");
     ok("RETURN LOCAL_TIMESTAMP - DURATION 'PT1H' AS x");
     ok("RETURN DURATION 'PT1H' + CURRENT_TIMESTAMP AS x");
     ok("RETURN DURATION 'P1Y' + DURATION 'P2M' AS x");
@@ -545,10 +547,8 @@ fn property_references() {
     // the literal tree breaks 20.23 SR 2, the property tree 20.1 SR 4-6 (H3)
     bad_on_a_tree("RETURN 9.M || 'a' AS x", "20.23 SR 2");
     bad_on_a_tree("RETURN 9.M || 'a' AS x", "20.1 SR 4-6 primary");
-    bad(
-        "LET VALUE x TYPED STRING = 9.E-2 RETURN x AS y",
-        "10.3 SR 8",
-    );
+    // the literal tree breaks 10.3 SR 8, the property tree 20.1 SR 4-6 (H3)
+    bad_on_a_tree("LET VALUE x TYPED STRING = 9.E-2 RETURN x AS y", "10.3 SR 8");
 }
 
 #[test]

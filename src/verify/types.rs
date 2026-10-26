@@ -2038,6 +2038,14 @@ impl<'t> Checker<'t> {
                     "numeric value expression" | "term" => {
                         self.expect(node, &t, &[Class::Numeric], "20.21 SR 3 primary");
                     }
+                    // 20.26 SR 1 (reading): only a datetime is moved by a duration; the rule
+                    // read literally makes a moved date or time a datetime, a defect (the
+                    // fifteenth review)
+                    "datetime value expression"
+                        if [&l, &r].iter().any(|t| matches!(t, Ty::Date | Ty::LocalTime | Ty::ZonedTime)) =>
+                    {
+                        self.report(node, "20.26 SR 1 moved", "(reading) a date or a time moved by a duration".into());
+                    }
                     "duration addition and subtraction" => {
                         self.expect(k[0], &l, &[Class::Duration], "20.28 SR 1 primary");
                         self.expect(k[2], &r, &[Class::Duration], "20.28 SR 1 primary");
@@ -2658,6 +2666,10 @@ impl<'t> Checker<'t> {
                 Ty::Any
             }
             [(N, N)] => match (&l, &r) {
+                // an operand the environment types (a parameter, H1): its result is the
+                // environment's too (the fifteenth review: `CARDINALITY ( .. ) + $b` as a TRIM
+                // count was a number of unknown scale)
+                (Ty::Any, _) | (_, Ty::Any) => Ty::Any,
                 (Ty::Approx, _) | (_, Ty::Approx) => Ty::Approx,
                 // 20.21 SR 1 b ii-iv: scale max(S1, S2), S1 + S2, or implementation-defined
                 (Ty::Exact { int: a }, Ty::Exact { int: b }) => Ty::Exact {

@@ -514,3 +514,30 @@ its second part: no printed counterexample at 3 variables either (whole grammar
 sentences in all, three-field or three-definition variants; the multi-variable
 interactions are not printed at all, because the cover targets are met at 1
 or 2. noted in the claim
+
+## 2026-10-26: the fifteenth review (other claims, settings, the lexical layer)
+
+two printed families, both resting on defects of the text read the lenient way:
+
+- every SQL interval literal: 21.2 SR 72 makes `INTERVAL '1' DAY` the duration
+  string `PD1`, designator before value, which SR 68 refuses; the rewrite row
+  had said consequence none. none is generated now (refine::NoSqlInterval, the
+  checker's "21.2 SR 72")
+- a date moved by a duration (`DURATION_BETWEEN ( NULL + CURRENT_DATE ,
+  LOCAL_TIMESTAMP )`): 20.26 SR 1 read literally makes it a local datetime, a
+  defect an engine typing it DATE would not share. only a datetime is moved
+  now, in the generator and the checker ("20.26 SR 1 moved", per tree)
+
+its second part: other match-mode defaults, witness settings and the lexical
+layer hold; the neo4j claim prints 41,802 sentences no round had seen. fixed:
+H2's limits (quantifier bounds, lengths, precisions) are checked on the tree
+(`verify::h2_bounds`, gate-only) instead of resting on the generator; the
+theorem holds under any `--claim` and `--match-mode-default`
+- a TRIM count over a parameter (`CARDINALITY ( .. ) + $b`) was typed a number
+  of unknown scale when one operand was the environment's; it is unknown now,
+  as two unknown operands were (260 neo4j trees had been withheld as generator
+  bugs on it)
+- the neo4j claim at 2 variables: 42,061 sentences, no rule broken by any
+  printed one; 34 trees withheld as generator bugs on 12.8 and 13.6 SR 2
+  (`CALL { CALL a ( EXISTS { CALL ( ) { FINISH } .. } ) }`, a kind no parse
+  has): the generator misses them under that claim, the gate keeps them out

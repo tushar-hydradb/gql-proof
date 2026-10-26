@@ -6,7 +6,9 @@
 
 **theorem.** let S be a sentence `gql-proof context --rule types --rules all
 --phase cover --sentences` prints, with the default `--start GQL-program` (another
-start prints fragments, not programs, outside the theorem). then S, read by the derivation tree it was
+start prints fragments, not programs, outside the theorem), under any `--claim`
+and any `--match-mode-default` (the gate checks with both; H2'' and H2''' ask
+the engine to match them). then S, read by the derivation tree it was
 printed from, satisfies every syntax rule of iso/iec 39075:2024 with cor 1 whose
 kind is constraint or type, under the readings listed below, given hypothesis H.
 
@@ -259,8 +261,12 @@ review moved nine rows from `reading` to `permission`)
   type rules)
 - nothing about IW022 (nullability inference): a NOT NULL site takes no
   computed value (4.17.4.2, the checker's reading), so none is needed
-- IL018: the maximum quantifier bound is at least 255; S writes fixed
-  quantifiers and bounds of at most 255 (`tree.rs` settles them)
+- IL018: the maximum quantifier bound is at least 255
+- the limits above are checked on the tree, not taken from the generator:
+  a quantifier bound past 255, a character length past 16,383 or a byte
+  length past 65,534 (the maxima 18.9 SR 17, 25 guarantee), an exact precision
+  past 18, an approximate precision past 113 or a scale past 8 is withheld
+  (`verify::h2_bounds`, gate-only; the generator settles values below them)
 - IL020: the directory nesting depth is at least what S uses (S holds
   absolute paths of a few directories and `..` steps)
 - IA023: the line feed ends a line (comments, byte string separators)

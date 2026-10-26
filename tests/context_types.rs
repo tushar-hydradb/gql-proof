@@ -86,7 +86,7 @@ fn typed_sentences_pass() {
         "FILTER true FINISH",
         "MATCH (x) FILTER x.k > 1 RETURN x",
         // 21.2 SR 68: a day-time duration has its T even with no time (`P1D` is not one).
-        "RETURN CURRENT_DATE + DURATION 'P1DT' AS x",
+        "RETURN LOCAL_TIMESTAMP + DURATION 'P1DT' AS x",
         "RETURN [] || [] AS x",
         "FOR x IN [1] RETURN x",
         "MATCH (x)-[y]->() RETURN x, y",
@@ -167,6 +167,8 @@ fn untyped_sentences_are_refused() {
         "RETURN EXISTS { RETURN 1 AS y NEXT FINISH } AS x",
         "RETURN EXISTS { MATCH (y) FINISH } AS x",
         "RETURN VALUE { FINISH } AS x",
+        // 20.26 SR 1 (reading, the fifteenth review): only a datetime is moved by a duration.
+        "RETURN CURRENT_DATE + DURATION 'P1DT' AS x",
         // A VALUE subquery is opaque (not followed), and no category takes an opaque value
         // (the seventh review): refused by reading, though valid by the text.
         "RETURN VALUE { RETURN count(*) AS y } AS x",

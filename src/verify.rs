@@ -45,6 +45,13 @@ pub const GATE_ONLY: &[&str] = &[
     "16.6 SR 8 nested",
     "12.3 SR 7",
     "14.10 SR 4 let",
+    // H2's limits, which the generator keeps by settling values (tree.rs); the gate makes them
+    // rest on no generator
+    "16.11 SR 1",
+    "18.9 SR 17",
+    "18.9 SR 25",
+    "18.9 SR 32",
+    "18.9 SR 42",
     // 20.8 SR 5's "CO specifies NULL" read as containing one anywhere: the generator does not
     // follow NULLs below a cast operand
     "20.8 SR 5 contains",
@@ -204,6 +211,7 @@ impl<'b> Verifier<'b> {
             catalog_root(tree, &mut out);
             like_sources(tree, &mut out);
             schema_drops(tree, &mut out);
+            h2_bounds(tree, &mut out);
             delimited_names(tree, &mut out);
             one_kind_per_name(tree, &mut out);
             syntax_rules(tree, id086, &mut Vec::new(), &mut out);
@@ -1646,6 +1654,15 @@ fn syntax_rules<'t>(
                     ));
                 }
             }
+            // 21.2 SR 72 with 68 (reading, the twin of refine::NoSqlInterval): no SQL interval
+            // literal, whose equivalent duration string conforms to no form of SR 68
+            "duration literal" if contains(node, "SQL-interval literal") => {
+                out.push(violation(
+                    &path,
+                    "21.2 SR 72",
+                    "an SQL interval literal: its equivalent duration string breaks SR 68 (reading)".into(),
+                ));
+            }
             // 8.2 SR 2: exactly one access mode.
             "transaction characteristics" => {
                 let mut modes = Vec::new();
@@ -2545,6 +2562,55 @@ fn delimited_names(tree: &Plain, out: &mut Vec<Violation>) {
             rule: "21.3 SR 4 names",
             detail: "a delimited identifier as a variable, field, property or parameter name or an alias (reading)".into(),
         });
+    }
+}
+
+/// H2's implementation limits, checked on the tree so they rest on no generator (the
+/// fifteenth review: `{ 256 }` passed): quantifier bounds at most 255 (16.11 SR 1, IL018),
+/// character lengths at most 16383 and byte lengths at most 65534, the maxima the text
+/// guarantees (18.9 SR 17, 25, IL013), an exact precision of at most 18 digits (SR 32, IL011),
+/// an approximate precision of at most 113 and a scale of at most 8 (SR 42, IL011).
+fn h2_bounds(tree: &Plain, out: &mut Vec<Violation>) {
+    let mut push = |rule: &'static str, what: String| {
+        out.push(Violation { path: String::new(), rule, detail: format!("{what} is past the limit H2 names") })
+    };
+    for q in ["fixed quantifier", "lower bound", "upper bound"] {
+        let mut nodes = Vec::new();
+        find(tree, q, &mut nodes);
+        for n in nodes {
+            let mut ints = Vec::new();
+            find(n, "unsigned integer", &mut ints);
+            if ints.iter().any(|i| integer_value(i) > 255) {
+                push("16.11 SR 1", format!("a quantifier bound in {}", n.text()));
+            }
+        }
+    }
+    for (ty, most, rule) in [("character string type", 16383, "18.9 SR 17"), ("byte string type", 65534, "18.9 SR 25")] {
+        let mut nodes = Vec::new();
+        find(tree, ty, &mut nodes);
+        for n in nodes {
+            for l in ["min length", "max length", "fixed length"] {
+                if own(n, l).is_some_and(|v| integer_value(v) > most) {
+                    push(rule, format!("a length in {}", n.text()));
+                }
+            }
+        }
+    }
+    for (ty, precision, scale, rule) in [
+        ("exact numeric type", 18, 18, "18.9 SR 32"),
+        ("approximate numeric type", 113, 8, "18.9 SR 42"),
+    ] {
+        let mut nodes = Vec::new();
+        find(tree, ty, &mut nodes);
+        for n in nodes {
+            let mut ps = Vec::new();
+            find(n, "precision", &mut ps);
+            let mut ss = Vec::new();
+            find(n, "scale", &mut ss);
+            if ps.iter().any(|p| integer_value(p) > precision) || ss.iter().any(|v| integer_value(v) > scale) {
+                push(rule, format!("a precision or scale in {}", n.text()));
+            }
+        }
     }
 }
 

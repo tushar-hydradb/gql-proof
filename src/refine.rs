@@ -169,6 +169,7 @@ pub fn all_rules(id086: MatchModeDefault) -> Vec<Box<dyn Rule>> {
         Box::new(UnionNullability),
         Box::new(LiteralElements),
         Box::new(UntypedLetValues),
+        Box::new(NoSqlInterval),
         Box::new(NoSubstitution),
         Box::new(NoSelectBody),
         Box::new(NoElementWhen),
@@ -1854,6 +1855,37 @@ impl Rule for NoSubstitution {
 
     fn rejects(&self, node: &Node, _inh: &State) -> bool {
         node.def == "substituted parameter reference"
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if self.rejects(node, inh) {
+            return None;
+        }
+        Some(s)
+    }
+}
+
+/// 21.2 SR 72: an SQL interval literal is equivalent to a duration string whose designators
+/// come before the values (`INTERVAL '1' DAY` is `DURATION 'PD1'`), which no form of SR 68
+/// takes: read literally every SQL interval breaks SR 68, a defect. None is generated (the
+/// fifteenth review); the productions of <duration literal> stay covered by `DURATION '..'`.
+pub struct NoSqlInterval;
+
+impl Rule for NoSqlInterval {
+    fn name(&self) -> &str {
+        "no SQL interval literal"
+    }
+
+    fn cite(&self) -> &str {
+        "21.2 SR 72, 68: an SQL interval's equivalent duration string conforms to no form"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        Vec::new()
+    }
+
+    fn rejects(&self, node: &Node, _inh: &State) -> bool {
+        node.def.split('/').next() == Some("SQL-interval literal")
     }
 
     fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
