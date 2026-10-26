@@ -5,7 +5,8 @@
 ## the statement
 
 **theorem.** let S be a sentence `gql-proof context --rule types --rules all
---phase cover --sentences` prints, with the default `--start GQL-program` (another
+--phase cover --sentences` prints on stdout (stderr also echoes some withheld
+sentences, which are not printed in this sense), with the default `--start GQL-program` (another
 start prints fragments, not programs, outside the theorem), under any `--claim`
 and any `--match-mode-default` (the gate checks with both; H2'' and H2''' ask
 the engine to match them). then S, read by the derivation tree it was
@@ -13,11 +14,20 @@ printed from, satisfies every syntax rule of iso/iec 39075:2024 with cor 1 whose
 kind is constraint or type, under the readings listed below, given hypothesis H.
 
 `purdom` and `context` without `--rule types` check the syntax and scope rules
-only: their sentences satisfy every row the syntax and scope checkers report
-(the rows whose check names `src/verify.rs`, `src/verify/scope.rs` or
-`src/verify/graph_type.rs`), not the type rows. both commands say so on
-stderr. (found by an independent review on 2026-10-24: the theorem had named
+only, and only with `--rules all` (`--rules syntax` adds no scope check,
+`--rules none` no syntax rule) and the default grammar (`--grammar` swaps
+the grammar the checker matches): their sentences satisfy every row the
+checkers they ran report, not the type rows. both commands say on stderr
+what they checked (purdom by its `--rules` and `--grammar`, since the
+seventeenth review). (found by an independent review on 2026-10-24: the theorem had named
 purdom while purdom never ran the types checker)
+
+valid here means static validity: a sentence can still raise an exception
+when it runs. `INSERT ( { a : CURRENT_DATE , a : CURRENT_DATE } )` is printed.
+It names one property twice, so no node with those properties can be made.
+No syntax rule refuses this (16.5 SR 9 covers only bound patterns, and SR 10 a iii
+holds vacuously). It fails only under the general rules, which are outside the
+theorem (the seventeenth review).
 
 no part of the argument depends on which witness extraction picked: it is a
 property of every printed sentence, by the gate in step 1
@@ -57,7 +67,14 @@ property of every printed sentence, by the gate in step 1
   a schema S drops is empty and is not the session's working schema, and a
   graph type S drops is no graph's type (12.3 SR 7, 12.7 SR 6), S itself never
   working in or naming into a schema it drops (checked). the `environment` rows of the audit hold under H1
-  and only under it
+  and only under it. the type checker's unknown type comes only from H1: a
+  dynamic parameter, a session parameter S does not set, a catalog object, or
+  a named procedure's columns. it also arises after a violation is already
+  reported, or at sites the grammar never reaches. every source is classified in
+  `research/audit/unknowns-2026-10-26.md`. the sources S itself fixes are typed:
+  ELEMENT_ID's value (H2, ID076), a table variable's columns, a dynamic list's
+  dynamic elements. two sources that have no type are refused: a FOR over NULL,
+  and `NULL || NULL` (`14.8 SR 10 null`, `20.15 SR 2 null`)
 - **H2, implementation-defined choices.** the implementation-defined rules
   S's validity depends on take the choice that does not raise a syntax error:
   listed per row (`implementation` kind) in the audit. S avoids every
@@ -86,8 +103,11 @@ property of every printed sentence, by the gate in step 1
   the checker lets a dynamic operand meet every type
   requirement it checks (a dynamic type has no class to fail), so every row
   whose requirement a dynamic operand meets rests on this hypothesis, the
-  ones named above and any other such site (the twelfth review found 19.8 SR
-  3, 19.10 SR 2, 3, 20.11 SR 2 b and 14.2 SR 10 among them).
+  ones named above and every other. the hypothesis is stated by the operand's
+  type, not by a list of rows, so it needs no list to be closed: a row rests
+  on it exactly when a dynamic operand meets its requirement (the twelfth
+  review found 19.8 SR 3, 19.10 SR 2, 3, 20.11 SR 2 b and 14.2 SR 10 among
+  them).
   the generator could avoid every dynamic operand at a large cost in coverage;
   this is the hypothesis that it need not. without the cure these sentences
   are invalid. the cure can turn an operand into a run-time exception when no
@@ -100,9 +120,10 @@ property of every printed sentence, by the gate in step 1
   enforced, not the rest (for neo4j, GE04's `USE $b` is printed; GP02 is read
   by 5.3.2.1 containment, so a scope clause nested in a CALL { } meets it).
   syntax rules that turn on a feature: 18.2 SR 9 a
-  (an omitted key label set needs GG22); the sets that print graph type bodies
-  claim every feature, and a claim with GG23 but not GG22 is outside the
-  theorem. 22.18 SR 2 (GV65), 22.18 SR 9 c (GV66, GV67), 20.17 SR 3 b (GV72)
+  (an omitted key label set needs GG22) and 18.3 SR 10 a, likewise for edge
+  types: under a claim without GG22 the gate withholds every node or edge type
+  specification without a key label set (`Verifier::with_key_label_sets_required`,
+  gate-only; the seventeenth review found 44 such bodies printed without it). 22.18 SR 2 (GV65), 22.18 SR 9 c (GV66, GV67), 20.17 SR 3 b (GV72)
   and every rule asking for comparable value types (4.4.2: GA04, GA09; 20.24
   SR 3, 4, 14.2 SR 10) turn on features too; the checker reads each as without the feature
   (static combination, no empty list typed NOTHING), the stricter side, so
@@ -229,7 +250,10 @@ review moved nine rows from `reading` to `permission`)
 - IL001-IL003, IL011, IL013, IL015: the implementation's minimum label, key
   label and property counts at most what S uses, and the maxima at least: S
   declares node and edge types with no label at all (`( )`), so the minima are
-  0 (18.2 SR 10, 12; 18.3 SR 11, 13), and uses one or two labels and properties.
+  0 (18.2 SR 10, 12; 18.3 SR 11, 13). S names at most one distinct label in a
+  label set (`a & a & a & a` is one label) and declares up to four property
+  types in an element type (`{ a BOOLEAN , ab CHAR , abb CHAR , abbb BOOLEAN }`,
+  the most the saved sets hold; the seventeenth review).
   lengths and precisions are spelled from the leaf digits: S writes string and
   byte lengths up to 888 (18.9 SR 25 guarantees 65,534), exact precisions
   up to 8, an approximate precision up to 88 bits (FLOAT128 has 113), and an
@@ -257,7 +281,10 @@ review moved nine rows from `reading` to `permission`)
 - ID076: ELEMENT_ID's type is whatever the implementation defines; the
   checker refuses it anywhere but directly as a RETURN or SELECT item or an
   IS NULL operand, where any type is taken, or in an equality of two of them
-  (20.10 SR 3 gives its type an equality)
+  (20.10 SR 3 gives its type an equality). the same holds for its value when a
+  column, a VALUE subquery or a row field carries it on: the checker gives it its
+  own type and checks where that type is taken (the unknowns audit of
+  2026-10-26: `RETURN ELEMENT_ID ( x ) AS e NEXT RETURN e || 'x'` passed)
 - IA014: a NULL whose context fixes no type does not raise a syntax error (21.2
   SR 67 b); S holds many (`NULL + NULL`)
 - ID022, the default collation: two names compare equal only when their
@@ -281,7 +308,8 @@ review moved nine rows from `reading` to `permission`)
 - the supported property value types include the predefined types S
   inserts, sets, assigns to a property value type or casts a property to
   (16.5 SR 6 c, 13.3 SR 3, 10.3 SR 8, 20.8 SR 10): the predefined scalars,
-  DATE among them; no reference value type is assumed supported
+  DATE among them, and those a graph type declares for a property (18.6, 18.7
+  SR 4); no reference value type is assumed supported
 - `$$` substitution (22.1 SR 3): the substituted text decides validity (17.7
   SR 4), and no engine is told it, so no hypothesis carries it: the generator
   prints no `$$` (`refine::NoSubstitution`), the checker reports one

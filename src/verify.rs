@@ -46,6 +46,13 @@ pub const GATE_ONLY: &[&str] = &[
     "12.3 SR 7",
     "14.10 SR 4 let",
     "14.5 SR 3 kinds",
+    // a key label set omitted under a claim without GG22: the generator follows no claim's
+    // graph type bodies this way; the gate does
+    "18.2 SR 9",
+    "18.3 SR 10",
+    // the unknowns audit: a null source or two null list operands give no element type
+    "14.8 SR 10 null",
+    "20.15 SR 2 null",
     // H2's limits, which the generator keeps by settling values (tree.rs); the gate makes them
     // rest on no generator
     "16.11 SR 1",
@@ -144,6 +151,9 @@ pub struct Verifier<'b> {
     syntax_rules: Option<MatchModeDefault>,
     /// Conformance rules in force: no tree may contain a match of any of their patterns.
     conformance: Vec<Forbidden>,
+    /// The claim lacks GG22, so no key label set may be omitted (18.2 SR 9 a ii, 18.3 SR 10 a
+    /// ii; the seventeenth review).
+    key_label_sets_required: bool,
     /// Check the scoping of binding variables (`scope`).
     scope: bool,
     /// Check the static types of value expressions (`types`).
@@ -160,6 +170,7 @@ impl<'b> Verifier<'b> {
             reserved,
             syntax_rules: None,
             conformance: Vec::new(),
+            key_label_sets_required: false,
             scope: false,
             types: false,
         }
@@ -184,6 +195,12 @@ impl<'b> Verifier<'b> {
     }
 
     /// Also check these conformance rules, the ones a claim leaves in force.
+    /// Without GG22 every node and edge type specification has a key label set.
+    pub fn with_key_label_sets_required(mut self, required: bool) -> Self {
+        self.key_label_sets_required = required;
+        self
+    }
+
     pub fn with_conformance(mut self, rules: Vec<Forbidden>) -> Self {
         self.conformance = rules;
         self
@@ -210,6 +227,22 @@ impl<'b> Verifier<'b> {
         self.walk(tree, &mut Vec::new(), &mut out);
         if let Some(id086) = self.syntax_rules {
             catalog_root(tree, &mut out);
+            if self.key_label_sets_required {
+                for (spec, key, rule) in [
+                    ("node type specification", "node type key label set", "18.2 SR 9"),
+                    ("edge type specification", "edge type key label set", "18.3 SR 10"),
+                ] {
+                    let mut specs = Vec::new();
+                    find(tree, spec, &mut specs);
+                    if specs.iter().any(|s| !contains(s, key)) {
+                        out.push(Violation {
+                            path: String::new(),
+                            rule,
+                            detail: format!("a <{spec}> omits its key label set, and the claim lacks GG22"),
+                        });
+                    }
+                }
+            }
             like_sources(tree, &mut out);
             schema_drops(tree, &mut out);
             h2_bounds(tree, &mut out);
@@ -1663,6 +1696,17 @@ fn syntax_rules<'t>(
                     &path,
                     "21.2 SR 72",
                     "an SQL interval literal: its equivalent duration string breaks SR 68 (reading)".into(),
+                ));
+            }
+            // 20.29 GR 2 with 20.28 SR 1 (reading, the twin of refine::NoDurationRecord): a
+            // DURATION over a record has no declared type the text gives when its fields name
+            // no unit (`DURATION ( { } )`), so no record argument is taken (the seventeenth
+            // review)
+            "duration function parameters" if own(node, "record constructor").is_some() => {
+                out.push(violation(
+                    &path,
+                    "20.28 SR 1 record",
+                    "a DURATION over a record (reading)".into(),
                 ));
             }
             // 8.2 SR 2: exactly one access mode.

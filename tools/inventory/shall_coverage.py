@@ -77,13 +77,22 @@ EXEMPT = {
     ("20.7", 2): "the shall is item a, deleted by cor 1",
     ("21.3", 25): "'shall be considered upper-case' defines how keywords are read",
     ("22.17", 3): "applied only hypothetically by its importers (18.1 SR 7, 18.1 CR 2)",
+    # "is not omitted" here is the condition of a definition, not a requirement.
+    ("6", 5): "'not omitted' is a case condition defining ACSR",
+    ("6", 6): "'not omitted' conditions the scope of ACSR, a definition",
+    ("6", 8): "'not omitted' conditions the scope of WGS, a definition",
+    ("18.1", 6): "'not omitted' is a condition of the implies relation, a definition",
 }
 
 rows = [json.loads(x) for x in open(audit_path)]
 covered = {(r["clause"], int(r["sr"])) for r in rows if r["kind"] != "definition"}
 listed = {(r["clause"], int(r["sr"])) for r in rows}
+# A requirement worded without "shall" (the seventeenth review: 18.2 SR 9 a ii says a key
+# label set "is not omitted" without GG22): a rule raising a syntax error, or saying something
+# is not omitted, constrains too.
+REQUIRES = re.compile(r"\bshall\b|syntax error|is not [\u201c\"]?omitted")
 gaps = [(k, t) for k, t in sorted(rules.items(), key=lambda kv: (tuple(int(x) for x in kv[0][0].split(".")), kv[0][1]))
-        if re.search(r"\bshall\b", t) and k not in covered and k not in EXEMPT]
+        if REQUIRES.search(t) and k not in covered and k not in EXEMPT]
 # Cor 1 replaces or inserts syntax rules the 2024 text does not have: each with a shall needs
 # a constraining row too (grammar/corrigendum.json, our own extraction).
 cor1 = json.load(open("grammar/corrigendum.json"))["items"]
@@ -97,7 +106,7 @@ for item in cor1:
 SHALL = re.compile(r"\bshall\b")
 with_shall = sum(1 for t in rules.values() if SHALL.search(t))
 print(f"{len(rules)} syntax rules in the text, {with_shall} with a shall")
-print(f"{len(gaps)} with a shall and no constraining row in the audit (cor 1's replaced and inserted rules included)")
+print(f"{len(gaps)} requirements (a shall, a syntax error, or not omitted) with no constraining row in the audit (cor 1's replaced and inserted rules included)")
 for (c, n), t in gaps:
     where = "listed as definition only" if (c, n) in listed else "not in the audit"
     m = re.search(r"[^.]*\bshall\b[^.]*", t)

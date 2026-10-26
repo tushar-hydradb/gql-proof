@@ -549,3 +549,44 @@ no printed sentence of the neo4j set (42,061) breaks a rule: its new territory
 variables; PROPERTY_EXISTS; label expressions in WHERE) hand-checked by class
 and swept, about 70 probes flagged as the text says. closed (unprinted): one
 named procedure called as two kinds (12.8, 13.6, 14.5 SR 3 with H1)
+
+## 2026-10-26: the seventeenth review and the unknowns audit
+
+the seventeenth review found two breaks. no other printed sentence broke a rule
+across fresh runs (whole grammar and turbolay at 1 and 2 variables in three
+modes, turbolay at 3, neo4j at 1 in three modes and at 2 under REPEATABLE
+ELEMENTS). the reviewer checked the rarest targets by hand.
+- `DURATION ( { } )` was printed in a duration addition (`ORDER BY NULL -
+  DURATION ( { } )`). 20.29 GR 2 gives a record naming no unit field no type, so
+  20.28 SR 1 a cannot hold. no DURATION takes a record now (`refine::NoDurationRecord`,
+  the checker's "20.28 SR 1 record"). this also covers mixed and upper-case fields.
+- a claim without GG22 printed graph type bodies with an omitted key label set,
+  which 18.2 SR 9 and 18.3 SR 10 require under that claim. the gate checks them
+  now ("18.2 SR 9", "18.3 SR 10", gate-only), and the audit rows are constraints.
+  `shall_coverage.py` now also counts requirements worded as a syntax error or
+  "is not omitted". four definitional rules are exempt.
+- lenient checker places, none printed: a NOT NULL cast of NULLIF or of a CASE
+  without ELSE ("20.8 SR 5 contains" counts their rewrite's NULL now).
+- claim text: stdout, the purdom paragraph (its stderr note now says what
+  `--rules` and `--grammar` checked), H2's property counts (up to four property
+  types, one distinct label), H2' stated by the operand's type rather than an
+  open list, H2''' and GG22, and a note that static validity leaves run-time
+  failures (a node with two properties named alike) outside the theorem.
+
+the unknowns audit (`research/audit/unknowns-2026-10-26.md`) classified every
+source of the type checker's unknown. five let a broken sentence pass, none of
+them printed: ELEMENT_ID's value through a column or a VALUE (now `Ty::Opaque`),
+a table variable's row (tables now carry their columns), a FOR over a dynamic
+source (its elements are dynamic), and a FOR over NULL and `NULL || NULL` (both
+refused, gate-only).
+
+runs after the fixes (`--join --keys --cdrc --deadline 3600`, different edges):
+- whole grammar: 1 variable 3,265 rows (289 withheld); 2 variables 3,055 rows
+  (523 withheld), 40 s
+- turbolay: 2 variables 3,400 rows (186 withheld), 29 s; 3 variables 3,408 rows
+  (198 withheld), 194 s
+- neo4j: 1 variable 41,103 rows (1,580 withheld), 113 s
+
+0 generator bugs, apart from neo4j's known 34 (12.8 and 13.6 SR 2). the
+never-covered production counts are unchanged at 38, 160 and 150. the 47 lost
+turbolay sentences that use DURATION are the record forms, now refused.

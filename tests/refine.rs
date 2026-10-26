@@ -15,7 +15,7 @@ use std::sync::LazyLock;
 static ISO: LazyLock<bnf::Bnf> = LazyLock::new(|| bnf::parse(ISO_BNF_XML).unwrap());
 static BASE: LazyLock<Cfg> = LazyLock::new(|| Cfg::from_bnf(&ISO));
 
-const RULES: [&str; 53] = [
+const RULES: [&str; 54] = [
     "12.4 SR 3",
     "12.5 SR 2",
     "12.6 SR 2",
@@ -33,6 +33,7 @@ const RULES: [&str; 53] = [
     "17.6 SR 5",
     "20.5 SR 5",
     "21.2 SR 72",
+    "20.28 SR 1 record",
     "16.4 SR 12",
     "9.1 SR 5",
     "9.1 SR 6",
@@ -627,6 +628,8 @@ fn refinement_loses_no_iso_production() {
                 || d.starts_with("<select statement body>")
                 || d.starts_with("<select graph match")
                 || d.starts_with("<select query specification>")
+                // A reading: no DURATION over a record (refine::NoDurationRecord, 20.29 GR 2).
+                || (d.starts_with("<duration function parameters> ::=") && d.contains("<record constructor>"))
                 // A reading: no SQL interval literal (refine::NoSqlInterval, 21.2 SR 72).
                 || d.starts_with("<SQL-interval literal>")
                 || (d.starts_with("<duration literal> ::=") && d.contains("<SQL-interval literal>"))

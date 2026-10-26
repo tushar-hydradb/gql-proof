@@ -933,8 +933,15 @@ fn typed_graphs_and_tables() {
         "TABLE t :: TABLE { y INT } = { RETURN 1 AS x } RETURN 1 AS y",
         "10.2 SR 8",
     );
+    // a table variable's columns are followed too (the unknowns audit)
+    ok("TABLE s = { RETURN 1 AS x } TABLE t :: TABLE { x INT } = s RETURN 1 AS y");
     bad(
-        "TABLE s = { RETURN 1 AS x } TABLE t :: TABLE { x INT } = s RETURN 1 AS y",
+        "TABLE s = { RETURN 'a' AS x } TABLE t :: TABLE { x INT } = s RETURN 1 AS y",
+        "10.2 SR 8",
+    );
+    // a catalog table's are the environment's, not followed (reading)
+    bad(
+        "TABLE t :: TABLE { x INT } = / s RETURN 1 AS y",
         "10.2 SR 8",
     );
     // 7.1 SR 6 c i, ii

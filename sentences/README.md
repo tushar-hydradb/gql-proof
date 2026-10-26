@@ -49,9 +49,9 @@ and `tools/inventory/violations.py` read them as they are
   `research/static-semantics-path-minimums-2026-10-23.md`
 - `typed-3vars-turbolay-claim.jsonl`: the typed command (`--match-mode-default
   different-edges --claim claims/turbolay.claim --slots 3`) on `tushar/soundness`
-  after the fifteenth review (2026-10-26), the claim's gate in force: 3,473 rows,
-  150 productions and 322 cdrc pairs never, 136 withheld, all gate-only, 0 on a
-  rule the generator keeps. it replaces main's first three variable set (2b759d3,
+  after the seventeenth review and the unknowns audit (2026-10-26), the claim's
+  gate in force: 3,408 rows, 150 productions and 322 cdrc pairs never, 198
+  withheld, all gate-only, 0 on a rule the generator keeps. it replaces main's first three variable set (2b759d3,
   3,857 rows, before the soundness work; about 100 of its sentences fail today's
   checker). how the run got from stalling to fast:
   `research/three-variables-fast-2026-10-25.md`. a third variable adds few
@@ -65,9 +65,9 @@ and `tools/inventory/violations.py` read them as they are
 - `typed-2vars-turbolay-claim-soundness.jsonl`, `typed-2vars-whole-grammar-soundness.jsonl`:
   the typed command (`--match-mode-default different-edges`) on `tushar/soundness`
   (2026-10-24), the claim's gate in force (`research/soundness-claim.md`): every
-  printed tree passed the syntax, scope and types checkers. after the fifteenth review
-  (2026-10-25): turbolay claim 3,464 rows, 160 and 347 never, 124 withheld; whole
-  grammar 3,066 rows, 38 and 94 never, 514 withheld (graph type bodies and the
+  printed tree passed the syntax, scope and types checkers. after the seventeenth
+  review and the unknowns audit (2026-10-26): turbolay claim 3,400 rows, 160 and
+  347 never, 186 withheld; whole grammar 3,055 rows, 38 and 94 never, 523 withheld (graph type bodies and the
   per-tree category sites, see research/soundness-2026-10-23.md), all on gate-only
   rules, 0 on a rule the generator keeps. no SELECT
   with a FROM and no `$$` are generated (readings, `research/soundness-claim.md`)

@@ -402,7 +402,8 @@ fn context(args: ContextArgs) -> Result<()> {
         );
         let verifier = Verifier::new(Grammar::new(&bnf))
             .with_syntax_rules(id086)
-            .with_conformance(forbidden);
+            .with_conformance(forbidden)
+            .with_key_label_sets_required(!claim.features.contains("GG22"));
         (refined.cfg, refined.start, Some(verifier))
     };
     let verifier = verifier.as_ref();
@@ -783,7 +784,9 @@ fn purdom(args: PurdomArgs) -> Result<()> {
     let start = base.require(&args.start)?;
     if args.rules != Rules::None {
         rules.push(Box::new(ClaimRules::new(&base, start, &forbidden, &[])?));
-        verifier = verifier.with_conformance(forbidden.clone());
+        verifier = verifier
+            .with_conformance(forbidden.clone())
+            .with_key_label_sets_required(!claim.features.contains("GG22"));
     }
     if args.rules == Rules::All {
         verifier = verifier.with_scope();
@@ -889,8 +892,20 @@ fn purdom(args: PurdomArgs) -> Result<()> {
             outcome.trees.len()
         );
     }
+    // What purdom checked, by --rules and --grammar (the seventeenth review: the note said
+    // syntax and scope whatever was checked).
+    let checked = match args.rules {
+        Rules::All => "the syntax and scope rules only, not the type rules",
+        Rules::Syntax => "the syntax rules only, not the scope or type rules",
+        Rules::None => "the grammar only, no syntax, scope or type rule",
+    };
+    let swapped = if args.grammar.is_some() {
+        ", against the --grammar given, not the iso grammar"
+    } else {
+        ""
+    };
     eprintln!(
-        "note: purdom checks the syntax and scope rules only, not the type rules; its sentences are outside the soundness claim for type rules (research/soundness-claim.md)"
+        "note: purdom checks {checked}{swapped}; its sentences are outside the soundness claim for the rules it does not check (research/soundness-claim.md)"
     );
     let gated = withheld.iter().filter(|w| **w).count();
     if gated > 0 {
@@ -1235,7 +1250,8 @@ fn negatives(args: NegativesArgs) -> Result<()> {
     let claim = Claim::parse(&args.claim, &conformance)?;
     let verifier = Verifier::new(Grammar::new(&bnf))
         .with_syntax_rules(id086)
-        .with_conformance(conformance.forbidden(&claim));
+        .with_conformance(conformance.forbidden(&claim))
+        .with_key_label_sets_required(!claim.features.contains("GG22"));
     let names: BTreeMap<&str, &str> = conformance
         .features
         .iter()

@@ -84,9 +84,15 @@ use std::fmt;
 /// Declared types, cut down to what the Syntax Rules distinguish.
 #[derive(Debug, Clone, PartialEq)]
 enum Ty {
-    /// Unknown: what the environment (a parameter, a catalog object) or an implementation-defined
-    /// choice gives, or what the checker does not model.
+    /// Unknown: what the environment gives (a parameter, a catalog object, a named procedure's
+    /// columns, H1), or a placeholder after a reported violation; every source is classified
+    /// in research/audit/unknowns-2026-10-26.md.
     Any,
+    /// ELEMENT_ID's value (ID076): a type the implementation fixes and the sentence does not
+    /// know, carried by the columns it is projected into, and taken only where `opaque_ok`
+    /// says (the unknowns audit: as a plain unknown it reached `||` and COALESCE through a
+    /// column)
+    Opaque,
     /// A dynamic union type (4.14).
     Dyn(Union),
     /// The null type.
@@ -120,7 +126,9 @@ enum Ty {
     Node(Elem),
     Edge(Elem),
     Graph,
-    Table,
+    /// A binding table type, with its columns' types when known (the unknowns audit: a row of
+    /// `TABLE t = { RETURN 1 AS a }` read as an open record let `r . b` pass).
+    Table(Option<Fields>),
 }
 
 /// The dynamic union types a declared type can be (4.14.3, 18.9 SR 80-88).
@@ -186,7 +194,7 @@ enum Class {
 impl Ty {
     fn class(&self) -> Option<Class> {
         Some(match self {
-            Ty::Any | Ty::Dyn(_) | Ty::Null | Ty::Nothing => return None,
+            Ty::Any | Ty::Opaque | Ty::Dyn(_) | Ty::Null | Ty::Nothing => return None,
             Ty::Bool => Class::Bool,
             Ty::Exact { .. } | Ty::Approx | Ty::Number => Class::Numeric,
             Ty::Char => Class::Char,
@@ -201,7 +209,7 @@ impl Ty {
             Ty::Node(_) => Class::Node,
             Ty::Edge(_) => Class::Edge,
             Ty::Graph => Class::Graph,
-            Ty::Table => Class::Table,
+            Ty::Table(_) => Class::Table,
         })
     }
 
@@ -249,6 +257,7 @@ impl fmt::Display for Ty {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Ty::Any => write!(f, "unknown"),
+            Ty::Opaque => write!(f, "ELEMENT_ID's type"),
             Ty::Dyn(Union::Open) => write!(f, "ANY"),
             Ty::Dyn(Union::Property) => write!(f, "ANY PROPERTY VALUE"),
             Ty::Dyn(Union::Closed(cs)) => {
@@ -284,7 +293,7 @@ impl fmt::Display for Ty {
             Ty::Node(e) => write!(f, "NODE{e}"),
             Ty::Edge(e) => write!(f, "EDGE{e}"),
             Ty::Graph => write!(f, "GRAPH"),
-            Ty::Table => write!(f, "BINDING TABLE"),
+            Ty::Table(_) => write!(f, "BINDING TABLE"),
         }
     }
 }
@@ -579,7 +588,7 @@ enum CastClass {
 
 fn cast_class(t: &Ty) -> CastClass {
     match t {
-        Ty::Any | Ty::Dyn(_) | Ty::Null | Ty::Nothing => CastClass::Dy,
+        Ty::Any | Ty::Opaque | Ty::Dyn(_) | Ty::Null | Ty::Nothing => CastClass::Dy,
         Ty::Bool => CastClass::Bo,
         Ty::Exact { .. } | Ty::Approx | Ty::Number => CastClass::Numeric,
         Ty::Char => CastClass::C,
@@ -594,7 +603,7 @@ fn cast_class(t: &Ty) -> CastClass {
         Ty::Graph => CastClass::Gr,
         Ty::Node(_) => CastClass::Nr,
         Ty::Edge(_) => CastClass::Er,
-        Ty::Table => CastClass::Tr,
+        Ty::Table(_) => CastClass::Tr,
     }
 }
 
@@ -1026,7 +1035,7 @@ impl<'t> Checker<'t> {
                     let fine = match dt_closed {
                         Some(written) => closed.as_deref() == Some(written.as_str()),
                         // a table's columns are not followed here (the twelfth review)
-                        None if matches!(pvt.ty, Ty::Table) || matches!(dt.ty, Ty::Table) => false,
+                        None if matches!(pvt.ty, Ty::Table(_)) || matches!(dt.ty, Ty::Table(_)) => false,
                         None => {
                             assignable(&pvt.ty, dt)
                                 && (dt.nullable || !pvt.nullable || matches!(pvt.ty, Ty::Nothing))
@@ -1069,12 +1078,12 @@ impl<'t> Checker<'t> {
                 match first(clause, "binding table reference value type") {
                     Some(btrvt) => (
                         Declared {
-                            ty: Ty::Table,
+                            ty: Ty::Table(Some(columns(btrvt))),
                             nullable: !not_null(btrvt),
                         },
                         Some(btrvt.text()),
                     ),
-                    None => (unknown(Ty::Table), None),
+                    None => (unknown(Ty::Table(None)), None),
                 }
             }
             _ => {
@@ -1125,7 +1134,9 @@ impl<'t> Checker<'t> {
     /// to the declared binding table reference value type: when the initializer is a nested
     /// query whose columns are known, column name-equal and each column assignable; otherwise
     /// not followed and reported (reading).
-    fn table_initializer(&mut self, otbti: &'t Plain, env: &Env, rule: &'static str) {
+    /// Checks a table initializer against its declared type and gives the variable's columns:
+    /// the declared ones, or the initializer's when no type is declared.
+    fn table_initializer(&mut self, otbti: &'t Plain, env: &Env, rule: &'static str) -> Option<Fields> {
         let bte = own(otbti, "binding table initializer")
             .and_then(|bti| own(bti, "binding table expression"));
         let cols = match bte {
@@ -1139,17 +1150,18 @@ impl<'t> Checker<'t> {
                         table: Fields::new(),
                     },
                 ),
-                None => {
-                    self.ty(bte, env);
-                    None
-                }
+                None => match self.ty(bte, env) {
+                    Ty::Table(cols) => cols,
+                    _ => None,
+                },
             },
             None => None,
         };
         let Some(btrvt) = own(otbti, "binding table reference value type") else {
-            return;
+            return cols;
         };
         let declared = table_fields(btrvt);
+        let typed = Some(columns(btrvt));
         match cols {
             None => self.report(
                 btrvt,
@@ -1165,7 +1177,7 @@ impl<'t> Checker<'t> {
                         rule,
                         format!("columns {have:?} are not the declared columns {want:?}"),
                     );
-                    return;
+                    return typed;
                 }
                 for (n, d) in &declared {
                     if !assignable(&cols[n], d) {
@@ -1178,6 +1190,7 @@ impl<'t> Checker<'t> {
                 }
             }
         }
+        typed
     }
 
     // --- statements ---------------------------------------------------------------------
@@ -1201,15 +1214,15 @@ impl<'t> Checker<'t> {
                         own(def, "binding variable").map(|bv| (ident(bv), Ty::Graph))
                     }
                     Some("binding table variable definition") => {
-                        match own(def, "opt typed binding table initializer") {
-                            Some(otbti)
-                                if own(otbti, "binding table reference value type").is_some() =>
-                            {
-                                self.table_initializer(otbti, &env, "10.2 SR 8")
+                        // 10.2 SR 8, 9: the declared type, or the initializer's
+                        let cols = match own(def, "opt typed binding table initializer") {
+                            Some(otbti) => self.table_initializer(otbti, &env, "10.2 SR 8"),
+                            None => {
+                                self.walk(def, &env);
+                                None
                             }
-                            _ => self.walk(def, &env),
-                        }
-                        own(def, "binding variable").map(|bv| (ident(bv), Ty::Table))
+                        };
+                        own(def, "binding variable").map(|bv| (ident(bv), Ty::Table(cols)))
                     }
                     _ => self.value_definition(def, &env),
                 };
@@ -1573,7 +1586,15 @@ impl<'t> Checker<'t> {
                     // a row of a nested query's table is a record of its columns (the twelfth
                     // review: `FOR r IN TABLE { RETURN 1 AS a } RETURN r . b` passed); a catalog
                     // table's columns are the environment's (H1)
-                    Ty::Table => match first(source, "procedure body") {
+                    Ty::Table(Some(cols)) => Ty::Record(Some(cols)),
+                    // a dynamic source's elements stay dynamic (H2'); the null type has none
+                    // (a reading; the unknowns audit: both gave an unknown element)
+                    Ty::Dyn(_) => Ty::Dyn(Union::Open),
+                    Ty::Null | Ty::Nothing => {
+                        self.report(source, "14.8 SR 10 null", format!("(reading) a FOR over {t} has no element type"));
+                        Ty::Any
+                    }
+                    Ty::Table(None) => match first(source, "procedure body") {
                         Some(pb) => {
                             let mut quiet = Checker {
                                 parent: HashMap::new(),
@@ -1964,6 +1985,91 @@ impl<'t> Checker<'t> {
 
     /// The declared type of an expression, reporting what breaks the rules inside it.
     fn ty(&mut self, node: &'t Plain, env: &Env) -> Ty {
+        let t = self.ty_of(node, env);
+        // ID076: ELEMENT_ID's value, read anew wherever a column or a VALUE carries it
+        if t == Ty::Opaque
+            && matches!(
+                name(node),
+                Some("element_id function" | "binding variable reference" | "property reference" | "value query expression")
+            )
+            && !self.opaque_ok(node, env)
+        {
+            self.report(node, "20.10 SR 3", "(reading, ID076) ELEMENT_ID's value is taken only as a RETURN or SELECT item, an IS NULL operand or an equality of two of them".into());
+        }
+        t
+    }
+
+    /// Where ELEMENT_ID's value is taken (ID076, a reading): as a RETURN or SELECT item, where
+    /// any type is (the ninth review: `COALESCE ( ELEMENT_ID ( x ) , 1 )` passed), an IS NULL
+    /// operand, and an equality of two such values (20.10 SR 3 gives the type an equality);
+    /// never as a column a set operation combines (14.2 SR 10; the twelfth review).
+    fn opaque_ok(&mut self, node: &'t Plain, env: &Env) -> bool {
+        let mut at: &Plain = node;
+        let mut item = false;
+        while let Some(&p) = self.parent.get(&(at as *const Plain)) {
+            match name(p) {
+                Some("return item" | "select item" | "null predicate") => {
+                    item = true;
+                    break;
+                }
+                Some("comparison predicate part 2" | "comparison predicate") => {
+                    let cp = if name(p) == Some("comparison predicate") {
+                        Some(p)
+                    } else {
+                        self.parent.get(&(p as *const Plain)).copied()
+                    };
+                    item = cp.is_some_and(|cp| {
+                        let equality = first(cp, "comp op").is_some_and(|op| {
+                            contains(op, "equals operator") || contains(op, "not equals operator")
+                        });
+                        let mut sides = Vec::new();
+                        find(cp, "comparison predicand", &mut sides);
+                        equality && sides.len() == 2 && sides.iter().all(|s| self.opaque_side(s, env))
+                    });
+                    break;
+                }
+                _ if kids(p).len() == 1 => at = p,
+                _ => break,
+            }
+        }
+        if item {
+            let mut up: &Plain = node;
+            while let Some(&p) = self.parent.get(&(up as *const Plain)) {
+                if name(p) == Some("composite query expression") && own(p, "query conjunction").is_some() {
+                    return false;
+                }
+                up = p;
+            }
+        }
+        item
+    }
+
+    /// Whether a comparison side is ELEMENT_ID's value: the function, or a column or VALUE
+    /// typed so, read by a quiet checker.
+    fn opaque_side(&self, side: &'t Plain, env: &Env) -> bool {
+        if reaches(side, "element_id function") {
+            return true;
+        }
+        // down the one-child chain to the source, so the read does not come back here
+        let mut side = side;
+        while !matches!(
+            name(side),
+            Some("binding variable reference" | "property reference" | "value query expression")
+        ) {
+            match kids(side).as_slice() {
+                [only] => side = only,
+                _ => return false,
+            }
+        }
+        let mut quiet = Checker {
+            parent: self.parent.clone(),
+            out: Vec::new(),
+            params: self.params.clone(),
+        };
+        quiet.ty_of(side, env) == Ty::Opaque
+    }
+
+    fn ty_of(&mut self, node: &'t Plain, env: &Env) -> Ty {
         let Some(n) = name(node) else {
             return Ty::Any;
         };
@@ -2181,57 +2287,8 @@ impl<'t> Checker<'t> {
                 if let Some(evr) = own(node, "element variable reference") {
                     self.element(evr, env, ELEMENT, "16.10 SR 3");
                 }
-                // ID076 (reading, H2): its type is the implementation's, so it is taken only
-                // where any type is, a RETURN or SELECT item (the ninth review:
-                // `COALESCE ( ELEMENT_ID ( x ) , 1 )` passed)
-                // also as an IS NULL operand (any type), and in an equality of two of them
-                // (20.10 SR 3 gives the type an equality)
-                let mut at: &Plain = node;
-                let mut item = false;
-                while let Some(&p) = self.parent.get(&(at as *const Plain)) {
-                    match name(p) {
-                        Some("return item" | "select item" | "null predicate") => {
-                            item = true;
-                            break;
-                        }
-                        Some("comparison predicate part 2" | "comparison predicate") => {
-                            let cp = if name(p) == Some("comparison predicate") {
-                                Some(p)
-                            } else {
-                                self.parent.get(&(p as *const Plain)).copied()
-                            };
-                            item = cp.is_some_and(|cp| {
-                                let equality = first(cp, "comp op").is_some_and(|op| {
-                                    contains(op, "equals operator") || contains(op, "not equals operator")
-                                });
-                                let mut sides = Vec::new();
-                                find(cp, "comparison predicand", &mut sides);
-                                equality
-                                    && sides.len() == 2
-                                    && sides.iter().all(|s| reaches(s, "element_id function"))
-                            });
-                            break;
-                        }
-                        _ if kids(p).len() == 1 => at = p,
-                        _ => break,
-                    }
-                }
-                // nor as a column a set operation combines with another (14.2 SR 10; the
-                // twelfth review)
-                if item {
-                    let mut up: &Plain = node;
-                    while let Some(&p) = self.parent.get(&(up as *const Plain)) {
-                        if name(p) == Some("composite query expression") && own(p, "query conjunction").is_some() {
-                            item = false;
-                            break;
-                        }
-                        up = p;
-                    }
-                }
-                if !item {
-                    self.report(node, "20.10 SR 3", "(reading, ID076) ELEMENT_ID is taken only as a RETURN or SELECT item".into());
-                }
-                Ty::Any
+                // ID076 (reading, H2): `ty` checks where it is taken (`opaque_ok`)
+                Ty::Opaque
             }
             "let value expression" => {
                 // 20.5 SR 3, 5, 7: the definitions see the incoming record, the result all
@@ -2464,8 +2521,13 @@ impl<'t> Checker<'t> {
                 Ty::Graph
             }
             "binding table reference value expression" if k.iter().any(|c| keyword(c, "TABLE")) => {
-                self.walk(node, env);
-                Ty::Table
+                match own(node, "binding table expression") {
+                    Some(bte) => self.ty(bte, env),
+                    None => {
+                        self.walk(node, env);
+                        Ty::Table(None)
+                    }
+                }
             }
             // 20.1 SR 2, 3 on this tree's derivation: a <value expression primary> that derives
             // as a graph (binding table) reference value expression has a graph (binding table)
@@ -2486,10 +2548,10 @@ impl<'t> Checker<'t> {
 
             // 11.1 SR 3 a ii, 11.2 SR 4 b ii
             "graph expression" | "binding table expression" => {
-                let (want, rule, ty) = if n == "graph expression" {
+                let (want, rule, mut ty) = if n == "graph expression" {
                     (Class::Graph, "11.1 SR 3", Ty::Graph)
                 } else {
-                    (Class::Table, "11.2 SR 4", Ty::Table)
+                    (Class::Table, "11.2 SR 4", Ty::Table(None))
                 };
                 if let Some(oep) = own(node, "object expression primary") {
                     // H3: the printed tree is judged. `"g"` and `a.b` also derive as a catalog
@@ -2501,6 +2563,9 @@ impl<'t> Checker<'t> {
                         .find(|c| matches!(c, Plain::Def { .. }))
                         .map_or(Ty::Any, |v| self.ty(v, env));
                     self.expect(oep, &inner, &[want], rule);
+                    if matches!(inner, Ty::Table(Some(_))) {
+                        ty = inner.clone();
+                    }
                     // SR 3 a ii, SR 4 b ii: a *material* reference type; the null or the empty
                     // type is none, and H4's permission is for sites fixing a nullable type.
                     // And on this tree an operator, a function, a concatenation or a literal
@@ -2516,24 +2581,28 @@ impl<'t> Checker<'t> {
                     if let Some(t) = env.vars.get(&ident(onbv)) {
                         let t = t.clone();
                         self.expect(onbv, &t, &[want], rule);
+                        if matches!(t, Ty::Table(Some(_))) {
+                            ty = t;
+                        }
                     }
+                } else if let Some(nqs) = own(node, "nested binding table query specification")
+                    .and_then(|n| own(n, "nested query specification"))
+                {
+                    ty = self.ty(nqs, env);
                 } else {
                     self.walk(node, env);
                 }
                 ty
             }
-            "nested query specification" => {
-                if let Some(pb) = first(node, "procedure body") {
-                    self.body(
-                        pb,
-                        Scope {
-                            record: env.vars.clone(),
-                            table: Fields::new(),
-                        },
-                    );
-                }
-                Ty::Table
-            }
+            "nested query specification" => Ty::Table(first(node, "procedure body").and_then(|pb| {
+                self.body(
+                    pb,
+                    Scope {
+                        record: env.vars.clone(),
+                        table: Fields::new(),
+                    },
+                )
+            })),
             // The category over a bare primary, on this tree (H3): 20.21 SR 3, 20.23 SR 2, 4,
             // 20.15 SR 1, 20.13 SR 2, 20.20 SR 3. Another tree of the same text may put the
             // primary in another category, so these are reported apart (`.. primary`); null,
@@ -2769,10 +2838,23 @@ impl<'t> Checker<'t> {
             _ => match name(node) {
                 Some("character string concatenation") => Ty::Char,
                 Some("byte string concatenation") => Ty::Bytes,
-                Some("list concatenation") => Ty::List {
-                    elem: Box::new(Ty::Any),
-                    group: false,
-                },
+                // 20.15 SR 2 combines the operands' element types: an unknown operand's are the
+                // environment's (H1), a dynamic one's stay dynamic (H2'), and two null operands
+                // have none (a reading; the unknowns audit: `NULL || NULL` gave a list of unknown)
+                Some("list concatenation") => {
+                    let elem = if [&l, &r].iter().any(|t| **t == Ty::Any) {
+                        Ty::Any
+                    } else if [&l, &r].iter().any(|t| matches!(t, Ty::Dyn(_))) {
+                        Ty::Dyn(Union::Open)
+                    } else {
+                        self.report(node, "20.15 SR 2 null", format!("(reading) {l} || {r} has no element type"));
+                        Ty::Any
+                    };
+                    Ty::List {
+                        elem: Box::new(elem),
+                        group: false,
+                    }
+                }
                 Some("path value concatenation") => Ty::Path,
                 _ => Ty::Any,
             },
@@ -3054,7 +3136,7 @@ impl<'t> Checker<'t> {
         // SR 5's "CO specifies NULL", read with 5.3.2.1 (specify is contain): an operand
         // holding a NULL anywhere needs a nullable target (the eleventh review)
         if !td.nullable
-            && (contains(co, "null literal") || has_keyword(co, "NULL"))
+            && (contains(co, "null literal") || has_keyword(co, "NULL") || implicit_null(co))
         {
             self.report(cs, "20.8 SR 5 contains", format!("an operand holding NULL cast to {td} (reading)"));
         }
@@ -3421,7 +3503,7 @@ fn value_type(node: &Plain) -> Declared {
         Some("null type") => Ty::Null,
         Some("empty type") => Ty::Nothing,
         Some("open graph reference value type" | "closed graph reference value type") => Ty::Graph,
-        Some("binding table reference value type") => Ty::Table,
+        Some("binding table reference value type") => Ty::Table(Some(columns(node))),
         Some("open node reference value type") => Ty::Node(Elem::Open),
         Some("open edge reference value type") => Ty::Edge(Elem::Open),
         Some("closed node reference value type") => {
@@ -3530,6 +3612,11 @@ fn find_outside<'t>(node: &'t Plain, want: &str, fence: &str, out: &mut Vec<&'t 
 }
 
 /// The columns a <binding table reference value type> declares (18.9, 18.10).
+/// The column types a binding table reference value type declares.
+fn columns(btrvt: &Plain) -> Fields {
+    table_fields(btrvt).into_iter().map(|(n, d)| (n, d.ty)).collect()
+}
+
 fn table_fields(btrvt: &Plain) -> BTreeMap<String, Declared> {
     let mut out = BTreeMap::new();
     if let Some(spec) = first(btrvt, "field types specification") {
@@ -3819,6 +3906,29 @@ fn keyword(node: &Plain, kw: &str) -> bool {
 
 /// Whether `node` holds the keyword `kw` anywhere, a type's `NOT NULL` aside (it specifies
 /// a nullability, not the null value).
+/// A NULL the operand holds only through a rewrite: NULLIF's (20.7 SR 1) and the ELSE NULL of
+/// a CASE without an ELSE (20.7 SR 2 to 4), read as SR 5's "contains" reads the written NULL
+/// (the seventeenth review).
+fn implicit_null(node: &Plain) -> bool {
+    has_keyword(node, "NULLIF")
+        || match node {
+            Plain::Def { name, children, .. } => {
+                ((name == "simple case" || name == "searched case") && !has_else(children))
+                    || children.iter().any(implicit_null)
+            }
+            _ => false,
+        }
+}
+
+/// Whether a CASE's own children hold an <else clause>, looking through grouping nodes.
+fn has_else(children: &[Plain]) -> bool {
+    children.iter().any(|c| match c {
+        Plain::Def { name, .. } if name == "else clause" => true,
+        Plain::Def { synthetic: true, children, .. } => has_else(children),
+        _ => false,
+    })
+}
+
 fn has_keyword(node: &Plain, kw: &str) -> bool {
     keyword(node, kw)
         || match node {

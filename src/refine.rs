@@ -170,6 +170,7 @@ pub fn all_rules(id086: MatchModeDefault) -> Vec<Box<dyn Rule>> {
         Box::new(LiteralElements),
         Box::new(UntypedLetValues),
         Box::new(NoSqlInterval),
+        Box::new(NoDurationRecord),
         Box::new(NoSubstitution),
         Box::new(NoSelectBody),
         Box::new(NoElementWhen),
@@ -1886,6 +1887,37 @@ impl Rule for NoSqlInterval {
 
     fn rejects(&self, node: &Node, _inh: &State) -> bool {
         node.def.split('/').next() == Some("SQL-interval literal")
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if self.rejects(node, inh) {
+            return None;
+        }
+        Some(s)
+    }
+}
+
+/// 20.29 GR 2: a DURATION over a record is typed by its fields; a record naming no unit
+/// field (`DURATION ( { } )`) has no declared type, so 20.28 SR 1 a cannot hold of it. No
+/// DURATION takes a record (the seventeenth review); `DURATION ( '..' )` keeps the production.
+pub struct NoDurationRecord;
+
+impl Rule for NoDurationRecord {
+    fn name(&self) -> &str {
+        "no DURATION over a record"
+    }
+
+    fn cite(&self) -> &str {
+        "20.29 GR 2, 20.28 SR 1: a record naming no unit gives no duration type"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        Vec::new()
+    }
+
+    fn rejects(&self, node: &Node, _inh: &State) -> bool {
+        node.def.split('/').next() == Some("duration function parameters")
+            && node.items.contains(&Item::Def("record constructor"))
     }
 
     fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {

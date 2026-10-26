@@ -529,3 +529,100 @@ fn sixteenth_review_findings() {
     // an inline call holding a named one is not the named one's kind
     fine("CALL { CALL a ( ) }", "14.5 SR 3 kinds");
 }
+
+#[test]
+fn seventeenth_review_findings() {
+    bad_on_some_parse("ORDER BY NULL - DURATION ( { } ) FINISH", "20.28 SR 1 record");
+    fine("RETURN DURATION ( 'P1Y' ) AS x", "20.28 SR 1 record");
+}
+
+#[test]
+fn key_label_sets_without_gg22() {
+    // 18.2 SR 9 a ii, 18.3 SR 10 a ii: a claim without GG22 omits no key label set.
+    let tokens = Grammar::new(&ISO_BNF);
+    let v = Verifier::new(Grammar::new(&ISO_BNF))
+        .with_syntax_rules(MatchModeDefault::Portable)
+        .with_key_label_sets_required(true);
+    let parser = Parser::new(&ISO, &tokens, "GQL-program").unwrap();
+    for (text, rule) in [
+        ("CREATE GRAPH TYPE / ab { ( ) }", "18.2 SR 9"),
+        ("CREATE GRAPH TYPE / ab { ( ) -[ { } ]-> ( ) }", "18.3 SR 10"),
+    ] {
+        let found = std::cell::RefCell::new(false);
+        let _ = parser.parse(text, |n| {
+            let plain = n.export(&ISO);
+            if v.verify(&plain, &n.render(&ISO)).iter().any(|x| x.rule == rule) {
+                *found.borrow_mut() = true;
+            }
+            false
+        });
+        assert!(found.into_inner(), "{text}: {rule} not reported");
+    }
+}
+
+#[test]
+fn eighteenth_review_findings() {
+    // 20.8 SR 5 contains: the NULL of NULLIF's rewrite and of a CASE's implicit ELSE NULL
+    bad_on_some_parse("RETURN CAST ( NULLIF ( 8 , 8 ) AS INT NOT NULL ) AS x", "20.8 SR 5 contains");
+    bad_on_some_parse("RETURN CAST ( CASE WHEN TRUE THEN 8 END AS INT NOT NULL ) AS x", "20.8 SR 5 contains");
+    fine("RETURN CAST ( CASE WHEN TRUE THEN 8 ELSE 9 END AS INT NOT NULL ) AS x", "20.8 SR 5 contains");
+    // 20.28 SR 1 record: every record argument, mixed or upper-case fields too
+    bad("RETURN DURATION ( { years : 1 , days : 1 } ) + DURATION ( 'PT1S' ) AS x", "20.28 SR 1 record");
+    bad("RETURN DURATION ( { YEARS : 1 } ) + DURATION ( 'P1Y' ) AS x", "20.28 SR 1 record");
+}
+
+#[test]
+fn unknowns_audit_element_id() {
+    // ID076: ELEMENT_ID's value through a column or a VALUE is read as the function is
+    bad("MATCH ( x ) RETURN ELEMENT_ID ( x ) AS e ORDER BY e || 'x'", "20.10 SR 3");
+    bad("RETURN VALUE { MATCH ( x ) RETURN ELEMENT_ID ( x ) AS e LIMIT 1 } || 'x' AS a", "20.10 SR 3");
+    bad("MATCH ( x ) RETURN ELEMENT_ID ( x ) AS e NEXT RETURN e < e AS a", "20.10 SR 3");
+    bad("MATCH ( x ) RETURN ELEMENT_ID ( x ) AS e NEXT RETURN COALESCE ( e , 1 ) AS a , e || 'x' AS b", "20.10 SR 3");
+    bad("MATCH ( x ) RETURN ELEMENT_ID ( x ) AS e NEXT INSERT ( :L { p : e } )", "20.10 SR 3");
+    fine("MATCH ( x ) RETURN ELEMENT_ID ( x ) AS e NEXT RETURN e AS f", "20.10 SR 3");
+    fine("MATCH ( x ) RETURN ELEMENT_ID ( x ) AS e NEXT RETURN e IS NULL AS f", "20.10 SR 3");
+    fine("MATCH ( x ) RETURN ELEMENT_ID ( x ) AS e NEXT RETURN e = e AS f", "20.10 SR 3");
+    fine("MATCH ( x ) , ( y ) RETURN ELEMENT_ID ( x ) = ELEMENT_ID ( y ) AS f", "20.10 SR 3");
+}
+
+#[test]
+fn unknowns_audit_rows_and_elements() {
+    // a table variable's row keeps its columns (10.2 SR 8, 9; 14.8 SR 10 a; 20.11 SR 2 a)
+    bad("TABLE t = { RETURN 1 AS a } FOR r IN t RETURN r . b AS c", "20.11 SR 2");
+    bad("TABLE t = { RETURN 'a' AS a } FOR r IN t RETURN r . a + 1 AS c", "20.21 SR 3");
+    // a value variable holding a table: every parse is flagged (the category sites)
+    let v = verdicts("VALUE t = TABLE { RETURN 1 AS a } FOR r IN t RETURN r . a || 'x' AS c");
+    assert!(!v.is_empty() && v.iter().all(|p| !p.is_empty()), "{v:?}");
+    fine("TABLE t = { RETURN 1 AS a } FOR r IN t RETURN r . a + 1 AS c", "20.21 SR 3");
+    fine("TABLE t = { RETURN 1 AS a } FOR r IN t RETURN r . a + 1 AS c", "20.11 SR 2");
+    // a dynamic source's elements stay dynamic; a null source has none
+    bad("FOR x IN CAST ( NULL AS ANY ) RETURN COALESCE ( x , 1 ) AS a", "22.19 SR 2");
+    bad("FOR x IN NULL RETURN x + 1 AS a", "14.8 SR 10 null");
+    bad("FOR x IN NULL || NULL RETURN x + 1 AS a", "20.15 SR 2 null");
+}
+
+#[test]
+#[ignore]
+fn dump_clean_parses() {
+    let text = std::env::var("PROBE").unwrap();
+    let tokens = Grammar::new(&ISO_BNF);
+    let v = verifier();
+    let mut parser = Parser::new(&ISO, &tokens, "GQL-program").unwrap();
+    parser.limit = 2048;
+    parser
+        .parse(&text, |n| {
+            let plain = n.export(&ISO);
+            let mut rules: Vec<&'static str> =
+                v.verify(&plain, &n.render(&ISO)).into_iter().map(|x| x.rule).collect();
+            if !rules.contains(&"ISO BNF") {
+                rules.extend(scope::check(&plain).into_iter().map(|x| x.rule));
+                rules.extend(types::check(&plain).into_iter().map(|x| x.rule));
+                if rules.is_empty() {
+                    println!("{plain:#?}");
+                    return true;
+                }
+            }
+            false
+        })
+        .unwrap();
+}
