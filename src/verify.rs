@@ -43,6 +43,8 @@ pub const GATE_ONLY: &[&str] = &[
     "21.3 SR 4 names",
     "9.1 SR 5 nested",
     "16.6 SR 8 nested",
+    "12.3 SR 7",
+    "14.10 SR 4 let",
     // 20.8 SR 5's "CO specifies NULL" read as containing one anywhere: the generator does not
     // follow NULLs below a cast operand
     "20.8 SR 5 contains",
@@ -201,6 +203,7 @@ impl<'b> Verifier<'b> {
         if let Some(id086) = self.syntax_rules {
             catalog_root(tree, &mut out);
             like_sources(tree, &mut out);
+            schema_drops(tree, &mut out);
             delimited_names(tree, &mut out);
             one_kind_per_name(tree, &mut out);
             syntax_rules(tree, id086, &mut Vec::new(), &mut out);
@@ -2542,6 +2545,40 @@ fn delimited_names(tree: &Plain, out: &mut Vec<Violation>) {
             rule: "21.3 SR 4 names",
             detail: "a delimited identifier as a variable, field, property or parameter name or an alias (reading)".into(),
         });
+    }
+}
+
+/// 12.3 SR 7 a, b with H1 (one environment, judged before execution): a schema a program
+/// drops is not the working schema it sets with AT, and holds nothing the program names
+/// through it (the fourteenth review: `AT / a DROP SCHEMA / a`, `DROP GRAPH / a / b DROP
+/// SCHEMA / a`). Reading: schemas compared by their written absolute paths.
+fn schema_drops(tree: &Plain, out: &mut Vec<Violation>) {
+    let mut drops = Vec::new();
+    find(tree, "drop schema statement", &mut drops);
+    if drops.is_empty() {
+        return;
+    }
+    let path_of = |n: &Plain| -> String { n.text().chars().filter(|c| !c.is_whitespace()).collect() };
+    for d in drops {
+        let Some(pan) = own(d, "catalog schema parent and name") else { continue };
+        let dropped = path_of(pan);
+        let mut ats = Vec::new();
+        find(tree, "at schema clause", &mut ats);
+        let set = ats.iter().any(|a| own(a, "schema reference").is_some_and(|r| path_of(r) == dropped));
+        // a parent path inside the dropped schema: `/ a / b`, `/ a / x . y`
+        let mut parents = Vec::new();
+        find(tree, "catalog object parent reference", &mut parents);
+        let inside = parents.iter().any(|p| {
+            let t = path_of(p);
+            t == dropped || t.starts_with(&format!("{dropped}/"))
+        });
+        if set || inside {
+            out.push(Violation {
+                path: String::new(),
+                rule: "12.3 SR 7",
+                detail: format!("{dropped} is dropped while the program works in it or names something in it (H1)"),
+            });
+        }
     }
 }
 

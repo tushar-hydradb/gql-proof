@@ -492,3 +492,25 @@ hand-written probes in clauses 16 to 22 were all flagged as the text says.
 fixed: quantifier bounds capped at 255 (IL018 in H2; `{ 888 }` was printed for
 turbolay's claim); the claim's rule count (1,019) and grammar rows (10); H1
 says which names a made name must differ from
+
+## 2026-10-26: main merged, three variables
+
+main's extraction speedups merged (0e30462): the whole grammar at 2 variables
+in 45 s, at 3 variables in 34 min on a shared machine, 3,075 sentences, no
+generator bug, 5,249 of 5,298 productions.
+
+## 2026-10-26: the fourteenth review (several variables)
+
+no printed counterexample at 1 and 2 variables, whole grammar and turbolay;
+about 90 multi-variable sentences traced by hand. lenient places closed: a
+schema dropped while AT sets it or the program names into it (12.3 SR 7); a
+binary set function's independent value expression sees the record, not the
+group table (20.9 SR 9 g, h); an earlier MATCH's variable is exterior to a
+selective pattern (16.6 SR 7); no LET expression in a sort key (14.10 SR 4,
+reading). H1 states the session state S needs
+
+its second part: no printed counterexample at 3 variables either (whole grammar
+3,075 lines, turbolay 3,473). the first round with none. 3 variables add 16
+sentences in all, three-field or three-definition variants; the multi-variable
+interactions are not printed at all, because the cover targets are met at 1
+or 2. noted in the claim

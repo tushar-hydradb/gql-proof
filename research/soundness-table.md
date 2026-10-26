@@ -6,7 +6,7 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 
 | kind | generated | reading | permission | checked | grammar | hypothesis | open |
 |---|---|---|---|---|---|---|---|
-| constraint | 114 | 49 | 8 | 32 | 10 | 1 | 0 |
+| constraint | 114 | 49 | 8 | 33 | 10 | 1 | 0 |
 | type | 42 | 27 | 9 | 16 | 0 | 2 | 0 |
 | environment | 0 | 0 | 0 | 0 | 0 | 74 | 0 |
 
@@ -46,6 +46,7 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 | 12.3 SR 3 | environment | hypothesis | the absolute directory path of a drop schema statement identifies a GQL-directory |  |
 | 12.3 SR 6 | environment | hypothesis | without IF EXISTS the schema name names an existing schema in the parent |  |
 | 12.3 SR 7 a | environment | hypothesis | the schema dropped is not the statement's current working schema |  |
+| 12.3 SR 7 a, in the sentence | constraint | checked | a schema the program drops is neither the working schema it sets with AT nor a parent of anything it names | src/verify.rs:schema_drops "12.3 SR 7" (in verify::GATE_ONLY) |
 | 12.3 SR 7 b | environment | hypothesis | the schema dropped holds no catalog object |  |
 | 12.4 SR 3 | environment | hypothesis | the explicit or implicit catalog object parent reference identifies a GQL-schema |  |
 | 12.4 SR 6 | environment | hypothesis | without IF NOT EXISTS or OR REPLACE the parent-and-name does not name an existing graph |  |
@@ -87,8 +88,8 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 | 14.5 SR 3 | environment | hypothesis | a named query call's procedure is a query procedure |  |
 | 14.8 SR 10 c i 2 | constraint | generated | the ordinality or offset variable's name differs from the alias's | src/verify/scope.rs:for_statement "14.8 SR 10" |
 | 14.8 SR 11 | constraint | reading | the incoming record's field names and the new fields are disjoint | src/verify/scope.rs:for_statement "14.8 SR 11" |
-| 14.10 SR 4 c i 2 A I | constraint | reading | no sort key of an ORDER BY after RETURN contains a nested query specification | src/verify/scope.rs:result "14.10 SR 4" (a sort key contains a nested query) |
-| 14.10 SR 4 c i 2 A IV | constraint | reading | every variable reference in a sort key, outside an aggregate, is one ORDER BY may see: the return aliases, plus the incoming names when the return neither groups, aggregates nor removes duplicates, or the GROUP BY references when it groups | src/verify/scope.rs:result "14.10 SR 4" (unbound in the ORDER BY env) |
+| 14.10 SR 4 c i 2 A I | constraint | reading | no sort key of an ORDER BY after RETURN contains a nested query specification | src/verify/scope.rs:result "14.10 SR 4" (a sort key contains a nested query); src/verify/s |
+| 14.10 SR 4 c i 2 A IV | constraint | reading | every variable reference in a sort key, outside an aggregate, is one ORDER BY may see: the return aliases, plus the incoming names when the return neither groups, aggregates nor removes duplicates, or the GROUP BY references when it groups | src/verify/scope.rs:result "14.10 SR 4" (unbound in the ORDER BY env); src/verify/scope.rs |
 | 14.10 SR 4 c i 2 A V | constraint | reading | when the return neither groups nor directly holds an aggregating item, no sort key contains an aggregate | src/verify/scope.rs:result "14.10 SR 4" (an aggregate in ORDER BY without grouping or aggr |
 | 14.11 SR 6 a | constraint | reading | RETURN * needs an incoming table that is not the unit table | src/verify/scope.rs:result "14.11 SR 6" (RETURN * against a unit working table) |
 | 14.11 SR 6 b | constraint | reading | RETURN * has no GROUP BY | src/verify/scope.rs:result "14.11 SR 6" (RETURN * with GROUP BY) |

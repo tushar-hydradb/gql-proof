@@ -1174,6 +1174,11 @@ impl<'t> Checker<'t> {
                     "an aggregate in ORDER BY (reading: none)".into(),
                 );
             }
+            // 14.10 SR 4 c i 2 A IV (reading): a LET .. IN's local name in a sort key is no
+            // ORDER BY reference; only CR 4 (GA07) speaks for it (the fourteenth review)
+            if contains(obc, "let value expression") {
+                self.report(obc, "14.10 SR 4 let", "a LET expression in a sort key (reading)".into());
+            }
             // An EXISTS over a graph pattern or match block holds one after 19.4 SR 2, 3.
             if contains(obc, "nested query specification") || contains(obc, "exists predicate") {
                 self.report(
@@ -1262,7 +1267,7 @@ impl<'t> Checker<'t> {
             }
         }
         self.names(gp, &pat, &paths);
-        self.selective_rules(&each);
+        self.selective_rules(&each, incoming);
         let mut globals = Fields::new();
         let mut subpaths = BTreeSet::new();
         for (n, &(sort, d)) in &exposed {
@@ -1365,12 +1370,15 @@ impl<'t> Checker<'t> {
 
     /// 16.6 SR 7. Reading: an element variable declared in a path pattern that is not
     /// selective is exterior, even if a selective one declares it too.
-    fn selective_rules(&mut self, each: &[(&'t Plain, Exposed, bool)]) {
-        let exterior: BTreeSet<&String> = each
+    fn selective_rules(&mut self, each: &[(&'t Plain, Exposed, bool)], incoming: &Fields) {
+        // exterior: declared in no selective path pattern, an earlier MATCH's variable included
+        // (16.6 SR 6 is not limited to one graph pattern; the fourteenth review)
+        let mut exterior: BTreeSet<&String> = each
             .iter()
             .filter(|(_, _, s)| !s)
             .flat_map(|(_, e, _)| e.keys())
             .collect();
+        exterior.extend(incoming.keys());
         for (i, (ppe, e, s)) in each.iter().enumerate() {
             if !s {
                 continue;
@@ -1831,6 +1839,13 @@ impl<'t> Checker<'t> {
                     self.singleton(source, env, at, "20.1 SR 4-6");
                 }
                 kids(node).into_iter().for_each(|k| self.expr(k, env, at));
+            }
+            // 20.9 SR 9 g, h: a binary set function's independent value expression sees only
+            // the aggregate's working record, not the group's table (the fourteenth review:
+            // `PERCENTILE_CONT ( y . a , y . b ) .. GROUP BY x` resolved y in the table)
+            "independent value expression" => {
+                let record = At { agg: false, ..at };
+                kids(node).into_iter().for_each(|k| self.expr(k, env, record));
             }
             // 16.10 SR 3 wherever one stands (a CASE operand, an argument): a node or edge
             // variable (the twelfth review)

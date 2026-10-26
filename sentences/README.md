@@ -47,14 +47,15 @@ and `tools/inventory/violations.py` read them as they are
   cover, were 2,990 and 4,943), the never-covered counts unchanged at 153 and
   333. turbolay #243 (484d1a72) results in
   `research/static-semantics-path-minimums-2026-10-23.md`
-- `typed-3vars-turbolay-claim.jsonl`: the first complete three variable set.
-  the path minimums command with `--slots 3 --parallel` on `tushar/three-vars`
-  (2026-10-25, 2b759d3, main at 51d059a underneath). 3,857 rows, 3,823
-  distinct, 152 s, 6.3 GB peak. never covered: 141 productions and 305 cdrc
-  pairs, the counts `research/never-targets-2026-10-23.md` predicted from the
-  two variable audit (153 and 333 at two). 4 trees flagged by the types
-  checker only (`x + NULL` as a TRIM count), as at two. how the run got from
-  stalling to this: `research/three-variables-fast-2026-10-25.md`
+- `typed-3vars-turbolay-claim.jsonl`: the typed command (`--match-mode-default
+  different-edges --claim claims/turbolay.claim --slots 3`) on `tushar/soundness`
+  after the fourteenth review (2026-10-26), the claim's gate in force: 3,473 rows,
+  150 productions and 322 cdrc pairs never, 136 withheld, all gate-only, 0 on a
+  rule the generator keeps. it replaces main's first three variable set (2b759d3,
+  3,857 rows, before the soundness work; about 100 of its sentences fail today's
+  checker). how the run got from stalling to fast:
+  `research/three-variables-fast-2026-10-25.md`. a third variable adds few
+  sentences: the cover targets are met at one or two (`research/soundness-claim.md`)
 - `typed-2vars-whole-grammar-before-258437a.jsonl`: types under scope, 2
   variables, whole grammar (no claim), before extraction took the smallest
   context first. 1,228 distinct, each with the `targets` it covers. kept for
@@ -64,7 +65,7 @@ and `tools/inventory/violations.py` read them as they are
 - `typed-2vars-turbolay-claim-soundness.jsonl`, `typed-2vars-whole-grammar-soundness.jsonl`:
   the typed command (`--match-mode-default different-edges`) on `tushar/soundness`
   (2026-10-24), the claim's gate in force (`research/soundness-claim.md`): every
-  printed tree passed the syntax, scope and types checkers. after the thirteenth review
+  printed tree passed the syntax, scope and types checkers. after the fourteenth review
   (2026-10-25): turbolay claim 3,465 rows, 160 and 347 never, 124 withheld; whole
   grammar 3,068 rows, 38 and 94 never, 514 withheld (graph type bodies and the
   per-tree category sites, see research/soundness-2026-10-23.md), all on gate-only

@@ -46,7 +46,12 @@ property of every printed sentence, by the gate in step 1
   incompatible types (`$b * 2` used as a graph) holds only if that type is
   dynamic and H2' cures it. a named procedure called without YIELD returns no
   column named like a field of its incoming record (15.1 SR 9 through the
-  procedure's signature, which only the catalog gives). the `environment` rows of the audit hold under H1
+  procedure's signature, which only the catalog gives). the session has a
+  current working graph, a current working schema and a home schema wherever
+  S needs one (16.3 SR 23, 13.2 SR 5, 16.8 SR 2, 17.1 SR 4, 6, 17.6 SR 2 b i);
+  a schema S drops is empty and is not the session's working schema, and a
+  graph type S drops is no graph's type (12.3 SR 7, 12.7 SR 6), S itself never
+  working in or naming into a schema it drops (checked). the `environment` rows of the audit hold under H1
   and only under it
 - **H2, implementation-defined choices.** the implementation-defined rules
   S's validity depends on take the choice that does not raise a syntax error:
@@ -187,6 +192,14 @@ checker and the table
   has a closed row)
 - a cover run's `withheld` line: the targets lost to the gate, which are lost
   coverage, never lost soundness
+- what the variable count buys: the cover targets are productions in a
+  context, each met at 1 or 2 variables, so a run at 3 adds a few sentences of
+  three fields or definitions and no new interaction (the fourteenth review:
+  7 new in the whole grammar, 9 in turbolay). joins across MATCHes, shadowing,
+  OPTIONAL, CALL scope with element variables and group variables together are
+  not printed, so the theorem says nothing about them; the checker's probes
+  for them (`tests/scope_checker.rs`, `tests/probes_checker.rs`) are what
+  stands behind a future set that prints them
 - not a check: `gql-proof cover FILE` verifies sentences from elsewhere with
   the ISO grammar and the rendering only (no syntax rules, scope or types),
   and accepts a sentence when any tree passes; it says nothing about this

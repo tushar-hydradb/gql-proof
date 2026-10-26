@@ -497,3 +497,13 @@ fn thirteenth_review_findings() {
     bad("RETURN LET VALUE x ANY = CURRENT_DATE IN 1 END AS z", "20.5 SR 5");
     fine("RETURN LET x = CURRENT_DATE IN 1 END AS z", "20.5 SR 5");
 }
+
+#[test]
+fn fourteenth_review_findings() {
+    bad_on_some_parse("AT / a DROP SCHEMA / a", "12.3 SR 7");
+    bad_on_some_parse("DROP GRAPH / a / b DROP SCHEMA / a", "12.3 SR 7");
+    fine("DROP SCHEMA / a", "12.3 SR 7");
+    bad_on_some_parse("MATCH ( x ) -> ( y ) RETURN x AS x , PERCENTILE_CONT ( y . a , y . b ) AS z GROUP BY x", "20.12 SR 8");
+    bad_on_some_parse("MATCH ( y ) MATCH ANY SHORTEST ( x ) -> ( y ) -> ( z ) RETURN x", "16.6 SR 7");
+    bad_on_some_parse("MATCH ( x ) RETURN x ORDER BY LET z = x IN z END", "14.10 SR 4 let");
+}
