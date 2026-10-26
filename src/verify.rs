@@ -45,6 +45,7 @@ pub const GATE_ONLY: &[&str] = &[
     "16.6 SR 8 nested",
     "12.3 SR 7",
     "14.10 SR 4 let",
+    "14.5 SR 3 kinds",
     // H2's limits, which the generator keeps by settling values (tree.rs); the gate makes them
     // rest on no generator
     "16.11 SR 1",
@@ -212,6 +213,7 @@ impl<'b> Verifier<'b> {
             like_sources(tree, &mut out);
             schema_drops(tree, &mut out);
             h2_bounds(tree, &mut out);
+            procedure_kinds(tree, &mut out);
             delimited_names(tree, &mut out);
             one_kind_per_name(tree, &mut out);
             syntax_rules(tree, id086, &mut Vec::new(), &mut out);
@@ -2562,6 +2564,42 @@ fn delimited_names(tree: &Plain, out: &mut Vec<Violation>) {
             rule: "21.3 SR 4 names",
             detail: "a delimited identifier as a variable, field, property or parameter name or an alias (reading)".into(),
         });
+    }
+}
+
+/// 12.8, 13.6, 14.5 SR 3 with H1: a procedure has one kind (4.10.2.2, 4.10.2.4), so one named
+/// procedure called as two kinds in a program is met by no environment (the sixteenth review).
+/// Reading: procedures compared by their written reference.
+fn procedure_kinds(tree: &Plain, out: &mut Vec<Violation>) {
+    let mut seen: HashMap<String, &'static str> = HashMap::new();
+    for kind in [
+        "call query statement",
+        "call data-modifying procedure statement",
+        "call catalog-modifying procedure statement",
+    ] {
+        let mut calls = Vec::new();
+        find(tree, kind, &mut calls);
+        for c in calls {
+            // the named procedures this call statement calls itself, not those in a nested body
+            let mut pcs = Vec::new();
+            find(c, "procedure call", &mut pcs);
+            let Some(npc) = pcs.first().and_then(|pc| own(pc, "named procedure call")) else { continue };
+            let Some(r) = own(npc, "procedure reference") else { continue };
+            let name: String = r.text().chars().filter(|c| !c.is_whitespace()).collect();
+            match seen.get(&name) {
+                Some(k) if *k != kind => {
+                    out.push(Violation {
+                        path: String::new(),
+                        rule: "14.5 SR 3 kinds",
+                        detail: format!("{name} is called as a <{k}> and a <{kind}>: one kind per procedure (H1)"),
+                    });
+                    return;
+                }
+                _ => {
+                    seen.insert(name, kind);
+                }
+            }
+        }
     }
 }
 

@@ -41,13 +41,16 @@ property of every printed sentence, by the gate in step 1
   6), no name is used for two kinds of object, bare names in graph and table
   expressions and directory names included (17.2 SR 2, a schema holds one
   object per name, a directory one schema or directory per name), and no
-  LIKE source may have an open type (12.6 SR 7 b iv), all checked. H1 is one environment, and every syntax rule is
+  LIKE source may have an open type (12.6 SR 7 b iv), and no named procedure is
+  called as two kinds (12.8, 13.6, 14.5 SR 3: a procedure has one kind), all
+  checked. H1 is one environment, and every syntax rule is
   judged against it before execution (`DROP GRAPH a NEXT DROP GRAPH a` needs
   graph a at both, as the text applies syntax rules to the whole program
   first). a parameter has the type the request gives it; one used at two
   incompatible types (`$b * 2` used as a graph) holds only if that type is
   dynamic and H2' cures it. a named procedure called without YIELD returns no
-  column named like a field of its incoming record (15.1 SR 9 through the
+  column named like a field of the call's incoming record or table (15.1 SR 9,
+  the two amended under cor 1, through the
   procedure's signature, which only the catalog gives). the session has a
   current working graph, a current working schema and a home schema wherever
   S needs one (16.3 SR 23, 13.2 SR 5, 16.8 SR 2, 17.1 SR 4, 6, 17.6 SR 2 b i);
@@ -92,12 +95,16 @@ property of every printed sentence, by the gate in step 1
   PROPERTY VALUE )`, no property value type being a graph under H2): such a
   sentence is valid in the weak sense that it raises no syntax error
 - **H2''', the claim's features.** a sentence that uses a feature-dependent
-  form holds for an engine claiming that feature (the conformance rules of the
-  claim keep the others out). syntax rules that turn on a feature: 18.2 SR 9 a
+  form holds for an engine claiming that feature. the conformance rules are
+  outside the theorem: the gate enforces those `features --claim` lists as
+  enforced, not the rest (for neo4j, GE04's `USE $b` is printed; GP02 is read
+  by 5.3.2.1 containment, so a scope clause nested in a CALL { } meets it).
+  syntax rules that turn on a feature: 18.2 SR 9 a
   (an omitted key label set needs GG22); the sets that print graph type bodies
   claim every feature, and a claim with GG23 but not GG22 is outside the
-  theorem. 22.18 SR 2 (GV65), 22.18 SR 9 c (GV66, GV67) and 20.17 SR 3 b
-  (GV72) turn on features too; the checker reads each as without the feature
+  theorem. 22.18 SR 2 (GV65), 22.18 SR 9 c (GV66, GV67), 20.17 SR 3 b (GV72)
+  and every rule asking for comparable value types (4.4.2: GA04, GA09; 20.24
+  SR 3, 4, 14.2 SR 10) turn on features too; the checker reads each as without the feature
   (static combination, no empty list typed NOTHING), the stricter side, so
   they need nothing of the claim
 - **H2'', ID086.** the sets are printed for an implementation whose default

@@ -541,3 +541,11 @@ theorem holds under any `--claim` and `--match-mode-default`
   printed one; 34 trees withheld as generator bugs on 12.8 and 13.6 SR 2
   (`CALL { CALL a ( EXISTS { CALL ( ) { FINISH } .. } ) }`, a kind no parse
   has): the generator misses them under that claim, the gate keeps them out
+
+## 2026-10-26: the sixteenth review (the neo4j claim set)
+
+no printed sentence of the neo4j set (42,061) breaks a rule: its new territory
+(EXISTS in WHERE, property specifications, CASE and grouped items; GROUP BY on
+variables; PROPERTY_EXISTS; label expressions in WHERE) hand-checked by class
+and swept, about 70 probes flagged as the text says. closed (unprinted): one
+named procedure called as two kinds (12.8, 13.6, 14.5 SR 3 with H1)

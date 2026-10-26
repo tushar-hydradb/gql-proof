@@ -48,8 +48,8 @@
 //! - a datetime or duration operand that is no temporal instant or duration breaks 20.26 GR 1
 //!   and Table 1 at every evaluation, so it is rejected statically; DURATION_BETWEEN's operands
 //!   alike (20.28 SR 3 b already asks them to be essentially comparable)
-//! - datetime ± duration has the zoned or local datetime type, as 20.26 SR 1 says, even when the
-//!   instant is a date or a time
+//! - only a datetime is moved by a duration (20.26 SR 1 read literally makes a moved date or
+//!   time a datetime, a defect; the fifteenth review): a moved date or time is refused
 //! - a <result> that is just NULL specifies no <result expression> on any tree (20.7 SR 3)
 //! - inside an aggregate function a group variable stands for one of its elements, as `scope`
 //!   reads 20.1 SR 7 and 20.9; inside an element pattern WHERE clause, a parenthesized path

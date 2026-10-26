@@ -522,3 +522,10 @@ fn fifteenth_review_findings() {
     bad_on_some_parse("FILTER SESSION_USER IS TYPED DECIMAL ( 40 ) FINISH", "18.9 SR 32");
     bad_on_some_parse("FILTER SESSION_USER IS TYPED FLOAT ( 8 , 88 ) FINISH", "18.9 SR 42");
 }
+
+#[test]
+fn sixteenth_review_findings() {
+    bad_on_some_parse("FILTER EXISTS { CALL a ( ) RETURN 1 AS y } FINISH NEXT CALL { CALL a ( ) }", "14.5 SR 3 kinds");
+    // an inline call holding a named one is not the named one's kind
+    fine("CALL { CALL a ( ) }", "14.5 SR 3 kinds");
+}
