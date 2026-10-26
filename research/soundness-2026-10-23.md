@@ -476,3 +476,19 @@ refine::LiteralElements. the rest unprinted, closed:
   a catalog procedure's definitions (9.1 SR 5)
 - claim: H1 states what a named procedure without YIELD returns; H2' names the
   rows resting on the cure in clause 20; H4 adds 18.9 SR 28
+
+## 2026-10-26: the thirteenth review
+
+the reviewer built a copy and ran every printed sentence through the checker.
+a printed family from a fresh run: `SELECT LET VALUE x ANY = CURRENT_DATE IN [
+CEIL ( x ) , .. ] END AS z`. 20.5 SR 5 types a LET .. IN name by its
+initializer FE, so x is DATE and CEIL ( x ) breaks 20.21 SR 3; the checker and
+the generator used the declared ANY, which the cure accepts. the checker binds
+by FE now, and refine::UntypedLetValues writes no typed definition inside a
+let value expression (its twin "20.5 SR 5" in the checker)
+
+its second part: a fresh 2-variable run prints exactly the cached set; 110
+hand-written probes in clauses 16 to 22 were all flagged as the text says.
+fixed: quantifier bounds capped at 255 (IL018 in H2; `{ 888 }` was printed for
+turbolay's claim); the claim's rule count (1,019) and grammar rows (10); H1
+says which names a made name must differ from

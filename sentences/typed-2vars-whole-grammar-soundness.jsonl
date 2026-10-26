@@ -167,6 +167,7 @@
 {"sentence":"SESSION SET TABLE $b = { SELECT CURRENT_DATE AS x }","target":"cdrc <binding table expression> ::= <nested binding table query specification> at <binding table expression> in <binding table initializer>"}
 {"sentence":"SESSION SET TABLE $b = $b","target":"cdrc <binding table expression> ::= <object expression primary> at <binding table expression> in <binding table initializer>"}
 {"sentence":"SESSION SET TABLE $b = / a","target":"cdrc <binding table expression> ::= <binding table reference> at <binding table expression> in <binding table initializer>"}
+{"sentence":"RETURN COUNT ( LET VALUE x = CURRENT_DATE IN CURRENT_DATE END ) AS y","target":"cdrc <binding variable^in-let-expr> ::= <regular identifier> at <binding variable> in <value variable definition>"}
 {"sentence":"VALUE x ANY = CURRENT_DATE FINISH","target":"cdrc <opt typed value initializer> ::= <opt typed value initializer/opt1> <value initializer> at <opt typed value initializer> in <value variable definition>"}
 {"sentence":"SESSION SET VALUE $b :: PATH = NULL","target":"cdrc <typed> ::= <double colon> at <typed> in <opt typed value initializer>"}
 {"sentence":"SESSION SET VALUE $b TYPED PATH = NULL","target":"cdrc <typed> ::= TYPED at <typed> in <opt typed value initializer>"}
@@ -302,7 +303,10 @@
 {"sentence":"FILTER WHERE TRUE FINISH","target":"cdrc <where clause> ::= WHERE <search condition> at <where clause> in <filter statement>"}
 {"sentence":"LET x = CURRENT_DATE , y = CURRENT_DATE FINISH","target":"cdrc <let variable definition list> ::= <let variable definition> <let variable definition list/opt1> at <let variable definition list> in <let statement>"}
 {"sentence":"LET VALUE x = CURRENT_DATE FINISH","target":"cdrc <let variable definition> ::= <value variable definition> at <let variable definition> in <let variable definition list>"}
+{"sentence":"RETURN COUNT ( LET x = CURRENT_DATE , y = CURRENT_DATE IN CURRENT_DATE END ) AS z","target":"cdrc <comma^in-let-expr> ::= \",\" at <comma> in <let variable definition list>"}
 {"sentence":"LET x = CURRENT_DATE , VALUE y = CURRENT_DATE FINISH","target":"cdrc <let variable definition> ::= <value variable definition> at <let variable definition> in <let variable definition list>"}
+{"sentence":"RETURN COUNT ( LET x = CURRENT_DATE , VALUE y = CURRENT_DATE IN CURRENT_DATE END ) AS z","target":"cdrc <let variable definition^in-let-expr> ::= <value variable definition^in-let-expr> at <let variable definition> in <let variable definition list>"}
+{"sentence":"LET x = TRUE FINISH","target":"cdrc <value expression> ::= <boolean value expression> at <value expression> in <let variable definition>"}
 {"sentence":"FOR x IN $b FINISH","target":"cdrc <for item source> ::= <binding table reference value expression> at <for item source> in <for item>"}
 {"sentence":"FOR x IN NULL || NULL FINISH","target":"cdrc <list value expression> ::= <list concatenation> at <list value expression> in <for item source>"}
 {"sentence":"FOR x IN NULL WITH OFFSET y FINISH","target":"cdrc <for ordinality or offset/alt1> ::= OFFSET at <for ordinality or offset/alt1> in <for ordinality or offset>"}
@@ -2507,7 +2511,7 @@
 {"sentence":"RETURN COUNT ( DURATION_BETWEEN ( CURRENT_DATE , CURRENT_DATE ) + NULL ) AS x","target":"cdrc <duration value expression> ::= <duration addition and subtraction> at <duration value expression> in <common value expression>"}
 {"sentence":"RETURN COUNT ( DURATION_BETWEEN ( CURRENT_DATE , CURRENT_DATE ) ) AS x","target":"cdrc <duration value expression> ::= <datetime subtraction> at <duration value expression> in <common value expression>"}
 {"sentence":"RETURN COUNT ( NULL || NULL ) AS x","target":"cdrc <list value expression> ::= <list concatenation> at <list value expression> in <common value expression>"}
-{"sentence":"RETURN COUNT ( ELEMENTS ( ( NULL || NULL ) ) ) AS x","target":"cdrc <path value expression> ::= <path value concatenation> at <path value expression> in <common value expression>"}
+{"sentence":"RETURN COUNT ( NULL || NULL ) AS x","target":"cdrc <path value expression> ::= <path value concatenation> at <path value expression> in <common value expression>"}
 {"sentence":"RETURN COUNT ( [ NULL ] IS NULL ) AS x","target":"cdrc <reference value expression^lit-value> ::= <edge reference value expression^lit-value> at <reference value expression> in <common value expression>"}
 {"sentence":"RETURN COUNT ( ( PROPERTY GRAPH CURRENT_PROPERTY_GRAPH ) IS NULL ) AS x","target":"cdrc <graph reference value expression> ::= <graph reference value expression/opt1> GRAPH <graph expression> at <graph reference value expression> in <reference value expression>"}
 {"sentence":"SESSION SET GRAPH ( $b )","target":"cdrc <graph reference value expression> ::= <value expression primary> at <graph reference value expression> in <reference value expression>"}
@@ -2517,12 +2521,13 @@
 {"sentence":"RETURN COUNT ( ( GRAPH a ) IS NULL ) AS x","target":"cdrc <graph expression> ::= <object name or binding variable> at <graph expression> in <graph reference value expression>"}
 {"sentence":"SESSION SET GRAPH ( ( $b ) )","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <graph reference value expression>"}
 {"sentence":"SESSION SET GRAPH ( ( $b ) )","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <binding table reference value expression>"}
-{"sentence":"RETURN AVG ( CARDINALITY ( ( ( NULL ) ) ) ) AS x","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <node reference value expression>"}
-{"sentence":"RETURN AVG ( CARDINALITY ( ( ( NULL ) ) ) ) AS x","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <edge reference value expression>"}
+{"sentence":"RETURN AVG ( ( NULL ) ) AS x","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <node reference value expression>"}
+{"sentence":"RETURN AVG ( ( NULL ) ) AS x","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <edge reference value expression>"}
+{"sentence":"RETURN AVG ( ( NULL ) ) AS x","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <record expression>"}
 {"sentence":"SELECT TRUE AS x","target":"cdrc <value expression> ::= <boolean value expression> at <value expression> in <aggregating value expression>"}
 {"sentence":"RETURN COUNT ( ( TRUE ) IS NULL ) AS x","target":"cdrc <value expression> ::= <boolean value expression> at <value expression> in <parenthesized value expression>"}
 {"sentence":"RETURN COUNT ( { } ) AS x","target":"cdrc <non-parenthesized value expression primary special case> ::= <record constructor> at <non-parenthesized value expression primary special case> in <non-parenthesized value expression primary>"}
-{"sentence":"RETURN COUNT ( ELEMENTS ( PATH [ NULL ] ) ) AS x","target":"cdrc <non-parenthesized value expression primary special case> ::= <path value constructor> at <non-parenthesized value expression primary special case> in <non-parenthesized value expression primary>"}
+{"sentence":"RETURN COUNT ( PATH [ NULL ] ) AS x","target":"cdrc <non-parenthesized value expression primary special case> ::= <path value constructor> at <non-parenthesized value expression primary special case> in <non-parenthesized value expression primary>"}
 {"sentence":"RETURN COUNT ( * ) AS x NEXT RETURN COUNT ( ( GRAPH VARIABLE CAST ( x AS ANY ) . a ) IS NULL ) AS y","target":"cdrc <non-parenthesized value expression primary special case> ::= <property reference> at <non-parenthesized value expression primary special case> in <non-parenthesized value expression primary>"}
 {"sentence":"RETURN COUNT ( [ { } ] IS NULL ) AS x","target":"cdrc <non-parenthesized value expression primary special case^lit-value> ::= <record constructor^lit-value> at <non-parenthesized value expression primary special case> in <non-parenthesized value expression primary>"}
 {"sentence":"RETURN PERCENTILE_CONT ( NULL , NULL ) AS x","target":"cdrc <aggregate function> ::= <binary set function> at <aggregate function> in <non-parenthesized value expression primary special case>"}
@@ -2534,7 +2539,6 @@
 {"sentence":"LIMIT 0xA FINISH","target":"cdrc <unsigned integer> ::= <unsigned hexadecimal integer> at <unsigned integer> in <non-negative integer specification>"}
 {"sentence":"LIMIT 0o2 FINISH","target":"cdrc <unsigned integer> ::= <unsigned octal integer> at <unsigned integer> in <non-negative integer specification>"}
 {"sentence":"LIMIT 0b0 FINISH","target":"cdrc <unsigned integer> ::= <unsigned binary integer> at <unsigned integer> in <non-negative integer specification>"}
-{"sentence":"RETURN COUNT ( LET x = CURRENT_DATE , y = CURRENT_DATE IN CURRENT_DATE END ) AS z","target":"cdrc <let variable definition list> ::= <let variable definition> <let variable definition list/opt1> at <let variable definition list> in <let value expression>"}
 {"sentence":"RETURN COUNT ( LET x = CURRENT_DATE IN TRUE END IS NULL ) AS y","target":"cdrc <value expression> ::= <boolean value expression> at <value expression> in <let value expression>"}
 {"sentence":"RETURN COUNT ( * ) AS x NEXT RETURN AVG ( COALESCE ( x , x ) ) AS y","target":"cdrc <case abbreviation> ::= COALESCE <left paren> <value expression> <case abbreviation/rep1> <right paren> at <case abbreviation> in <case expression>"}
 {"sentence":"RETURN COUNT ( * ) AS x NEXT RETURN AVG ( CASE WHEN TRUE THEN x END ) AS y","target":"cdrc <case specification> ::= <searched case> at <case specification> in <case expression>"}
@@ -2581,14 +2585,17 @@
 {"sentence":"RETURN PERCENTILE_CONT ( NULL , NULL + NULL ) AS x","target":"cdrc <numeric value expression> ::= <numeric value expression> <plus sign> <term> at <numeric value expression> in <independent value expression>"}
 {"sentence":"RETURN PERCENTILE_CONT ( NULL , NULL - NULL ) AS x","target":"cdrc <numeric value expression> ::= <numeric value expression> <minus sign> <term> at <numeric value expression> in <independent value expression>"}
 {"sentence":"SESSION SET GRAPH $b . a","target":"cdrc <property source> ::= <record expression> at <property source> in <property reference>"}
-{"sentence":"RETURN COUNT ( ELEMENTS ( NULL || NULL || NULL ) ) AS x","target":"cdrc <path value expression> ::= <path value concatenation> at <path value expression> in <path value expression 1>"}
-{"sentence":"RETURN COUNT ( ELEMENTS ( PATH [ NULL , NULL , NULL ] ) ) AS x","target":"cdrc <path element list> ::= <path element list start> <path element list/opt1> at <path element list> in <path value constructor by enumeration>"}
-{"sentence":"RETURN COUNT ( ELEMENTS ( PATH [ NULL , NULL , NULL , NULL , NULL ] ) ) AS x","target":"cdrc <path element list/rep2> ::= <path element list step> at <path element list/rep2> in <path element list>"}
-{"sentence":"RETURN COUNT ( ELEMENTS ( PATH [ NULL , NULL , NULL , NULL , NULL , NULL , NULL ] ) ) AS x","target":"cdrc <path element list/rep2> ::= <path element list step> <path element list/rep2> at <path element list/rep2> in <path element list>"}
+{"sentence":"RETURN COUNT ( NULL || NULL || NULL ) AS x","target":"cdrc <path value expression> ::= <path value concatenation> at <path value expression> in <path value expression 1>"}
+{"sentence":"RETURN AVG ( ( NULL ) ) AS x","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <path value primary>"}
+{"sentence":"RETURN COUNT ( PATH [ NULL , NULL , NULL ] ) AS x","target":"cdrc <path element list> ::= <path element list start> <path element list/opt1> at <path element list> in <path value constructor by enumeration>"}
+{"sentence":"RETURN COUNT ( PATH [ NULL , NULL , NULL , NULL , NULL ] ) AS x","target":"cdrc <path element list/rep2> ::= <path element list step> at <path element list/rep2> in <path element list>"}
+{"sentence":"RETURN COUNT ( PATH [ NULL , NULL , NULL , NULL , NULL , NULL , NULL ] ) AS x","target":"cdrc <path element list/rep2> ::= <path element list step> <path element list/rep2> at <path element list/rep2> in <path element list>"}
 {"sentence":"RETURN COUNT ( NULL || NULL || NULL ) AS x","target":"cdrc <list value expression> ::= <list concatenation> at <list value expression> in <list value expression 1>"}
+{"sentence":"RETURN AVG ( ( NULL ) ) AS x","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <list primary>"}
 {"sentence":"RETURN COUNT ( TRIM ( NULL || NULL , $b ) ) AS x","target":"cdrc <list value expression> ::= <list concatenation> at <list value expression> in <trim list function>"}
 {"sentence":"RETURN COUNT ( TRIM ( NULL , $b + $b ) ) AS x","target":"cdrc <numeric value expression^in-count> ::= <numeric value expression^in-count> <plus sign^in-count> <term^in-count> at <numeric value expression> in <trim list function>"}
 {"sentence":"RETURN COUNT ( TRIM ( NULL , $b - $b ) ) AS x","target":"cdrc <numeric value expression^in-count> ::= <numeric value expression^in-count> <minus sign^in-count> <term^in-count> at <numeric value expression> in <trim list function>"}
+{"sentence":"MATCH x = <- RETURN x NEXT RETURN COUNT ( ELEMENTS ( x ) ) AS y","target":"cdrc <path value expression> ::= <path value primary> at <path value expression> in <elements function>"}
 {"sentence":"RETURN COUNT ( LIST [ CURRENT_DATE ] ) AS x","target":"cdrc <list value constructor by enumeration> ::= <list value constructor by enumeration/opt1> <left bracket> <list value constructor by enumeration/opt2> <right bracket> at <list value constructor by enumeration> in <list value constructor>"}
 {"sentence":"RETURN COUNT ( [ [ NULL ] ] IS NULL ) AS x","target":"cdrc <list value constructor by enumeration^lit-scope> ::= <list value constructor by enumeration/opt1@empty^lit-scope> <left bracket^lit-scope> <list value constructor by enumeration/opt2^lit-scope> <right bracket^lit-scope> at <list value constructor by enumeration> in <list value constructor>"}
 {"sentence":"RETURN COUNT ( [ LIST [ NULL ] ] IS NULL ) AS x","target":"cdrc <list value constructor by enumeration^lit-scope> ::= <list value constructor by enumeration/opt1^lit-scope> <left bracket^lit-scope> <list value constructor by enumeration/opt2^lit-scope> <right bracket^lit-scope> at <list value constructor by enumeration> in <list value constructor>"}
@@ -2637,7 +2644,7 @@
 {"sentence":"RETURN AVG ( NULL - NULL * NULL ) AS x","target":"cdrc <term> ::= <term> <asterisk> <factor> at <term> in <numeric value expression>"}
 {"sentence":"RETURN AVG ( NULL - NULL / NULL ) AS x","target":"cdrc <term> ::= <term> <solidus> <factor> at <term> in <numeric value expression>"}
 {"sentence":"RETURN COUNT ( TRIM ( NULL , $b - $b * $b ) ) AS x","target":"cdrc <term^in-count> ::= <term^in-count> <asterisk^in-count> <factor^in-count> at <term> in <numeric value expression>"}
-{"sentence":"RETURN AVG ( CARDINALITY ( ( + NULL ) ) ) AS x","target":"cdrc <factor> ::= <factor/opt1> <numeric primary> at <factor> in <term>"}
+{"sentence":"RETURN AVG ( + NULL ) AS x","target":"cdrc <factor> ::= <factor/opt1> <numeric primary> at <factor> in <term>"}
 {"sentence":"RETURN COUNT ( [ + 8 ] IS NULL ) AS x","target":"cdrc <factor^lit-value> ::= <factor/opt1^lit-value+lit-signed> <numeric primary^lit-value+lit-signed> at <factor> in <term>"}
 {"sentence":"RETURN COUNT ( TRIM ( NULL , + 8 ) ) AS x","target":"cdrc <factor^in-count> ::= <factor/opt1^in-count> <numeric primary^in-count> at <factor> in <term>"}
 {"sentence":"RETURN AVG ( NULL * NULL * NULL ) AS x","target":"cdrc <term> ::= <term> <asterisk> <factor> at <term> in <term>"}
@@ -2648,11 +2655,12 @@
 {"sentence":"RETURN AVG ( NULL * NULL / NULL ) AS x","target":"cdrc <term> ::= <term> <asterisk> <factor> at <term> in <term>"}
 {"sentence":"RETURN AVG ( NULL / NULL / NULL ) AS x","target":"cdrc <term> ::= <term> <solidus> <factor> at <term> in <term>"}
 {"sentence":"RETURN AVG ( NULL / + NULL ) AS x","target":"cdrc <factor> ::= <factor/opt1> <numeric primary> at <factor> in <term>"}
-{"sentence":"RETURN AVG ( CARDINALITY ( ( - NULL ) ) ) AS x","target":"cdrc <sign> ::= <minus sign> at <sign> in <factor>"}
+{"sentence":"RETURN AVG ( - NULL ) AS x","target":"cdrc <sign> ::= <minus sign> at <sign> in <factor>"}
 {"sentence":"RETURN COUNT ( [ - 8 ] IS NULL ) AS x","target":"cdrc <sign^lit-value+lit-signed> ::= <minus sign^lit-value+lit-signed> at <sign> in <factor>"}
 {"sentence":"RETURN COUNT ( TRIM ( NULL , - 8 ) ) AS x","target":"cdrc <sign^in-count> ::= <minus sign^in-count> at <sign> in <factor>"}
 {"sentence":"RETURN COUNT ( TRIM ( NULL , CHAR_LENGTH ( SESSION_USER ) ) ) AS x","target":"cdrc <numeric primary^in-count> ::= <numeric value function^in-count> at <numeric primary> in <factor>"}
-{"sentence":"RETURN AVG ( CARDINALITY ( ( ( NULL ) ) ) ) AS x","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <numeric primary>"}
+{"sentence":"RETURN AVG ( ( NULL ) ) AS x","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <numeric primary>"}
+{"sentence":"RETURN AVG ( CARDINALITY ( NULL ) ) AS x","target":"cdrc <numeric value function> ::= <cardinality expression> at <numeric value function> in <numeric primary>"}
 {"sentence":"RETURN COUNT ( * ) AS x NEXT RETURN AVG ( ABS ( x ) ) AS y","target":"cdrc <numeric value function> ::= <absolute value expression> at <numeric value function> in <numeric primary>"}
 {"sentence":"RETURN COUNT ( * ) AS x NEXT RETURN AVG ( MOD ( NULL , x ) ) AS y","target":"cdrc <numeric value function> ::= <modulus expression> at <numeric value function> in <numeric primary>"}
 {"sentence":"RETURN AVG ( SIN ( NULL ) ) AS x","target":"cdrc <numeric value function> ::= <trigonometric function> at <numeric value function> in <numeric primary>"}
@@ -2668,6 +2676,7 @@
 {"sentence":"RETURN AVG ( CHAR_LENGTH ( SESSION_USER ) ) AS x","target":"cdrc <length expression> ::= <char length expression> at <length expression> in <numeric value function>"}
 {"sentence":"RETURN AVG ( BYTE_LENGTH ( X'' ) ) AS x","target":"cdrc <length expression> ::= <byte length expression> at <length expression> in <numeric value function>"}
 {"sentence":"RETURN COUNT ( TRIM ( NULL , BYTE_LENGTH ( X'' ) ) ) AS x","target":"cdrc <length expression^in-count> ::= <byte length expression> at <length expression> in <numeric value function>"}
+{"sentence":"RETURN COUNT ( * ) AS x NEXT RETURN COUNT ( TRIM ( NULL , PATH_LENGTH ( NULL || PATH [ CAST ( x AS ANY ) ] ) ) ) AS y","target":"cdrc <length expression^in-count> ::= <path length expression> at <length expression> in <numeric value function>"}
 {"sentence":"RETURN AVG ( SIZE ( NULL ) ) AS x","target":"cdrc <cardinality expression> ::= SIZE <left paren> <list value expression> <right paren> at <cardinality expression> in <numeric value function>"}
 {"sentence":"RETURN COUNT ( TRIM ( NULL , SIZE ( NULL ) ) ) AS x","target":"cdrc <cardinality expression^in-count> ::= SIZE <left paren> <list value expression> <right paren> at <cardinality expression> in <numeric value function>"}
 {"sentence":"RETURN AVG ( CARDINALITY ( $b ) ) AS x","target":"cdrc <cardinality expression argument> ::= <binding table reference value expression> at <cardinality expression argument> in <cardinality expression>"}
@@ -2680,7 +2689,7 @@
 {"sentence":"RETURN AVG ( CHAR_LENGTH ( SESSION_USER || SESSION_USER ) ) AS x","target":"cdrc <character string value expression> ::= <character string concatenation> at <character string value expression> in <char length expression>"}
 {"sentence":"RETURN AVG ( OCTET_LENGTH ( X'' ) ) AS x","target":"cdrc <byte length expression/alt1> ::= OCTET_LENGTH at <byte length expression/alt1> in <byte length expression>"}
 {"sentence":"RETURN AVG ( BYTE_LENGTH ( NULL || NULL ) ) AS x","target":"cdrc <byte string value expression> ::= <byte string concatenation> at <byte string value expression> in <byte length expression>"}
-{"sentence":"MATCH x = <- RETURN x NEXT RETURN COUNT ( ( PATH_LENGTH ( x ) ) IS NULL ) AS y","target":"cdrc <path value expression> ::= <path value primary> at <path value expression> in <path length expression>"}
+{"sentence":"MATCH x = <- RETURN x NEXT RETURN AVG ( PATH_LENGTH ( x ) ) AS y","target":"cdrc <path value expression> ::= <path value primary> at <path value expression> in <path length expression>"}
 {"sentence":"RETURN AVG ( ABS ( NULL + NULL ) ) AS x","target":"cdrc <numeric value expression> ::= <numeric value expression> <plus sign> <term> at <numeric value expression> in <absolute value expression>"}
 {"sentence":"RETURN AVG ( ABS ( NULL - NULL ) ) AS x","target":"cdrc <numeric value expression> ::= <numeric value expression> <minus sign> <term> at <numeric value expression> in <absolute value expression>"}
 {"sentence":"RETURN AVG ( MOD ( NULL + NULL , NULL ) ) AS x","target":"cdrc <numeric value expression> ::= <numeric value expression> <plus sign> <term> at <numeric value expression> in <numeric value expression dividend>"}
@@ -2731,7 +2740,7 @@
 {"sentence":"RETURN COUNT ( TRIM ( SESSION_USER ) ) AS x","target":"cdrc <character string function> ::= <trim function> at <character string function> in <character string primary>"}
 {"sentence":"RETURN COUNT ( NORMALIZE ( SESSION_USER ) ) AS x","target":"cdrc <character string function> ::= <normalize function> at <character string function> in <character string primary>"}
 {"sentence":"RETURN COUNT ( TRIM ( NULL ) ) AS x","target":"cdrc <byte string primary> ::= <byte string function> at <byte string primary> in <byte string value expression>"}
-{"sentence":"RETURN AVG ( CARDINALITY ( ( ( NULL ) ) ) ) AS x","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <byte string primary>"}
+{"sentence":"RETURN AVG ( ( NULL ) ) AS x","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <byte string primary>"}
 {"sentence":"RETURN COUNT ( LEFT ( NULL , NULL ) ) AS x","target":"cdrc <byte string function> ::= <byte string substring function> at <byte string function> in <byte string primary>"}
 {"sentence":"RETURN COUNT ( NULL || NULL || NULL ) AS x","target":"cdrc <byte string value expression> ::= <byte string concatenation> at <byte string value expression> in <byte string concatenation>"}
 {"sentence":"RETURN COUNT ( NULL || TRIM ( NULL ) ) AS x","target":"cdrc <byte string primary> ::= <byte string function> at <byte string primary> in <byte string concatenation>"}
@@ -2809,15 +2818,15 @@
 {"sentence":"RETURN COUNT ( NULL - INTERVAL '1' DAY ) AS x","target":"cdrc <duration addition and subtraction> ::= <duration value expression 1> <minus sign> <duration term 1> at <duration addition and subtraction> in <duration value expression>"}
 {"sentence":"RETURN COUNT ( DURATION_BETWEEN ( CURRENT_DATE , CURRENT_DATE ) YEAR TO MONTH ) AS x","target":"cdrc <datetime subtraction> ::= DURATION_BETWEEN <left paren> <datetime subtraction parameters> <right paren> <datetime subtraction/opt1> at <datetime subtraction> in <duration value expression>"}
 {"sentence":"RETURN COUNT ( DURATION_BETWEEN ( CURRENT_DATE , CURRENT_DATE ) DAY TO SECOND ) AS x","target":"cdrc <temporal duration qualifier> ::= DAY TO SECOND at <temporal duration qualifier> in <datetime subtraction>"}
-{"sentence":"RETURN AVG ( CARDINALITY ( ( + NULL ) ) ) AS x","target":"cdrc <duration factor> ::= <duration factor/opt1> <duration primary> at <duration factor> in <duration term>"}
+{"sentence":"RETURN AVG ( + NULL ) AS x","target":"cdrc <duration factor> ::= <duration factor/opt1> <duration primary> at <duration factor> in <duration term>"}
 {"sentence":"RETURN COUNT ( INTERVAL '1' DAY * + NULL ) AS x","target":"cdrc <factor> ::= <factor/opt1> <numeric primary> at <factor> in <duration term>"}
 {"sentence":"RETURN COUNT ( INTERVAL '1' DAY / + NULL ) AS x","target":"cdrc <factor> ::= <factor/opt1> <numeric primary> at <factor> in <duration term>"}
 {"sentence":"RETURN COUNT ( NULL * NULL * INTERVAL '1' DAY ) AS x","target":"cdrc <term> ::= <term> <asterisk> <factor> at <term> in <duration term>"}
 {"sentence":"RETURN COUNT ( NULL / NULL * INTERVAL '1' DAY ) AS x","target":"cdrc <term> ::= <term> <solidus> <factor> at <term> in <duration term>"}
 {"sentence":"RETURN COUNT ( NULL * + INTERVAL '1' DAY ) AS x","target":"cdrc <duration factor> ::= <duration factor/opt1> <duration primary> at <duration factor> in <duration term>"}
-{"sentence":"RETURN AVG ( CARDINALITY ( ( - NULL ) ) ) AS x","target":"cdrc <sign> ::= <minus sign> at <sign> in <duration factor>"}
+{"sentence":"RETURN AVG ( - NULL ) AS x","target":"cdrc <sign> ::= <minus sign> at <sign> in <duration factor>"}
 {"sentence":"RETURN COUNT ( DURATION ( { } ) ) AS x","target":"cdrc <duration primary> ::= <duration value function> at <duration primary> in <duration factor>"}
-{"sentence":"RETURN AVG ( CARDINALITY ( ( ( NULL ) ) ) ) AS x","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <duration primary>"}
+{"sentence":"RETURN AVG ( ( NULL ) ) AS x","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <duration primary>"}
 {"sentence":"RETURN COUNT ( ABS ( DURATION_BETWEEN ( CURRENT_DATE , CURRENT_DATE ) ) ) AS x","target":"cdrc <duration value function> ::= <duration absolute value function> at <duration value function> in <duration primary>"}
 {"sentence":"RETURN COUNT ( DURATION_BETWEEN ( CURRENT_DATE , CURRENT_DATE ) + NULL + NULL ) AS x","target":"cdrc <duration value expression> ::= <duration addition and subtraction> at <duration value expression> in <duration value expression 1>"}
 {"sentence":"RETURN COUNT ( NULL + INTERVAL '1' DAY * NULL ) AS x","target":"cdrc <duration term> ::= <duration term 2> <asterisk> <factor> at <duration term> in <duration term 1>"}
@@ -3027,8 +3036,8 @@
 {"sentence":"MATCH <- { 0x0A } FINISH","target":"<unsigned hexadecimal integer/rep1@nonzero^want> ::= <unsigned hexadecimal integer/opt2@empty^want> <hex digit^want> <unsigned hexadecimal integer/rep1@nonzero^want>"}
 {"sentence":"MATCH <- { 0x_0A } FINISH","target":"<unsigned hexadecimal integer/rep1@nonzero^want> ::= <unsigned hexadecimal integer/opt2^want> <hex digit^want> <unsigned hexadecimal integer/rep1@nonzero^want>"}
 {"sentence":"MATCH <- { 0x_A0 } FINISH","target":"<unsigned hexadecimal integer/rep1@nonzero^want> ::= <unsigned hexadecimal integer/opt2^want> <hex digit@nonzero^want> <unsigned hexadecimal integer/rep1^want>"}
-{"sentence":"MATCH <- { 0xA00 } FINISH","target":"<unsigned hexadecimal integer/rep1^want> ::= <unsigned hexadecimal integer/opt2@empty^want> <hex digit^want> <unsigned hexadecimal integer/rep1^want>"}
-{"sentence":"MATCH <- { 0xA_00 } FINISH","target":"<unsigned hexadecimal integer/rep1^want> ::= <unsigned hexadecimal integer/opt2^want> <hex digit^want> <unsigned hexadecimal integer/rep1^want>"}
+{"sentence":"MATCH <- { 0xff } FINISH","target":"<unsigned hexadecimal integer/rep1^want> ::= <unsigned hexadecimal integer/opt2@empty^want> <hex digit^want> <unsigned hexadecimal integer/rep1^want>"}
+{"sentence":"MATCH <- { 0xff } FINISH","target":"<unsigned hexadecimal integer/rep1^want> ::= <unsigned hexadecimal integer/opt2^want> <hex digit^want> <unsigned hexadecimal integer/rep1^want>"}
 {"sentence":"MATCH <- { 0x8 } FINISH","target":"<hex digit@nonzero^want> ::= <standard digit@nonzero^want>"}
 {"sentence":"MATCH <- { 0xB } FINISH","target":"<hex digit@nonzero^want> ::= \"B\""}
 {"sentence":"MATCH <- { 0xC } FINISH","target":"<hex digit@nonzero^want> ::= \"C\""}
@@ -3040,7 +3049,6 @@
 {"sentence":"MATCH <- { 0xc } FINISH","target":"<hex digit@nonzero^want> ::= \"c\""}
 {"sentence":"MATCH <- { 0xd } FINISH","target":"<hex digit@nonzero^want> ::= \"d\""}
 {"sentence":"MATCH <- { 0xe } FINISH","target":"<hex digit@nonzero^want> ::= \"e\""}
-{"sentence":"MATCH <- { 0xf } FINISH","target":"<hex digit@nonzero^want> ::= \"f\""}
 {"sentence":"MATCH <- { 2 } FINISH","target":"<standard digit@nonzero^want> ::= <octal digit@nonzero^want>"}
 {"sentence":"MATCH <- { 9 } FINISH","target":"<standard digit@nonzero^want> ::= \"9\""}
 {"sentence":"MATCH <- { 88 } FINISH","target":"<unsigned decimal integer@nonzero^want> ::= <digit@nonzero^want> <unsigned decimal integer/opt1@nonzero^want>"}
@@ -3050,11 +3058,11 @@
 {"sentence":"MATCH <- { ٣ } FINISH","target":"<digit@nonzero^want> ::= <other digit@nonzero^want>"}
 {"sentence":"MATCH <- { 8_8 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3^want> <digit@nonzero^want>"}
 {"sentence":"MATCH <- { 8_0 } FINISH","target":"<unsigned decimal integer/rep2^want> ::= <unsigned decimal integer/opt3^want> <digit^want>"}
-{"sentence":"MATCH <- { 888 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3@empty^want> <digit@nonzero^want> <unsigned decimal integer/rep2@nonzero^want>"}
-{"sentence":"MATCH <- { 8_88 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3^want> <digit@nonzero^want> <unsigned decimal integer/rep2@nonzero^want>"}
-{"sentence":"MATCH <- { 808 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3@empty^want> <digit^want> <unsigned decimal integer/rep2@nonzero^want>"}
-{"sentence":"MATCH <- { 8_08 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3^want> <digit^want> <unsigned decimal integer/rep2@nonzero^want>"}
-{"sentence":"MATCH <- { 880 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3@empty^want> <digit@nonzero^want> <unsigned decimal integer/rep2^want>"}
-{"sentence":"MATCH <- { 8_80 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3^want> <digit@nonzero^want> <unsigned decimal integer/rep2^want>"}
-{"sentence":"MATCH <- { 800 } FINISH","target":"<unsigned decimal integer/rep2^want> ::= <unsigned decimal integer/opt3@empty^want> <digit^want> <unsigned decimal integer/rep2^want>"}
-{"sentence":"MATCH <- { 8_00 } FINISH","target":"<unsigned decimal integer/rep2^want> ::= <unsigned decimal integer/opt3^want> <digit^want> <unsigned decimal integer/rep2^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3@empty^want> <digit@nonzero^want> <unsigned decimal integer/rep2@nonzero^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3^want> <digit@nonzero^want> <unsigned decimal integer/rep2@nonzero^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3@empty^want> <digit^want> <unsigned decimal integer/rep2@nonzero^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3^want> <digit^want> <unsigned decimal integer/rep2@nonzero^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3@empty^want> <digit@nonzero^want> <unsigned decimal integer/rep2^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3^want> <digit@nonzero^want> <unsigned decimal integer/rep2^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2^want> ::= <unsigned decimal integer/opt3@empty^want> <digit^want> <unsigned decimal integer/rep2^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2^want> ::= <unsigned decimal integer/opt3^want> <digit^want> <unsigned decimal integer/rep2^want>"}

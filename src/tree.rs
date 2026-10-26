@@ -260,6 +260,19 @@ fn settle_values(
         }
         _ => Vec::new(),
     };
+    // IL018 (H2): a quantifier's bounds stay at most 255, turbolay's limit, before the upper
+    // bound is raised to the lower (the thirteenth review: `{ 888 }` was printed)
+    match cfg.base(nt) {
+        "fixed quantifier" => changed |= lower(cfg, root, 255, spell),
+        "general quantifier" => {
+            for b in ["lower bound", "upper bound"] {
+                if let Some(holder) = through_groups(cfg, root, b) {
+                    changed |= lower(cfg, holder, 255, spell);
+                }
+            }
+        }
+        _ => {}
+    }
     for (holder, least) in wants {
         if let Some(holder) = through_groups(cfg, root, holder) {
             changed |= raise(cfg, holder, least, spell, rng);

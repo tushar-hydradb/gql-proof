@@ -168,6 +168,7 @@ pub fn all_rules(id086: MatchModeDefault) -> Vec<Box<dyn Rule>> {
         Box::new(ClosedInitializerTypes),
         Box::new(UnionNullability),
         Box::new(LiteralElements),
+        Box::new(UntypedLetValues),
         Box::new(NoSubstitution),
         Box::new(NoSelectBody),
         Box::new(NoElementWhen),
@@ -1704,6 +1705,58 @@ impl Rule for LiteralElements {
             // A one-child wrapper, as the checker sees it with groups flattened.
             _ => tokens > 0 || defs != 1,
         }
+    }
+
+    fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {
+        if self.rejects(node, inh) {
+            return None;
+        }
+        Some(s)
+    }
+}
+
+/// 20.5 SR 5 types a LET .. IN name by its initializer, not by a declared type, while the
+/// types engine binds a typed VALUE definition by its declared type (right for the LET
+/// statement, 14.7 and 10.3 SR 8). Inside a <let value expression> no definition is typed, so
+/// the two agree (the thirteenth review: `LET VALUE x ANY = CURRENT_DATE IN CEIL ( x ) END`
+/// was printed). Inherited from the let value expression down its definitions.
+pub struct UntypedLetValues;
+
+const IN_LET_EXPR: Fact = 86;
+
+impl Rule for UntypedLetValues {
+    fn name(&self) -> &str {
+        "no typed definition in a let value expression"
+    }
+
+    fn cite(&self) -> &str {
+        "20.5 SR 5: a LET .. IN name has its initializer's type"
+    }
+
+    fn labels(&self) -> Vec<(Fact, String)> {
+        labels(&[(IN_LET_EXPR, "in-let-expr")])
+    }
+
+    fn bookkeeping(&self) -> bool {
+        true
+    }
+
+    fn down(&self, node: &Node, inh: &State, pos: usize, _left: &[State], out: &mut State) {
+        let owner = node.def.split('/').next().unwrap_or(node.def);
+        let child = owner_of(&node.items[pos]);
+        let into = |c: &str| child == Some(c) || matches!(node.items[pos], Item::Group(_));
+        // down to the optional type of the initializer, not into its value expression
+        if (owner == "let value expression" && into("let variable definition list"))
+            || (inh.has(IN_LET_EXPR)
+                && (matches!(owner, "let variable definition list" | "let variable definition" | "value variable definition")
+                    || (owner == "opt typed value initializer" && child != Some("value initializer"))))
+        {
+            out.set(IN_LET_EXPR, true);
+        }
+    }
+
+    fn rejects(&self, node: &Node, inh: &State) -> bool {
+        inh.has(IN_LET_EXPR) && node.def.split('/').next() == Some("value type")
     }
 
     fn step(&self, node: &Node, inh: &State, _children: &[State], s: State) -> Option<State> {

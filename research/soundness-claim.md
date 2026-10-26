@@ -27,7 +27,9 @@ property of every printed sentence, by the gate in step 1
   exists in the engine's environment, with the type S uses it at; every
   schema, graph and graph type a CREATE in S makes without IF NOT EXISTS or OR
   REPLACE does not exist. the two parts never meet on one name: no made name
-  is spelled like another name in S (the `same text` rows of 12.2 SR 5, 12.4
+  is spelled like another name in S that can identify a catalog object (a
+  graph, graph type, table, procedure, schema or directory name, or a bare
+  catalog name; a local alias in a graph type body is no such name) (the `same text` rows of 12.2 SR 5, 12.4
   SR 6, 12.6 SR 5, reported by the checker). a parent reference that cannot
   identify a schema in any environment (one holding an object name, 4.2.5.3) is
   not left to H1: no parent reference holds an object name (17.6 SR 5; a
@@ -117,7 +119,7 @@ property of every printed sentence, by the gate in step 1
 
 ## also in the trusted base
 
-- the audit's `grammar` rows (11) each name a mechanical check (the checker's
+- the audit's `grammar` rows (10) each name a mechanical check (the checker's
   ISO BNF match, its rendering check, or a test); the argument that the check
   implies the rule is the auditors'
 - the rewrite audit (`research/audit/rewrite-*.jsonl`, checked by
@@ -125,7 +127,7 @@ property of every printed sentence, by the gate in step 1
   row saying whether the rewrite can break a later rule and where the checker
   judges it
 - `tools/inventory/shall_coverage.py`'s extraction of the rules from the text
-  (it finds the 1,025 rules the inventory has, a check on itself)
+  (it finds the 1,019 rules the inventory has, a check on itself)
 
 ## the argument
 
@@ -139,7 +141,7 @@ property of every printed sentence, by the gate in step 1
    has no violation the checker reports. this step needs nothing from the
    generator: whatever extraction picks, nothing flagged goes out
 2. **the table is complete.** `tools/inventory/shall_coverage.py` reads every
-   syntax rule of the text (1,025; 275 say `shall`) and fails unless each rule
+   syntax rule of the text (1,019; 275 say `shall`) and fails unless each rule
    with a `shall` has a row in `research/audit/audit.jsonl` that is not a
    definition, and so does each cor 1 syntax rule with a `shall` (read from
    `grammar/corrigendum.json`). four are exempt, each with its reason in the
@@ -244,6 +246,8 @@ review moved nine rows from `reading` to `permission`)
   type rules)
 - nothing about IW022 (nullability inference): a NOT NULL site takes no
   computed value (4.17.4.2, the checker's reading), so none is needed
+- IL018: the maximum quantifier bound is at least 255; S writes fixed
+  quantifiers and bounds of at most 255 (`tree.rs` settles them)
 - IL020: the directory nesting depth is at least what S uses (S holds
   absolute paths of a few directories and `..` steps)
 - IA023: the line feed ends a line (comments, byte string separators)

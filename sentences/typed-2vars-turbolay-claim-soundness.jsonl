@@ -8,6 +8,7 @@
 {"sentence":"VALUE x = CURRENT_DATE VALUE y = CURRENT_DATE FINISH","target":"cdrc <binding variable definition block/rep1> ::= <binding variable definition> at <binding variable definition block/rep1> in <binding variable definition block>"}
 {"sentence":"FINISH NEXT FINISH NEXT FINISH","target":"cdrc <statement block/rep2@k-query+has-next+amb+nsel-q> ::= <next statement@k-query+has-next+amb+nsel-q> at <statement block/rep2> in <statement block>"}
 {"sentence":"FINISH NEXT FINISH NEXT FINISH NEXT FINISH","target":"cdrc <statement block/rep2@k-query+has-next+amb+nsel-q> ::= <next statement@k-query+has-next+amb+nsel-q> <statement block/rep2@k-query+has-next+amb+nsel-q> at <statement block/rep2> in <statement block>"}
+{"sentence":"ORDER BY LET VALUE x = CURRENT_DATE IN CURRENT_DATE END FINISH","target":"cdrc <binding variable^in-let-expr> ::= <regular identifier> at <binding variable> in <value variable definition>"}
 {"sentence":"VALUE x ANY = CURRENT_DATE FINISH","target":"cdrc <opt typed value initializer> ::= <opt typed value initializer/opt1> <value initializer> at <opt typed value initializer> in <value variable definition>"}
 {"sentence":"VALUE x :: PATH = NULL FINISH","target":"cdrc <typed> ::= <double colon> at <typed> in <opt typed value initializer>"}
 {"sentence":"VALUE x TYPED PATH = NULL FINISH","target":"cdrc <typed> ::= TYPED at <typed> in <opt typed value initializer>"}
@@ -25,7 +26,6 @@
 {"sentence":"RETURN TRUE AS x NEXT FILTER x FINISH","target":"cdrc <filter statement> ::= FILTER <filter statement/alt1@is<binding variable reference>> at <filter statement> in <primitive query statement>"}
 {"sentence":"FILTER EXISTS { <- } FINISH","target":"cdrc <filter statement> ::= FILTER <filter statement/alt1@'EXISTS..'9+'EXISTS..'10> at <filter statement> in <primitive query statement>"}
 {"sentence":"FILTER NOT EXISTS { <- } FINISH","target":"cdrc <filter statement> ::= FILTER <filter statement/alt1@'NOT EXISTS..'10> at <filter statement> in <primitive query statement>"}
-{"sentence":"ORDER BY CURRENT_DATE FINISH","target":"cdrc <order by and page statement> ::= <order by clause> <order by and page statement/opt1@empty> <order by and page statement/opt2@empty> at <order by and page statement> in <primitive query statement>"}
 {"sentence":"ORDER BY CURRENT_DATE OFFSET 8 FINISH","target":"cdrc <order by and page statement> ::= <order by clause> <order by and page statement/opt1> <order by and page statement/opt2@empty> at <order by and page statement> in <primitive query statement>"}
 {"sentence":"ORDER BY CURRENT_DATE LIMIT 8 FINISH","target":"cdrc <order by and page statement> ::= <order by clause> <order by and page statement/opt1@empty> <order by and page statement/opt2> at <order by and page statement> in <primitive query statement>"}
 {"sentence":"ORDER BY CURRENT_DATE OFFSET 8 LIMIT 8 FINISH","target":"cdrc <order by and page statement> ::= <order by clause> <order by and page statement/opt1> <order by and page statement/opt2> at <order by and page statement> in <primitive query statement>"}
@@ -45,10 +45,18 @@
 {"sentence":"LET x = CURRENT_DATE , y = CURRENT_DATE FINISH","target":"cdrc <let variable definition list> ::= <let variable definition> <let variable definition list/opt1> at <let variable definition list> in <let statement>"}
 {"sentence":"LET x = EXISTS { <- } FINISH","target":"cdrc <let variable definition> ::= <binding variable> <equals operator> <value expression@'EXISTS..'9+'EXISTS..'10> at <let variable definition> in <let variable definition list>"}
 {"sentence":"LET x = NOT EXISTS { <- } FINISH","target":"cdrc <let variable definition> ::= <binding variable> <equals operator> <value expression@'NOT EXISTS..'10> at <let variable definition> in <let variable definition list>"}
+{"sentence":"ORDER BY LET x = CURRENT_DATE IN CURRENT_DATE END FINISH","target":"cdrc <let variable definition^in-let-expr> ::= <binding variable^in-let-expr> <equals operator^in-let-expr> <value expression^in-let-expr> at <let variable definition> in <let variable definition list>"}
+{"sentence":"RETURN LET x = EXISTS { <- } IN CURRENT_DATE END AS y","target":"cdrc <let variable definition^in-let-expr> ::= <binding variable^in-let-expr> <equals operator^in-let-expr> <value expression@'EXISTS..'9+'EXISTS..'10^in-let-expr> at <let variable definition> in <let variable definition list>"}
+{"sentence":"RETURN LET x = NOT EXISTS { <- } IN CURRENT_DATE END AS y","target":"cdrc <let variable definition^in-let-expr> ::= <binding variable^in-let-expr> <equals operator^in-let-expr> <value expression@'NOT EXISTS..'10^in-let-expr> at <let variable definition> in <let variable definition list>"}
+{"sentence":"ORDER BY LET x = CURRENT_DATE , y = CURRENT_DATE IN CURRENT_DATE END FINISH","target":"cdrc <comma^in-let-expr> ::= \",\" at <comma> in <let variable definition list>"}
 {"sentence":"LET x = CURRENT_DATE , VALUE y = CURRENT_DATE FINISH","target":"cdrc <let variable definition> ::= <value variable definition> at <let variable definition> in <let variable definition list>"}
 {"sentence":"LET x = CURRENT_DATE , y = EXISTS { <- } FINISH","target":"cdrc <let variable definition> ::= <binding variable> <equals operator> <value expression@'EXISTS..'9+'EXISTS..'10> at <let variable definition> in <let variable definition list>"}
 {"sentence":"LET x = CURRENT_DATE , y = NOT EXISTS { <- } FINISH","target":"cdrc <let variable definition> ::= <binding variable> <equals operator> <value expression@'NOT EXISTS..'10> at <let variable definition> in <let variable definition list>"}
+{"sentence":"ORDER BY LET x = CURRENT_DATE , VALUE y = CURRENT_DATE IN CURRENT_DATE END FINISH","target":"cdrc <let variable definition^in-let-expr> ::= <value variable definition^in-let-expr> at <let variable definition> in <let variable definition list>"}
+{"sentence":"RETURN LET x = CURRENT_DATE , y = EXISTS { <- } IN CURRENT_DATE END AS z","target":"cdrc <let variable definition^in-let-expr> ::= <binding variable^in-let-expr> <equals operator^in-let-expr> <value expression@'EXISTS..'9+'EXISTS..'10^in-let-expr> at <let variable definition> in <let variable definition list>"}
+{"sentence":"RETURN LET x = CURRENT_DATE , y = NOT EXISTS { <- } IN CURRENT_DATE END AS z","target":"cdrc <let variable definition^in-let-expr> ::= <binding variable^in-let-expr> <equals operator^in-let-expr> <value expression@'NOT EXISTS..'10^in-let-expr> at <let variable definition> in <let variable definition list>"}
 {"sentence":"LET x = TRUE FINISH","target":"cdrc <value expression> ::= <boolean value expression> at <value expression> in <let variable definition>"}
+{"sentence":"ORDER BY LET x = TRUE IN CURRENT_DATE END FINISH","target":"cdrc <value expression^in-let-expr> ::= <boolean value expression> at <value expression> in <let variable definition>"}
 {"sentence":"FOR x IN NULL || NULL FINISH","target":"cdrc <list value expression> ::= <list concatenation> at <list value expression> in <for item source>"}
 {"sentence":"FOR x IN NULL WITH OFFSET y FINISH","target":"cdrc <for ordinality or offset/alt1> ::= OFFSET at <for ordinality or offset/alt1> in <for ordinality or offset>"}
 {"sentence":"RETURN COUNT ( * ) AS x NEXT ORDER BY x FINISH","target":"cdrc <order by clause> ::= ORDER BY <sort specification list@is<binding variable reference>> at <order by clause> in <order by and page statement>"}
@@ -2522,7 +2530,6 @@
 {"sentence":"RETURN COUNT ( * ) AS x NEXT ORDER BY CAST ( x AS ANY ) . a FINISH","target":"cdrc <non-parenthesized value expression primary special case> ::= <property reference> at <non-parenthesized value expression primary special case> in <non-parenthesized value expression primary>"}
 {"sentence":"FILTER VALUE { RETURN COUNT ( * ) AS x } IS NULL FINISH","target":"cdrc <non-parenthesized value expression primary special case> ::= <value query expression> at <non-parenthesized value expression primary special case> in <non-parenthesized value expression primary>"}
 {"sentence":"RETURN COUNT ( * ) AS x NEXT ORDER BY NULLIF ( x , NULL ) FINISH","target":"cdrc <non-parenthesized value expression primary special case> ::= <case expression> at <non-parenthesized value expression primary special case> in <non-parenthesized value expression primary>"}
-{"sentence":"ORDER BY LET x = CURRENT_DATE IN CURRENT_DATE END FINISH","target":"cdrc <non-parenthesized value expression primary special case> ::= <let value expression> at <non-parenthesized value expression primary special case> in <non-parenthesized value expression primary>"}
 {"sentence":"FILTER [ { } ] IS NULL FINISH","target":"cdrc <non-parenthesized value expression primary special case^lit-value> ::= <record constructor^lit-value> at <non-parenthesized value expression primary special case> in <non-parenthesized value expression primary>"}
 {"sentence":"RETURN COUNT ( CURRENT_DATE ) AS x","target":"cdrc <aggregate function> ::= <general set function> at <aggregate function> in <non-parenthesized value expression primary special case>"}
 {"sentence":"RETURN PERCENTILE_CONT ( NULL , NULL ) AS x","target":"cdrc <aggregate function> ::= <binary set function> at <aggregate function> in <non-parenthesized value expression primary special case>"}
@@ -2533,14 +2540,13 @@
 {"sentence":"RETURN CAST ( NULL AS PATH ) AS x","target":"cdrc <cast specification> ::= CAST <left paren> <cast operand> AS <cast target> <right paren> at <cast specification> in <non-parenthesized value expression primary special case>"}
 {"sentence":"FILTER CAST ( EXISTS { <- } AS BOOL ) IS NULL FINISH","target":"cdrc <cast specification> ::= CAST <left paren> <cast operand@'EXISTS..'9+'EXISTS..'10> AS <cast target> <right paren> at <cast specification> in <non-parenthesized value expression primary special case>"}
 {"sentence":"FILTER CAST ( NOT EXISTS { <- } AS BOOL ) IS NULL FINISH","target":"cdrc <cast specification> ::= CAST <left paren> <cast operand@'NOT EXISTS..'10> AS <cast target> <right paren> at <cast specification> in <non-parenthesized value expression primary special case>"}
-{"sentence":"FILTER LET x = CURRENT_DATE IN EXISTS { <- } END IS NULL FINISH","target":"cdrc <let value expression> ::= LET <let variable definition list> IN <value expression@'EXISTS..'9+'EXISTS..'10> END at <let value expression> in <non-parenthesized value expression primary special case>"}
-{"sentence":"FILTER LET x = CURRENT_DATE IN NOT EXISTS { <- } END IS NULL FINISH","target":"cdrc <let value expression> ::= LET <let variable definition list> IN <value expression@'NOT EXISTS..'10> END at <let value expression> in <non-parenthesized value expression primary special case>"}
+{"sentence":"FILTER LET x = CURRENT_DATE IN EXISTS { <- } END IS NULL FINISH","target":"cdrc <let value expression> ::= LET <let variable definition list^in-let-expr> IN <value expression@'EXISTS..'9+'EXISTS..'10> END at <let value expression> in <non-parenthesized value expression primary special case>"}
+{"sentence":"FILTER LET x = CURRENT_DATE IN NOT EXISTS { <- } END IS NULL FINISH","target":"cdrc <let value expression> ::= LET <let variable definition list^in-let-expr> IN <value expression@'NOT EXISTS..'10> END at <let value expression> in <non-parenthesized value expression primary special case>"}
 {"sentence":"ORDER BY 8 FINISH","target":"cdrc <unsigned literal> ::= <unsigned numeric literal> at <unsigned literal> in <unsigned value specification>"}
 {"sentence":"ORDER BY $b FINISH","target":"cdrc <general value specification> ::= <dynamic parameter specification> at <general value specification> in <unsigned value specification>"}
 {"sentence":"LIMIT 0xA FINISH","target":"cdrc <unsigned integer> ::= <unsigned hexadecimal integer> at <unsigned integer> in <non-negative integer specification>"}
 {"sentence":"LIMIT 0o2 FINISH","target":"cdrc <unsigned integer> ::= <unsigned octal integer> at <unsigned integer> in <non-negative integer specification>"}
 {"sentence":"LIMIT 0b0 FINISH","target":"cdrc <unsigned integer> ::= <unsigned binary integer> at <unsigned integer> in <non-negative integer specification>"}
-{"sentence":"ORDER BY LET x = SESSION_USER , y = CURRENT_DATE IN x END FINISH","target":"cdrc <let variable definition list> ::= <let variable definition> <let variable definition list/opt1> at <let variable definition list> in <let value expression>"}
 {"sentence":"RETURN TRUE AS x NEXT FILTER LET y = CURRENT_DATE IN x END IS NULL FINISH","target":"cdrc <value expression@is<binding variable reference>> ::= <boolean value expression@is<binding variable reference>> at <value expression> in <let value expression>"}
 {"sentence":"FILTER LET x = CURRENT_DATE IN TRUE END IS NULL FINISH","target":"cdrc <value expression> ::= <boolean value expression> at <value expression> in <let value expression>"}
 {"sentence":"RETURN COUNT ( * ) AS x NEXT ORDER BY NULLIF ( x , x ) FINISH","target":"cdrc <case abbreviation> ::= NULLIF <left paren> <value expression@is<binding variable reference>> <comma> <value expression@is<binding variable reference>> <right paren> at <case abbreviation> in <case expression>"}
@@ -3108,7 +3114,8 @@
 {"sentence":"RETURN SESSION_USER AS x NEXT ORDER BY SESSION_USER || x FINISH","target":"cdrc <character string concatenation> ::= <character string value expression> <concatenation operator> <character string primary@is<binding variable reference>> at <character string concatenation> in <character string value expression>"}
 {"sentence":"RETURN SESSION_USER AS x NEXT ORDER BY x || SESSION_USER FINISH","target":"cdrc <character string concatenation> ::= <character string value expression@is<binding variable reference>> <concatenation operator> <character string primary> at <character string concatenation> in <character string value expression>"}
 {"sentence":"ORDER BY UPPER ( SESSION_USER ) FINISH","target":"cdrc <character string primary> ::= <character string function> at <character string primary> in <character string value expression>"}
-{"sentence":"RETURN COUNT ( * ) AS x , SESSION_USER AS y NEXT ORDER BY SESSION_USER || UPPER ( CAST ( x AS ANY ) ) || y FINISH","target":"cdrc <character string value expression> ::= <character string concatenation> at <character string value expression> in <character string concatenation>"}
+{"sentence":"RETURN SESSION_USER AS x NEXT ORDER BY SESSION_USER || SESSION_USER || x FINISH","target":"cdrc <character string value expression> ::= <character string concatenation> at <character string value expression> in <character string concatenation>"}
+{"sentence":"RETURN SESSION_USER AS x NEXT ORDER BY x || UPPER ( SESSION_USER ) FINISH","target":"cdrc <character string primary> ::= <character string function> at <character string primary> in <character string concatenation>"}
 {"sentence":"ORDER BY ( SESSION_USER ) FINISH","target":"cdrc <value expression primary> ::= <parenthesized value expression> at <value expression primary> in <character string primary>"}
 {"sentence":"ORDER BY LEFT ( SESSION_USER , NULL ) FINISH","target":"cdrc <character string function> ::= <substring function> at <character string function> in <character string primary>"}
 {"sentence":"ORDER BY TRIM ( SESSION_USER ) FINISH","target":"cdrc <character string function> ::= <trim function> at <character string function> in <character string primary>"}
@@ -3426,8 +3433,8 @@
 {"sentence":"MATCH <- { 0x0A } FINISH","target":"<unsigned hexadecimal integer/rep1@nonzero^want> ::= <unsigned hexadecimal integer/opt2@empty^want> <hex digit^want> <unsigned hexadecimal integer/rep1@nonzero^want>"}
 {"sentence":"MATCH <- { 0x_0A } FINISH","target":"<unsigned hexadecimal integer/rep1@nonzero^want> ::= <unsigned hexadecimal integer/opt2^want> <hex digit^want> <unsigned hexadecimal integer/rep1@nonzero^want>"}
 {"sentence":"MATCH <- { 0x_A0 } FINISH","target":"<unsigned hexadecimal integer/rep1@nonzero^want> ::= <unsigned hexadecimal integer/opt2^want> <hex digit@nonzero^want> <unsigned hexadecimal integer/rep1^want>"}
-{"sentence":"MATCH <- { 0xA00 } FINISH","target":"<unsigned hexadecimal integer/rep1^want> ::= <unsigned hexadecimal integer/opt2@empty^want> <hex digit^want> <unsigned hexadecimal integer/rep1^want>"}
-{"sentence":"MATCH <- { 0xA_00 } FINISH","target":"<unsigned hexadecimal integer/rep1^want> ::= <unsigned hexadecimal integer/opt2^want> <hex digit^want> <unsigned hexadecimal integer/rep1^want>"}
+{"sentence":"MATCH <- { 0xff } FINISH","target":"<unsigned hexadecimal integer/rep1^want> ::= <unsigned hexadecimal integer/opt2@empty^want> <hex digit^want> <unsigned hexadecimal integer/rep1^want>"}
+{"sentence":"MATCH <- { 0xff } FINISH","target":"<unsigned hexadecimal integer/rep1^want> ::= <unsigned hexadecimal integer/opt2^want> <hex digit^want> <unsigned hexadecimal integer/rep1^want>"}
 {"sentence":"MATCH <- { 0x8 } FINISH","target":"<hex digit@nonzero^want> ::= <standard digit@nonzero^want>"}
 {"sentence":"MATCH <- { 0xB } FINISH","target":"<hex digit@nonzero^want> ::= \"B\""}
 {"sentence":"MATCH <- { 0xC } FINISH","target":"<hex digit@nonzero^want> ::= \"C\""}
@@ -3439,7 +3446,6 @@
 {"sentence":"MATCH <- { 0xc } FINISH","target":"<hex digit@nonzero^want> ::= \"c\""}
 {"sentence":"MATCH <- { 0xd } FINISH","target":"<hex digit@nonzero^want> ::= \"d\""}
 {"sentence":"MATCH <- { 0xe } FINISH","target":"<hex digit@nonzero^want> ::= \"e\""}
-{"sentence":"MATCH <- { 0xf } FINISH","target":"<hex digit@nonzero^want> ::= \"f\""}
 {"sentence":"MATCH <- { 2 } FINISH","target":"<standard digit@nonzero^want> ::= <octal digit@nonzero^want>"}
 {"sentence":"MATCH <- { 9 } FINISH","target":"<standard digit@nonzero^want> ::= \"9\""}
 {"sentence":"MATCH <- { 88 } FINISH","target":"<unsigned decimal integer@nonzero^want> ::= <digit@nonzero^want> <unsigned decimal integer/opt1@nonzero^want>"}
@@ -3449,11 +3455,11 @@
 {"sentence":"MATCH <- { ٣ } FINISH","target":"<digit@nonzero^want> ::= <other digit@nonzero^want>"}
 {"sentence":"MATCH <- { 8_8 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3^want> <digit@nonzero^want>"}
 {"sentence":"MATCH <- { 8_0 } FINISH","target":"<unsigned decimal integer/rep2^want> ::= <unsigned decimal integer/opt3^want> <digit^want>"}
-{"sentence":"MATCH <- { 888 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3@empty^want> <digit@nonzero^want> <unsigned decimal integer/rep2@nonzero^want>"}
-{"sentence":"MATCH <- { 8_88 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3^want> <digit@nonzero^want> <unsigned decimal integer/rep2@nonzero^want>"}
-{"sentence":"MATCH <- { 808 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3@empty^want> <digit^want> <unsigned decimal integer/rep2@nonzero^want>"}
-{"sentence":"MATCH <- { 8_08 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3^want> <digit^want> <unsigned decimal integer/rep2@nonzero^want>"}
-{"sentence":"MATCH <- { 880 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3@empty^want> <digit@nonzero^want> <unsigned decimal integer/rep2^want>"}
-{"sentence":"MATCH <- { 8_80 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3^want> <digit@nonzero^want> <unsigned decimal integer/rep2^want>"}
-{"sentence":"MATCH <- { 800 } FINISH","target":"<unsigned decimal integer/rep2^want> ::= <unsigned decimal integer/opt3@empty^want> <digit^want> <unsigned decimal integer/rep2^want>"}
-{"sentence":"MATCH <- { 8_00 } FINISH","target":"<unsigned decimal integer/rep2^want> ::= <unsigned decimal integer/opt3^want> <digit^want> <unsigned decimal integer/rep2^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3@empty^want> <digit@nonzero^want> <unsigned decimal integer/rep2@nonzero^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3^want> <digit@nonzero^want> <unsigned decimal integer/rep2@nonzero^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3@empty^want> <digit^want> <unsigned decimal integer/rep2@nonzero^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3^want> <digit^want> <unsigned decimal integer/rep2@nonzero^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3@empty^want> <digit@nonzero^want> <unsigned decimal integer/rep2^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2@nonzero^want> ::= <unsigned decimal integer/opt3^want> <digit@nonzero^want> <unsigned decimal integer/rep2^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2^want> ::= <unsigned decimal integer/opt3@empty^want> <digit^want> <unsigned decimal integer/rep2^want>"}
+{"sentence":"MATCH <- { 255 } FINISH","target":"<unsigned decimal integer/rep2^want> ::= <unsigned decimal integer/opt3^want> <digit^want> <unsigned decimal integer/rep2^want>"}

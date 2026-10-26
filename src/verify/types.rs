@@ -1492,18 +1492,26 @@ impl<'t> Checker<'t> {
 
     /// 10.3 (and the LET shorthand, 14.7 SR 3): the variable and its declared type.
     fn value_definition(&mut self, def: &'t Plain, env: &Env) -> Option<(String, Ty)> {
+        self.value_definition_both(def, env).map(|(n, declared, _)| (n, declared))
+    }
+
+    /// The name, the declared type (or the initializer's, with none declared) and the
+    /// initializer's type: 20.5 SR 5 types a LET .. IN name by its initializer (the
+    /// thirteenth review).
+    fn value_definition_both(&mut self, def: &'t Plain, env: &Env) -> Option<(String, Ty, Ty)> {
         if let Some(inner) = own(def, "value variable definition") {
-            return self.value_definition(inner, env);
+            return self.value_definition_both(inner, env);
         }
         let n = ident(own(def, "binding variable")?);
         if let Some(ve) = own(def, "value expression") {
-            return Some((n, self.ty(ve, env)));
+            let t = self.ty(ve, env);
+            return Some((n, t.clone(), t));
         }
         let otvi = own(def, "opt typed value initializer")?;
         let ve = own(otvi, "value initializer").and_then(|vi| own(vi, "value expression"))?;
         let vit = self.ty(ve, env);
         let Some(vt) = own(otvi, "value type") else {
-            return Some((n, vit));
+            return Some((n, vit.clone(), vit));
         };
         let declared = value_type(vt);
         // 21.2 SR 67: a NULL to a declared type DT is CAST(NULL AS DT), which 20.8 SR 4 refuses
@@ -1540,7 +1548,7 @@ impl<'t> Checker<'t> {
                 format!("{vit} is not assignable to {declared}"),
             );
         }
-        Some((n, declared.ty))
+        Some((n, declared.ty, vit))
     }
 
     /// 14.8.
@@ -2222,8 +2230,11 @@ impl<'t> Checker<'t> {
                 let mut inner = env.clone();
                 if let Some(list) = own(node, "let variable definition list") {
                     for def in owns(list, "let variable definition") {
-                        if let Some((n, t)) = self.value_definition(def, env) {
-                            inner.vars.insert(n, t);
+                        // SR 5: the name has its initializer's type FE, not a declared one (the
+                        // thirteenth review: `LET VALUE x ANY = CURRENT_DATE IN CEIL ( x ) END`
+                        // passed by the declared ANY); 10.3 still checks the declared type
+                        if let Some((n, _, fe)) = self.value_definition_both(def, env) {
+                            inner.vars.insert(n, fe);
                         }
                     }
                 }

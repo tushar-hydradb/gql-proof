@@ -489,3 +489,11 @@ fn twelfth_review_findings() {
     // a temporal function's record argument
     bad_on_some_parse("RETURN DATE ( { x : 1 , x : 2 } ) AS y", "20.19 SR 2");
 }
+
+#[test]
+fn thirteenth_review_findings() {
+    // 20.5 SR 5: a LET .. IN name has its initializer's type
+    bad("RETURN LET VALUE x ANY = CURRENT_DATE IN CEIL ( x ) END AS z", "20.21 SR 3");
+    bad("RETURN LET VALUE x ANY = CURRENT_DATE IN 1 END AS z", "20.5 SR 5");
+    fine("RETURN LET x = CURRENT_DATE IN 1 END AS z", "20.5 SR 5");
+}

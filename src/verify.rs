@@ -1623,6 +1623,26 @@ fn syntax_rules<'t>(
                     "a value given a closed graph type: its labels are not followed (reading)".into(),
                 ));
             }
+            // 20.5 SR 5 (reading, the twin of refine::UntypedLetValues): no typed definition in
+            // a let value expression, whose names have their initializers' types
+            "let value expression" => {
+                let mut typed = Vec::new();
+                find(node, "opt typed value initializer", &mut typed);
+                // this expression's own definitions: a nested LET's are judged at its own node
+                if let Some(list) = own(node, "let variable definition list")
+                    && typed.iter().any(|t| own(t, "value type").is_some() && {
+                        let mut lists = Vec::new();
+                        find(list, "opt typed value initializer", &mut lists);
+                        lists.iter().any(|l| std::ptr::eq(*l, *t))
+                    })
+                {
+                    out.push(violation(
+                        &path,
+                        "20.5 SR 5",
+                        "a typed definition in a let value expression (reading)".into(),
+                    ));
+                }
+            }
             // 8.2 SR 2: exactly one access mode.
             "transaction characteristics" => {
                 let mut modes = Vec::new();

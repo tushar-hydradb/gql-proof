@@ -7,7 +7,7 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 | kind | generated | reading | permission | checked | grammar | hypothesis | open |
 |---|---|---|---|---|---|---|---|
 | constraint | 114 | 49 | 8 | 32 | 10 | 1 | 0 |
-| type | 42 | 26 | 9 | 16 | 0 | 2 | 0 |
+| type | 42 | 27 | 9 | 16 | 0 | 2 | 0 |
 | environment | 0 | 0 | 0 | 0 | 0 | 74 | 0 |
 
 | rule | kind | status | in our words | checker |
@@ -272,6 +272,7 @@ one row per constraining sentence of a syntax rule. status: `generated` the gene
 | 20.4 SR 3 | environment | hypothesis | a dynamic parameter specification has the parameter value type the request supplies | src/verify/types.rs:ty (dynamic parameter specification arm: unknown type) |
 | 20.5 SR 3 b | constraint | generated | a name a LET .. IN defines is not a field of its incoming working record | src/verify/scope.rs:let_value ("20.5 SR 3") |
 | 20.5 SR 4 | constraint | generated | the names one LET .. IN defines are pairwise distinct | src/verify/scope.rs:let_value ("20.5 SR 4") |
+| 20.5 SR 5 | type | reading | the defined names have their expressions' declared types | src/verify/types.rs:ty "let value expression" arm (each name bound to its initializer type |
 | 20.6 SR 3 | type | generated | the nested query's declared type is a binding table type with one column | src/verify/types.rs:value_query ("20.6 SR 3"); src/verify/scope.rs:expr ("20.6 SR 8" for a |
 | 20.6 SR 5 a | constraint | generated | the immediately emitting statement is a linear query statement | src/verify.rs:syntax_rules "9.1 SR 7" |
 | 20.6 SR 6 | constraint | generated | the emitting result statement of the nested query is not omitted | src/verify/scope.rs:expr "20.6 SR 6" |
