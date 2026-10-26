@@ -38,6 +38,19 @@ pub trait Under<A: Context>: Sync {
     -> Vec<Self::Label>;
     fn top(&self, a: &A::Label, label: &Self::Label) -> bool;
     fn show(&self, label: &Self::Label) -> String;
+    /// `label` with its class set to the one named, see [`Context::with_class`].
+    fn with_class(&self, _a: &A::Label, _label: &Self::Label, _class: &str) -> Option<Self::Label> {
+        None
+    }
+    /// What `label` says of each slot of `a`, for export (see [`Context::describe`]).
+    fn describe(
+        &self,
+        a: &A::Label,
+        _label: &Self::Label,
+    ) -> Vec<serde_json::Map<String, serde_json::Value>> {
+        let _ = a;
+        Vec::new()
+    }
     /// Facts, on bits `A` does not use: both rules see the same masks.
     fn facts(&self) -> Vec<FactSpec> {
         Vec::new()
@@ -119,6 +132,20 @@ impl<A: Context, B: Under<A>> Context for Typed<A, B> {
 
     fn slots(&self, (a, _): &Self::Label) -> usize {
         self.a.slots(a)
+    }
+
+    fn with_class(&self, (a, b): &Self::Label, class: &str) -> Option<Self::Label> {
+        Some((a.clone(), self.b.with_class(a, b, class)?))
+    }
+
+    fn describe(&self, (a, b): &Self::Label) -> Vec<serde_json::Map<String, serde_json::Value>> {
+        let mut out = self.a.describe(a);
+        for (i, m) in self.b.describe(a, b).into_iter().enumerate() {
+            if let Some(slot) = out.get_mut(i) {
+                slot.extend(m);
+            }
+        }
+        out
     }
 
     fn empty(&self, node: &Node) -> Self::Label {

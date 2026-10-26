@@ -17,7 +17,7 @@ it was built for turbolay and runs against neo4j too. anything that takes gql te
 on turbolay #243 (484d1a72), turbolay accepts 1,401 of the 2,243 typed queries. take out the queries that are our own mistakes, turbolay's documented deviations and the ones needing parameters, and turbolay handles 1,420 of 1,707 (83%). most of the rest is two turbolay parse gaps, and on our side one rule family about path patterns that we do not enforce yet
 
 not yet:
-- answers. a run checks that the engine accepts or rejects a query and with which status, not that the rows are right
+- an engine that runs data modification against the oracle. every typed query, at two variables (3,800) and at three (3,823), gets a graph built from its patterns and its whole result on it computed from the general rules (`gql-proof oracle`, `research/oracle-witness-2026-10-23.md`): a result table, a data exception, or a refusal where the query breaks a syntax rule; what the standard leaves to the implementation is declared per engine or claimed by class. turbolay's gql engine is read only, so its INSERT, SET, REMOVE and DELETE are checked against the rules alone
 - a catalog, so nothing refers to a named graph, a graph type or a procedure
 
 ## where it is going
@@ -124,6 +124,13 @@ just neo4j                              # a throwaway neo4j in docker, every sho
 just turbolay ~/code/turbolay           # short queries through a probe test in a turbolay checkout
 just turbolay-typed ~/code/turbolay     # the typed set, same way
 python3 -I tools/engines/breakdown.py target/engines/turbolay-typed-results.jsonl
+```
+
+the witness graphs and expected rows, and a run that loads each graph and compares:
+
+```
+gql-proof oracle --match-mode-default different-edges --declarations claims/turbolay.declarations.json sentences/typed-2vars-turbolay-claim-vars.jsonl > target/engines/oracle-typed.jsonl
+just turbolay-oracle ~/code/turbolay     # each graph loaded, the query run, the whole result compared, then every near miss
 ```
 
 `breakdown.py` sorts every refusal by cause: our invalid query, an engine parse gap, a documented deviation, a data error raised as it should, a bug already reported. its rules match turbolay's messages at #243, a new engine needs its own

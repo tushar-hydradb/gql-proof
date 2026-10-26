@@ -44,6 +44,27 @@ enum Cmd {
     /// Run the context engine alone on a part of the grammar and report where its time and
     /// labels went (`GQL_TRACE` filters logs, `--trace` writes a chrome trace).
     Context(ContextArgs),
+    /// For every sentence, the witness graph its patterns freeze into and the outcome the
+    /// query must have on it (`research/oracle-witness-2026-10-23.md`), one json line each.
+    Oracle(OracleArgs),
+}
+
+#[derive(Parser)]
+struct OracleArgs {
+    /// Sentence files: jsonl with a `query` or `sentence` field, or one sentence per line.
+    files: Vec<PathBuf>,
+    #[arg(long, default_value = "GQL-program")]
+    start: String,
+    /// The match mode a `<graph pattern>` without one gets on the engine (ID086).
+    #[arg(long, value_enum, default_value_t = Id086::Portable)]
+    match_mode_default: Id086,
+    /// What the engine declares for behaviour the standard leaves to it (json: see
+    /// `claims/turbolay.declarations.json`); absent, such values stay opaque.
+    #[arg(long)]
+    declarations: Option<PathBuf>,
+    /// Only the summary on stderr, no records.
+    #[arg(long)]
+    summary: bool,
 }
 
 #[derive(Parser)]
@@ -331,6 +352,7 @@ fn main() -> Result<()> {
         .spawn(move || match cmd {
             Cmd::Purdom(args) => purdom(args),
             Cmd::CheckGrammar(args) => check_grammar(args),
+            Cmd::Oracle(args) => oracle(args),
             Cmd::Negatives(args) => negatives(args),
             Cmd::Features(args) => features(args),
             Cmd::Cover(args) => cover(args),
@@ -492,7 +514,7 @@ fn context_run<C: gql_proof::context::Context>(
             true,
         );
         let (mut failed, mut untyped) = (0, 0);
-        for (root, covers) in &covered.trees {
+        for (root, covers, vars) in &covered.trees {
             let plain = root.export(base);
             let sentence = root.render(base);
             // The syntax rules and the claim's conformance rules, when the grammar was refined
@@ -540,9 +562,24 @@ fn context_run<C: gql_proof::context::Context>(
                 }
             }
             if args.sentences && args.jsonl {
+                // Parameters: the classes each site admits, asked of the rules themselves.
+                let mut refs = Vec::new();
+                parameters_in(&plain, &mut refs);
+                let params: Vec<serde_json::Value> = refs
+                    .iter()
+                    .map(|p| {
+                        let classes = gql_proof::context::parameter_classes(ctx, &plain, p);
+                        if classes.is_empty() && std::env::var_os("GQL_DEBUG_PARAMS").is_some() {
+                            eprintln!("no class for {p} in {sentence}\n{plain:#?}");
+                        }
+                        serde_json::json!({ "name": p, "classes": classes })
+                    })
+                    .collect();
                 let record = serde_json::json!({
                     "target": covers.to_string(),
                     "sentence": sentence,
+                    "vars": vars,
+                    "params": params,
                 });
                 println!("{record}");
             } else if args.sentences {
@@ -1428,6 +1465,20 @@ struct Covered {
     scope: Vec<(String, Option<String>, Option<String>)>,
 }
 
+/// The distinct parameter references of a tree (`$b`), in order of first appearance.
+fn parameters_in(p: &gql_proof::verify::Plain, out: &mut Vec<String>) {
+    if let gql_proof::verify::Plain::Def { name, children, .. } = p {
+        if name == "general parameter reference" {
+            let text = p.text();
+            if !out.contains(&text) {
+                out.push(text);
+            }
+            return;
+        }
+        children.iter().for_each(|c| parameters_in(c, out));
+    }
+}
+
 /// The names a sentence's variables and columns could have: its binding variables and
 /// identifiers.
 fn names_in(p: &gql_proof::verify::Plain, out: &mut BTreeSet<String>) {
@@ -1437,6 +1488,155 @@ fn names_in(p: &gql_proof::verify::Plain, out: &mut BTreeSet<String>) {
         }
         children.iter().for_each(|c| names_in(c, out));
     }
+}
+
+/// The scope rule at a slot cap, for the oracle's typed parse.
+struct Scope4;
+impl Scope4 {
+    fn new(slots: usize) -> gql_proof::context::scope::Scope {
+        gql_proof::context::scope::Scope {
+            caps: gql_proof::context::scope::Caps {
+                slots,
+                references: slots,
+            },
+        }
+    }
+}
+
+fn oracle(args: OracleArgs) -> Result<()> {
+    let bnf = read_grammar(&None)?;
+    let cfg = Cfg::from_bnf(&bnf);
+    let id086 = MatchModeDefault::from(args.match_mode_default);
+    let declared: gql_proof::oracle::eval::Declarations = match &args.declarations {
+        Some(path) => serde_json::from_str(&std::fs::read_to_string(path)?)?,
+        None => Default::default(),
+    };
+    let declared = &declared;
+    let pool = rayon::ThreadPoolBuilder::new()
+        .stack_size(1 << 30)
+        .build()?;
+    let mut out = io::stdout().lock();
+    let (mut bag, mut exceptions, mut witness, mut status, mut unsat, mut unparsed) = (0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
+    let mut reasons: BTreeMap<String, usize> = BTreeMap::new();
+    let mut stops: BTreeMap<String, usize> = BTreeMap::new();
+    let mut unloadable: BTreeMap<String, usize> = BTreeMap::new();
+    for path in &args.files {
+        let sentences = read_records(path)?;
+        let distinct: Vec<(&str, Option<&serde_json::Value>, Option<&serde_json::Value>)> = {
+            let mut seen = BTreeSet::new();
+            sentences
+                .iter()
+                .map(|(s, v, p)| (s.as_str(), v.as_ref(), p.as_ref()))
+                .filter(|(s, _, _)| seen.insert(*s))
+                .collect()
+        };
+        let records: Vec<(String, Option<gql_proof::oracle::Oracle>)> = pool.install(|| {
+            distinct
+                .par_iter()
+                .map_init(
+                    || {
+                        let tokens = Grammar::new(&bnf);
+                        let verifier = Verifier::new(Grammar::new(&bnf));
+                        let parser = gql_proof::parse::Parser::new(&cfg, &tokens, &args.start)
+                            .expect("the iso grammar builds");
+                        // The typed rules pick the derivation the generator made: a sentence
+                        // like `1 + 2 * 3` also parses as duration arithmetic, which types
+                        // refuse.
+                        let scope = Scope4::new(2);
+                        let types = gql_proof::context::types::Types::with_typed(&cfg, 2);
+                        let typed = gql_proof::context::pair::Typed::new(scope, types);
+                        (parser, verifier, typed)
+                    },
+                    |(parser, verifier, typed), (s, vars, params)| {
+                        let syntax = |n: &gql_proof::tree::Node| {
+                            verifier.verify(&n.export(&cfg), &n.render(&cfg)).is_empty()
+                        };
+                        let well_typed = |n: &gql_proof::tree::Node| {
+                            syntax(n) && gql_proof::context::accepts(typed, &n.export(&cfg)).is_ok()
+                        };
+                        let parsed = parser.parse(s, well_typed).or_else(|_| parser.parse(s, syntax));
+                        let record = parsed.ok().map(|p| {
+                            gql_proof::oracle::oracle(s, &p.tree.export(&cfg), *vars, *params, id086, declared)
+                        });
+                        (s.to_string(), record)
+                    },
+                )
+                .collect()
+        });
+        for (sentence, record) in records {
+            let Some(record) = record else {
+                unparsed += 1;
+                if !args.summary {
+                    let line = serde_json::json!({"sentence": sentence, "why": ["no ISO parse"]});
+                    writeln!(out, "{line}")?;
+                }
+                continue;
+            };
+            match (record.expect.tier, record.expect.rows) {
+                (gql_proof::oracle::Tier::Bag, _) if record.expect.outcome == "exception" => exceptions += 1,
+                (gql_proof::oracle::Tier::Bag, _) => bag += 1,
+                (_, Some(0)) => unsat += 1,
+                (gql_proof::oracle::Tier::Witness, _) => witness += 1,
+                (gql_proof::oracle::Tier::Status, _) => status += 1,
+            }
+            if let Some(stop) = &record.expect.evaluator {
+                let key = stop.split(':').next().unwrap_or(stop).to_string();
+                *stops.entry(key).or_default() += 1;
+            }
+            for why in &record.why {
+                // The reason without its sentence specific tail, to count families.
+                let key = why.split(':').next().unwrap_or(why).to_string();
+                *reasons.entry(key).or_default() += 1;
+            }
+            for (engine, _) in &record.setup.unloadable {
+                *unloadable.entry(engine.to_string()).or_default() += 1;
+            }
+            if !args.summary {
+                writeln!(out, "{}", serde_json::to_string(&record)?)?;
+            }
+        }
+    }
+    eprintln!(
+        "bag {bag} (of which exceptions {exceptions}), witness {witness}, status only {status}, unsatisfiable on every graph {unsat}, no parse {unparsed}"
+    );
+    eprintln!("the evaluator stopped at:");
+    let mut stops: Vec<(String, usize)> = stops.into_iter().collect();
+    stops.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    for (why, n) in stops.iter().take(40) {
+        eprintln!("  {n:6}  {why}");
+    }
+    eprintln!("out of the witness core by reason:");
+    let mut reasons: Vec<(String, usize)> = reasons.into_iter().collect();
+    reasons.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    for (why, n) in reasons {
+        eprintln!("  {n:6}  {why}");
+    }
+    for (engine, n) in unloadable {
+        eprintln!("unloadable on {engine}: {n}");
+    }
+    Ok(())
+}
+
+/// Sentences with their generation record (`vars`, `params`), when the file carries one.
+type Record = (String, Option<serde_json::Value>, Option<serde_json::Value>);
+fn read_records(path: &PathBuf) -> Result<Vec<Record>> {
+    let text = std::fs::read_to_string(path)?;
+    let mut out = Vec::new();
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        match serde_json::from_str::<serde_json::Value>(line) {
+            Ok(serde_json::Value::Object(mut record)) => {
+                let sentence = record
+                    .get("query")
+                    .or_else(|| record.get("sentence"))
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("{}: a record with no query", path.display()))?
+                    .to_string();
+                out.push((sentence, record.remove("vars"), record.remove("params")));
+            }
+            _ => out.push((line.to_string(), None, None)),
+        }
+    }
+    Ok(out)
 }
 
 fn read_sentences(path: &PathBuf) -> Result<Vec<String>> {

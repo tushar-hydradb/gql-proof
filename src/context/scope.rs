@@ -1484,6 +1484,27 @@ impl Context for Scope {
         "binding variables in scope"
     }
 
+    fn describe(&self, label: &Label) -> Vec<serde_json::Map<String, serde_json::Value>> {
+        let kind = |k: Option<Kind>| match k {
+            Some(k) => serde_json::Value::String(format!("{k:?}").to_ascii_lowercase()),
+            None => serde_json::Value::Null,
+        };
+        label
+            .vars
+            .iter()
+            .map(|v| {
+                let mut m = serde_json::Map::new();
+                m.insert("need".into(), kind(v.need));
+                m.insert("out".into(), kind(v.out));
+                m.insert("decl".into(), kind(v.decl));
+                m.insert("column".into(), kind(v.column));
+                m.insert("new".into(), serde_json::Value::Bool(v.has(vf::NEW)));
+                m.insert("aliased".into(), serde_json::Value::Bool(v.has(vf::ALIASED)));
+                m
+            })
+            .collect()
+    }
+
     /// Who reads each flag, from the arms of `finish_def`, `combine` and `return_body`.
     /// Statements clear what only flows inside one (the boundary in `finish`), and reject a
     /// pending aggregate.

@@ -83,6 +83,17 @@ pub trait Context: Sync {
     fn spells(&self, def: &str, label: &Self::Label) -> bool;
     /// A short form of `label`, for naming nonterminals.
     fn show(&self, label: &Self::Label) -> String;
+    /// What `label` says of each of its slots, for export beside the sentence (the oracle
+    /// reads kinds and classes from here instead of recomputing them): one map per slot.
+    fn describe(&self, label: &Self::Label) -> Vec<serde_json::Map<String, serde_json::Value>> {
+        (0..self.slots(label)).map(|_| serde_json::Map::new()).collect()
+    }
+    /// `label` with its expression class set to the class named `class`, for a rule that
+    /// types expressions; `None` where the rule has no class to set (see
+    /// [`parameter_classes`]).
+    fn with_class(&self, _label: &Self::Label, _class: &str) -> Option<Self::Label> {
+        None
+    }
     /// The facts this rule's labels hold that only some definitions read (see [`live`]).
     /// Undeclared facts are always kept.
     fn facts(&self) -> Vec<FactSpec> {
@@ -2588,6 +2599,7 @@ impl Built {
         assign_names(root, linking, names, spell, |nt| {
             self.cfg.name(nt).to_string()
         })
+        .map(|_| ())
     }
 }
 
@@ -2669,6 +2681,8 @@ pub(crate) struct Linking {
     pairs: Vec<(usize, usize)>,
     /// The path and own slot of every node that spells a name.
     spelling: Vec<(Vec<usize>, usize)>,
+    /// Every node with a label: its path, the first of its own slots and how many.
+    nodes: Vec<(Vec<usize>, usize, usize)>,
 }
 
 pub(crate) fn link_slots<N: Linked>(root: &N) -> Result<Linking> {
@@ -2676,6 +2690,7 @@ pub(crate) fn link_slots<N: Linked>(root: &N) -> Result<Linking> {
         count: 0,
         pairs: Vec::new(),
         spelling: Vec::new(),
+        nodes: Vec::new(),
     };
     walk_linked(root, &mut Vec::new(), &mut linking)?;
     Ok(linking)
@@ -2690,6 +2705,7 @@ fn walk_linked<N: Linked>(node: &N, path: &mut Vec<usize>, linking: &mut Linking
     let own = linking.count;
     let slots = node.slots();
     linking.count += slots;
+    linking.nodes.push((path.clone(), own, slots));
     if node.spells() {
         if slots != 1 {
             bail!("<{}> spells a name but has {slots} slots", node.describe());
@@ -2768,7 +2784,9 @@ pub(crate) fn assign_names(
     names: &[String],
     spell: impl Fn(NtId, &str) -> Option<tree::Node>,
     name_of: impl Fn(NtId) -> String,
-) -> Result<()> {
+) -> Result<Naming> {
+    let count = linking.count;
+    let nodes = linking.nodes.clone();
     let mut sets = UnionFind::<usize>::new(linking.count);
     for (a, b) in linking.pairs {
         sets.union(a, b);
@@ -2793,7 +2811,19 @@ pub(crate) fn assign_names(
         };
         *node = spelt;
     }
-    Ok(())
+    // The name of every slot, the root's first: a slot nothing spells has none.
+    Ok(Naming {
+        names: (0..count).map(|s| given.get(&sets.find(s)).cloned()).collect(),
+        nodes,
+    })
+}
+
+/// What naming a tree found: the name of every slot (by `link_slots` numbering; a slot
+/// nothing spells has none) and every labelled node with the first of its slots and how
+/// many it has.
+pub struct Naming {
+    pub names: Vec<Option<String>>,
+    pub nodes: Vec<(Vec<usize>, usize, usize)>,
 }
 
 /// The `k`th name: from `names`, then numbered.
@@ -2807,12 +2837,69 @@ fn fresh(names: &[String], k: usize) -> String {
 /// Runs `ctx` over a given tree, its names deciding which slots are one variable: the node
 /// where it rejects, if any.
 pub fn accepts<C: Context>(ctx: &C, tree: &Plain) -> Result<(), String> {
-    let (states, _) = run(ctx, tree)?;
+    let (states, _) = run(ctx, tree, &|_, _| None)?;
     if states.iter().any(|(l, _)| ctx.top(l)) {
         Ok(())
     } else {
         Err(format!("{} at the top", ctx.name()))
     }
+}
+
+/// The classes a parameter site admits: every class name for which `ctx` still accepts the
+/// tree once the parameter's own class is forced to it. A parameter's class is dynamic
+/// (4.14.4: it stands wherever a class is checked), so the rules never store what the site
+/// asks; forcing a class and re-running the rules asks them, without a new rule or label.
+/// `param` is the spelling of the `<general parameter reference>` (`$b`). Empty when the
+/// rules type nothing (scope alone) or no class fits.
+pub fn parameter_classes<C: Context>(ctx: &C, tree: &Plain, param: &str) -> Vec<String> {
+    const CLASSES: [&str; 17] = [
+        "exact",
+        "approx",
+        "str",
+        "bytes",
+        "bool",
+        "date",
+        "localtime",
+        "zonedtime",
+        "localdatetime",
+        "zoneddatetime",
+        "yearmonth",
+        "daytime",
+        "list",
+        "record",
+        "node",
+        "edge",
+        "path",
+    ];
+    let mut out = Vec::new();
+    for class in CLASSES {
+        // Forced at every node that is exactly the parameter, since a parent like `<general
+        // value specification>` sets the dynamic class itself without reading its child.
+        let force = |node: &Plain, label: &C::Label| -> Option<C::Label> {
+            match node {
+                Plain::Def { name, .. }
+                    if matches!(
+                        name.as_str(),
+                        "general parameter reference"
+                            | "dynamic parameter specification"
+                            | "general value specification"
+                            | "unsigned value specification"
+                            | "non-negative integer specification"
+                    ) && node.text() == param =>
+                {
+                    ctx.with_class(label, class)
+                }
+                _ => None,
+            }
+        };
+        let Ok((states, _)) = run(ctx, tree, &force) else {
+            continue;
+        };
+        if states.iter().any(|(l, _)| ctx.top(l)) {
+            out.push(class.to_string());
+        }
+    }
+    out
 }
 
 type Named<L> = (L, Vec<Option<String>>);
@@ -2864,7 +2951,14 @@ type Run<L> = (Vec<Named<L>>, String);
 /// One option for a child in `accepts`: its label (none for a token) and its slots' names.
 type Child<'a, L> = (Option<&'a L>, &'a [Option<String>]);
 
-fn run<C: Context>(ctx: &C, node: &Plain) -> Result<Run<C::Label>, String> {
+/// Runs `ctx` over `node` bottom up: its labels with the names of their slots. `force`
+/// may replace a finished label of a node (a parameter site given a class).
+fn run<C: Context>(
+    ctx: &C,
+    node: &Plain,
+    force: &dyn Fn(&Plain, &C::Label) -> Option<C::Label>,
+) -> Result<Run<C::Label>, String> {
+    let plain = node;
     let Plain::Def {
         name,
         synthetic,
@@ -2889,7 +2983,7 @@ fn run<C: Context>(ctx: &C, node: &Plain) -> Result<Run<C::Label>, String> {
     let mut kids = Vec::with_capacity(children.len());
     let mut text = String::new();
     for child in children {
-        let (states, t) = run(ctx, child)?;
+        let (states, t) = run(ctx, child, force)?;
         kids.push(states);
         text.push_str(&t);
     }
@@ -2931,6 +3025,7 @@ fn run<C: Context>(ctx: &C, node: &Plain) -> Result<Run<C::Label>, String> {
             if ctx.spells(name, &f) && named.len() == 1 {
                 named[0] = Some(text.clone());
             }
+            let f = force(plain, &f).unwrap_or(f);
             out.insert((f, named));
         }
     }
