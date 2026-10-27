@@ -1331,7 +1331,7 @@ impl<'t> Checker<'t> {
                 );
             }
             if *lt == Ty::Any || *rt == Ty::Any {
-                self.parameter_once(qc);
+                self.unknown_input(qc, None);
             }
             let t = match combine(&[lt.clone(), rt.clone()]) {
                 Ok(t) => t,
@@ -2341,7 +2341,7 @@ impl<'t> Checker<'t> {
                 let elem = if types.is_empty() {
                     Ty::Dyn(Union::Open)
                 } else {
-                    self.combined(node, &types, "20.17 SR 3")
+                    self.combined(node, &types, &elems, "20.17 SR 3")
                 };
                 Ty::List {
                     elem: Box::new(elem),
@@ -2584,6 +2584,7 @@ impl<'t> Checker<'t> {
                         .find(|c| matches!(c, Plain::Def { .. }))
                         .map_or(Ty::Any, |v| self.ty(v, env));
                     self.expect(oep, &inner, &[want], rule);
+                    self.material(n, oep, &inner);
                     if matches!(inner, Ty::Table(Some(_))) {
                         ty = inner.clone();
                     }
@@ -2602,6 +2603,8 @@ impl<'t> Checker<'t> {
                     if let Some(t) = env.vars.get(&ident(onbv)) {
                         let t = t.clone();
                         self.expect(onbv, &t, &[want], rule);
+                        // SR 2 a: a bound name is `VARIABLE name`
+                        self.material(n, onbv, &t);
                         if matches!(t, Ty::Table(Some(_))) {
                             ty = t;
                         }
@@ -2846,7 +2849,7 @@ impl<'t> Checker<'t> {
             // 20.15 SR 2: the regular variant of the combination
             Some(Class::List) => {
                 let lists: Vec<Ty> = [l, r].into_iter().filter(|t| !t.wild()).collect();
-                match self.combined(node, &lists, "20.15 SR 2") {
+                match self.combined(node, &lists, &[], "20.15 SR 2") {
                     Ty::List { elem, .. } => Ty::List { elem, group: false },
                     t => t,
                 }
@@ -2893,9 +2896,11 @@ impl<'t> Checker<'t> {
     }
 
     /// 22.18 applied for `rule`: the combination, or a report and the unknown type.
-    fn combined(&mut self, at: &'t Plain, types: &[Ty], rule: &'static str) -> Ty {
-        if types.contains(&Ty::Any) {
-            self.parameter_once(at);
+    fn combined(&mut self, at: &'t Plain, types: &[Ty], inputs: &[&'t Plain], rule: &'static str) -> Ty {
+        for (i, t) in types.iter().enumerate() {
+            if *t == Ty::Any {
+                self.unknown_input(at, inputs.get(i).copied());
+            }
         }
         match combine(types) {
             Ok(t) => t,
@@ -2921,28 +2926,51 @@ impl<'t> Checker<'t> {
         }
     }
 
-    /// H1 for a parameter in a combination (the eighteenth review: `USE $b MATCH ( x ) RETURN
-    /// COALESCE ( $b , 1 ) AS a` passed, though no type of $b serves both). The request's type
-    /// for a parameter makes S valid only if one type serves every use. A dynamic type serves
-    /// every use but a combination's input (22.19 SR 2, H2' cures no combination), so a
-    /// parameter in a combination of unknown inputs is written once in S (a reading, gate-only).
-    fn parameter_once(&mut self, at: &'t Plain) {
+    /// 11.1 SR 3 a ii, 11.2 SR 4 b ii: under VARIABLE the value's declared type is a *material*
+    /// graph (binding table) reference value type. The checker follows no nullability of a
+    /// static reference type (`CAST ( NULL AS ANY GRAPH )` is nullable, and a graph or table
+    /// variable's type is its initializer's, material or not as 11.1 SR 3 b leaves it), so only
+    /// the environment's (H1) and a dynamic one (H2') are taken. A reading, the strict side;
+    /// gate-only (the nineteenth review). It also keeps a closed graph type held in a list or
+    /// record from reaching a working graph (16.8 SR 4 a ii).
+    fn material(&mut self, n: &str, at: &'t Plain, t: &Ty) {
+        if !matches!(t, Ty::Any | Ty::Dyn(_)) {
+            let rule = if n == "graph expression" { "11.1 SR 3 material" } else { "11.2 SR 4 material" };
+            self.report(at, rule, format!("(reading) {} of type {t} is not known to be of a material reference type", at.text()));
+        }
+    }
+
+    /// H1 for an unknown input of a combination. The environment's type must make S valid, and
+    /// a dynamic type serves every use but a combination's input (22.19 SR 2; H2' cures no
+    /// combination). So an unknown input is a bare parameter written once in S, whose request
+    /// type then serves only this input; any other unknown input (a variable or a field typed
+    /// unknown, an operation over one, a column) is refused, as its source may meet another use
+    /// that no one type serves (the eighteenth review: `USE $b .. COALESCE ( $b , 1 )`; the
+    /// nineteenth: `USE $b LET y = $b .. COALESCE ( y , 1 )`). A reading, gate-only.
+    fn unknown_input(&mut self, at: &'t Plain, input: Option<&'t Plain>) {
         let mut root: &Plain = at;
         while let Some(&p) = self.parent.get(&(root as *const Plain)) {
             root = p;
         }
         let name_of = |n: &Plain| first(n, "parameter name").map_or_else(|| n.text(), ident);
-        let mut inside = Vec::new();
-        find(at, "dynamic parameter specification", &mut inside);
-        let mut all = Vec::new();
-        find(root, "dynamic parameter specification", &mut all);
-        let mut seen: Vec<String> = Vec::new();
-        for p in inside {
-            let n = name_of(p);
-            if !seen.contains(&n) && all.iter().filter(|q| name_of(q) == n).count() > 1 {
-                self.report(at, "22.19 SR 2 parameter", format!("(reading, H1) ${n} is in a combination and written again: no one type serves both"));
-                seen.push(n);
+        let mut bare = input;
+        while let Some(n) = bare {
+            if name(n) == Some("dynamic parameter specification") {
+                break;
             }
+            bare = match kids(n).as_slice() {
+                [only] => Some(*only),
+                _ => None,
+            };
+        }
+        let once = bare.is_some_and(|p| {
+            let mut all = Vec::new();
+            find(root, "dynamic parameter specification", &mut all);
+            all.iter().filter(|q| name_of(q) == name_of(p)).count() == 1
+        });
+        if !once {
+            let what = input.map_or_else(|| at.text(), Plain::text);
+            self.report(at, "22.19 SR 2 unknown", format!("(reading, H1) {what} has an unknown type in a combination and is no parameter written once"));
         }
     }
 
@@ -3013,7 +3041,7 @@ impl<'t> Checker<'t> {
             // 20.7 SR 1 b: the CASE's one result expression is V1, its type the combination
             // of {V1} (22.19 SR 2: no dynamic one, the strict reading).
             let first = types.into_iter().next().unwrap_or(Ty::Any);
-            return self.combined(ca, &[first], "20.7 SR 5");
+            return self.combined(ca, &[first], &operands[..operands.len().min(1)], "20.7 SR 5");
         }
         // COALESCE (.., Vn-1, Vn) ends in CASE WHEN NOT Vn-1 IS NULL THEN Vn-1 ELSE Vn END
         if let [.., a, b] = operands.as_slice()
@@ -3026,7 +3054,7 @@ impl<'t> Checker<'t> {
                 "COALESCE ending in two NULLs: every <result> of its last CASE is NULL".into(),
             );
         }
-        self.combined(ca, &types, "20.7 SR 5")
+        self.combined(ca, &types, &operands, "20.7 SR 5")
     }
 
     /// 20.7 SR 2-5.
@@ -3049,17 +3077,19 @@ impl<'t> Checker<'t> {
         }
         results.extend(own(cs, "else clause").and_then(|e| own(e, "result")));
         let mut types = Vec::new();
+        let mut inputs = Vec::new();
         for r in results {
             // reading: a bare NULL is the <null literal> alternative on every tree
             if !null_literal(r) {
                 types.push(self.ty(r, env));
+                inputs.push(r);
             }
         }
         if types.is_empty() {
             self.report(cs, "20.7 SR 3", "every <result> is NULL".into());
             return Ty::Null;
         }
-        self.combined(cs, &types, "20.7 SR 5")
+        self.combined(cs, &types, &inputs, "20.7 SR 5")
     }
 
     /// 20.7 SR 2 e as Cor 1 leaves it: the predicate `CO <when operand>`, checked by Clause 19.

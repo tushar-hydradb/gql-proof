@@ -58,11 +58,17 @@ property of every printed sentence, by the gate in step 1
   graph a at both, as the text applies syntax rules to the whole program
   first). a parameter has the type the request gives it; one used at two
   incompatible types (`$b * 2` used as a graph) holds only if that type is
-  dynamic and H2' cures it. H2' cures every use but a combination's input, so a
-  parameter in a combination of unknown inputs is written once in S (checked,
-  "22.19 SR 2 parameter", gate-only; the eighteenth review: `USE $b .. COALESCE
-  ( $b , 1 )` passed, and no request type served both). some request type
-  therefore serves every S, so H1 is never vacuous for S. a named procedure called without YIELD returns no
+  dynamic and H2' cures it. H2' cures every use but a combination's input. so
+  the only unknown input a combination may take is a bare parameter written
+  once in S. a variable or field of unknown type is refused there, and so is an
+  operation over one or a column of a set operation. this is checked, as
+  "22.19 SR 2 unknown", gate-only. the eighteenth review found `USE $b ..
+  COALESCE ( $b , 1 )`, the nineteenth the alias `USE $b LET y = $b ..
+  COALESCE ( y , 1 )` and a named procedure's column used both ways. every
+  other unknown (a parameter, a catalog object, a procedure's column) is used
+  only where a dynamic type is cured. so an environment giving each one a
+  dynamic type, and each combination's parameter the type its other inputs
+  combine to, serves every S, and H1 is never vacuous for S. a named procedure called without YIELD returns no
   column named like a field of the call's incoming record or table (15.1 SR 9,
   the two amended under cor 1, through the
   procedure's signature, which only the catalog gives). the session has a

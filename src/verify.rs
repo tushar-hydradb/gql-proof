@@ -54,7 +54,9 @@ pub const GATE_ONLY: &[&str] = &[
     "14.8 SR 10 null",
     // the eighteenth review: H2's list cardinality, and H1 for a parameter in a combination
     "18.9 SR 73",
-    "22.19 SR 2 parameter",
+    "22.19 SR 2 unknown",
+    "11.1 SR 3 material",
+    "11.2 SR 4 material",
     "20.15 SR 2 null",
     // H2's limits, which the generator keeps by settling values (tree.rs); the gate makes them
     // rest on no generator
@@ -1663,8 +1665,10 @@ fn syntax_rules<'t>(
             }
             // 16.8 SR 4 a ii, 11.1 SR 3 (reading): a closed graph type is not followed, so no
             // value is given one where it could become a working graph (a cast target, a
-            // declared value type, a union component of either; a list or record element cannot
-            // be a graph expression). found by the sixth review.
+            // declared value type, a union component of either). a list or record element can
+            // become one, through a property reference or a FOR variable; the types checker's
+            // "11.1 SR 3 material" refuses every static graph type under VARIABLE (the
+            // nineteenth review). found by the sixth review.
             "cast target" | "opt typed value initializer" if closed_graph_outside_collections(node) => {
                 out.push(violation(
                     &path,

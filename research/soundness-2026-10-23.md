@@ -634,3 +634,29 @@ hand probes:
 
 all were flagged as the text says. one tool fix: shall_coverage.py's cor 1 pass
 now uses the wider requirement test (shall, a syntax error, not omitted).
+
+## 2026-10-27: the nineteenth review, part 1
+
+no printed counterexample, but the claim's H1 sentence ("some request type
+serves every S") was false. this round is not clean. three unprinted gate holes,
+all closed:
+- aliasing defeated "22.19 SR 2 parameter". `USE $b LET y = $b .. COALESCE ( y ,
+  1 )` passed, and no request type serves both uses. the same happened with a
+  named procedure's YIELD column. the check reads every unknown input now: only
+  a bare parameter written once may be one ("22.19 SR 2 unknown", gate-only,
+  replacing the parameter string)
+- 11.1 SR 3 a ii and 11.2 SR 4 b ii want a *material* reference type under
+  VARIABLE. `SESSION SET GRAPH CAST ( NULL AS ANY PROPERTY GRAPH )` passed, and
+  so did a LET or FOR variable holding a nullable graph or table type. the
+  checker follows no nullability of static reference types, so only an unknown
+  (H1) or dynamic (H2') value is taken there ("11.1 SR 3 material", "11.2 SR 4
+  material", gate-only). no printed sentence uses a variable at a graph or table
+  site, so this costs no coverage
+- a closed graph type in a list or record reached a working graph (`USE CAST (
+  NULL AS RECORD { g PROPERTY GRAPH { ( :a ) } } ) . g MATCH ( :b )`). the
+  premise of the 16.8 SR 4 check, that such an element is never a graph
+  expression, was false: a property reference is an object expression primary,
+  and FOR binds list elements. the material check refuses every static graph
+  type there now, so the premise holds by the gate
+
+runs after the fixes: counts unchanged at 2 and 3 variables and for neo4j; the whole grammar at 1 variable withholds 34 more (323), the aliased parameter shapes, with no production lost; 0 generator bugs apart from neo4j's 34.

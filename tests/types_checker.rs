@@ -32,6 +32,8 @@ const PER_TREE: &[&str] = &[
     "20.1 SR 3",
     "11.1 SR 3",
     "11.2 SR 4",
+    "11.1 SR 3 material",
+    "11.2 SR 4 material",
     // the category over a bare primary, which another tree puts elsewhere
     "20.21 SR 3 primary",
     "20.23 SR 2 primary",
@@ -934,7 +936,8 @@ fn typed_graphs_and_tables() {
         "10.2 SR 8",
     );
     // a table variable's columns are followed too (the unknowns audit)
-    ok("TABLE s = { RETURN 1 AS x } TABLE t :: TABLE { x INT } = s RETURN 1 AS y");
+    // a table variable under VARIABLE is not known to be material: per tree, in
+    // tests/probes_checker.rs (the nineteenth review)
     bad(
         "TABLE s = { RETURN 'a' AS x } TABLE t :: TABLE { x INT } = s RETURN 1 AS y",
         "10.2 SR 8",

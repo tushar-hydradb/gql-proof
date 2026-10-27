@@ -634,12 +634,40 @@ fn nineteenth_review_findings() {
     bad("RETURN TABLE { RETURN 1 AS a } AS t UNION ALL RETURN TABLE { RETURN 1 AS b } AS t", "14.2 SR 10");
     fine("RETURN COALESCE ( TABLE { RETURN 1 AS a } , TABLE { RETURN 2 AS a } ) AS c", "22.19 SR 4");
     // H1: a parameter in a combination is written once
-    bad("USE $b MATCH ( x ) RETURN COALESCE ( $b , 1 ) AS a", "22.19 SR 2 parameter");
-    fine("MATCH ( x ) RETURN COALESCE ( $b , 1 ) AS a", "22.19 SR 2 parameter");
+    bad("USE $b MATCH ( x ) RETURN COALESCE ( $b , 1 ) AS a", "22.19 SR 2 unknown");
+    fine("MATCH ( x ) RETURN COALESCE ( $b , 1 ) AS a", "22.19 SR 2 unknown");
     // H2, IL015: a list's maximum cardinality
     bad("RETURN COUNT ( CAST ( NULL AS LIST [ 99999999999999999999 ] ) ) AS x", "18.9 SR 73");
     fine("RETURN COUNT ( CAST ( NULL AS LIST [ 8 ] ) ) AS x", "18.9 SR 73");
     // 20.6 SR 10 a: LIMIT 1 as written
     bad("RETURN VALUE { RETURN 1 AS a LIMIT 0x1 } AS b", "20.6 SR 10");
     fine("RETURN VALUE { RETURN 1 AS a LIMIT 1 } AS b", "20.6 SR 10");
+}
+
+#[test]
+fn twentieth_review_findings() {
+    // H1: an unknown combination input is a parameter written once, never an alias of one
+    bad_on_some_parse("USE $b MATCH ( x ) LET y = $b RETURN COALESCE ( y , 1 ) AS a", "22.19 SR 2 unknown");
+    bad_on_some_parse("USE $b LET y = $b FILTER COALESCE ( y , 1 ) IS NULL FINISH", "22.19 SR 2 unknown");
+    bad_on_some_parse("RETURN LET y = $b IN COALESCE ( y , 1 ) END + CARDINALITY ( $b ) AS x", "22.19 SR 2 unknown");
+    bad_on_some_parse("CALL p ( ) YIELD a FILTER COALESCE ( a , 1 ) IS NULL FINISH", "22.19 SR 2 unknown");
+    // 11.1 SR 3 a ii, 11.2 SR 4 b ii: a material reference type under VARIABLE
+    bad_on_some_parse("SESSION SET GRAPH CAST ( NULL AS ANY PROPERTY GRAPH )", "11.1 SR 3 material");
+    bad_on_some_parse("USE VARIABLE CAST ( NULL AS ANY GRAPH ) MATCH ( ) FINISH", "11.1 SR 3 material");
+    bad_on_some_parse("MATCH ( x WHERE ( TABLE CAST ( NULL AS BINDING TABLE { a INT } ) ) IS NULL ) FINISH", "11.2 SR 4 material");
+    bad_on_some_parse("LET g = CAST ( NULL AS ANY GRAPH ) CALL ( g ) { USE g MATCH ( ) FINISH } FINISH", "11.1 SR 3 material");
+    bad_on_some_parse("TABLE s = { RETURN 1 AS x } TABLE t :: TABLE { x INT } = s RETURN 1 AS y", "11.2 SR 4 material");
+    fine("SESSION SET GRAPH VARIABLE $b", "11.1 SR 3 material");
+    fine("SESSION SET GRAPH CAST ( NULL AS ANY )", "11.1 SR 3 material");
+    // 16.8 SR 4 a ii: a closed graph type in a list or record reaches no working graph
+    let clean = |t: &str| verdicts(t).iter().any(|p| p.is_empty());
+    for t in [
+        "USE CAST ( NULL AS RECORD { g PROPERTY GRAPH { ( :a ) } } ) . g MATCH ( :b ) RETURN 1 AS x",
+        "FOR g IN CAST ( NULL AS LIST < PROPERTY GRAPH { ( :a ) } > ) CALL ( g ) { USE g MATCH ( :b ) FINISH } FINISH",
+        "LET r = CAST ( NULL AS RECORD { g PROPERTY GRAPH { ( :a ) } } ) CALL ( r ) { USE r . g MATCH ( :b ) FINISH } FINISH",
+        "USE $b MATCH ( x ) LET y = $b RETURN COALESCE ( y , 1 ) AS a",
+        "LET g = CAST ( NULL AS ANY GRAPH ) CALL ( g ) { USE g MATCH ( ) FINISH } FINISH",
+    ] {
+        assert!(!clean(t), "{t:?} has a clean parse");
+    }
 }
