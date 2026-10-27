@@ -660,3 +660,27 @@ all closed:
   type there now, so the premise holds by the gate
 
 runs after the fixes: counts unchanged at 2 and 3 variables and for neo4j; the whole grammar at 1 variable withholds 34 more (323), the aliased parameter shapes, with no production lost; 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the nineteenth review, part 2
+
+no printed counterexample. the round's findings are the three unprinted holes of
+part 1, so the round is not clean. part 2 adds no finding. its three argument
+gaps (H1 for a procedure's column, the 16.8 comment, the material comment)
+were written against the code before part 1's commit and are closed there.
+
+runs by the reviewer, new territory: claims GC00 only (each match mode, 1-3
+variables) and GC04 GG01 GG02 GG21, about 18,000 sentences no earlier set holds
+(OPTIONAL MATCH, aggregates, EXISTS in element WHERE, CASE, LEFT, TRIM,
+NORMALIZE, properties of open elements). checked by class against the text, no
+break. under these claims the gate withholds about 6,400 trees per run on rules
+outside GATE_ONLY, mostly 20.1 SR 7 (an aggregate under an inner value
+expression): a generator gap, coverage not soundness, open.
+
+also checked: graph type bodies (about 40 probes on 18.1-18.3), the scope
+checker on 16.4, 16.6, 16.7, closed types through records, lists and FOR, the
+lexical layer against clause 21, the 76 reading rows (all strict) and the 17
+permission rows (all in H4). no requirement phrased without "shall" is uncovered.
+
+a tool note: a 3 variable repeatable-elements run on a reviewer claim ran past
+its --deadline 3600 by hours in the search phase and was stopped. the deadline
+does not bound that phase. speed, not soundness.
