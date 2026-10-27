@@ -347,6 +347,18 @@ enum Apart {
 /// SR 5 (the material variant when every input is material) is not inferred: every type the
 /// checker computes stands for its nullable variant, and no rule here is read as needing a
 /// material operand, so the nullable result is the stricter one.
+/// An unknown type inside a list element, a record field or a table column. 22.19 SR 4 k ii,
+/// m iv 2 and n iv combine these again, so SR 2 holds at every depth; no input there is a bare
+/// parameter (the twentieth review).
+fn nested_unknown(t: &Ty) -> bool {
+    let any = |t: &Ty| *t == Ty::Any || nested_unknown(t);
+    match t {
+        Ty::List { elem, .. } => any(elem),
+        Ty::Record(Some(fs)) | Ty::Table(Some(fs)) => fs.values().any(any),
+        _ => false,
+    }
+}
+
 fn combine(types: &[Ty]) -> Result<Ty, Apart> {
     let material: Vec<&Ty> = types
         .iter()
@@ -1330,7 +1342,7 @@ impl<'t> Checker<'t> {
                     format!("column {n}: {lt} and {rt} are not comparable"),
                 );
             }
-            if *lt == Ty::Any || *rt == Ty::Any {
+            if [lt, rt].iter().any(|t| **t == Ty::Any || nested_unknown(t)) {
                 self.unknown_input(qc, None);
             }
             let t = match combine(&[lt.clone(), rt.clone()]) {
@@ -2900,6 +2912,8 @@ impl<'t> Checker<'t> {
         for (i, t) in types.iter().enumerate() {
             if *t == Ty::Any {
                 self.unknown_input(at, inputs.get(i).copied());
+            } else if nested_unknown(t) {
+                self.unknown_input(at, None);
             }
         }
         match combine(types) {

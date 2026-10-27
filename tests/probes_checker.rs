@@ -671,3 +671,24 @@ fn twentieth_review_findings() {
         assert!(!clean(t), "{t:?} has a clean parse");
     }
 }
+
+#[test]
+fn twenty_first_review_findings() {
+    // 14.10 SR 4 c: a DISTINCT or GROUP BY inside an item's subquery leaves the sort keys the
+    // returned columns, as an aggregate there already did
+    bad_on_some_parse("MATCH ( x ) , ( z ) RETURN x , EXISTS { RETURN DISTINCT 1 AS a } AS e ORDER BY z", "14.10 SR 4");
+    bad_on_some_parse("MATCH ( x ) , ( z ) RETURN x , EXISTS { MATCH ( y ) RETURN y GROUP BY y } AS e ORDER BY z", "14.10 SR 4");
+    bad_on_some_parse("MATCH ( x ) , ( z ) RETURN x , EXISTS { MATCH ( y ) RETURN DISTINCT y } AS e ORDER BY z", "14.10 SR 4");
+    fine("MATCH ( x ) , ( z ) RETURN x , EXISTS { MATCH ( y ) RETURN y } AS e ORDER BY z", "14.10 SR 4");
+    // a set operator without a quantifier is DISTINCT (14.2 SR 1)
+    bad_on_some_parse("MATCH ( x ) , ( z ) RETURN x , EXISTS { RETURN 1 AS a UNION RETURN 1 AS a } AS e ORDER BY z", "14.10 SR 4");
+    // 22.19 SR 2 at every depth: an unknown list element or record field is no bare parameter
+    bad_on_some_parse(
+        "SESSION SET VALUE $c = COALESCE ( RECORD { a : $b } , RECORD { a : 'a' } ) SESSION SET VALUE $d = $b + 1",
+        "22.19 SR 2 unknown",
+    );
+    bad_on_some_parse(
+        "RETURN COLLECT_LIST ( $b ) AS l NEXT RETURN COALESCE ( l , [ 'a' ] ) AS z , $b + 1 AS w",
+        "22.19 SR 2 unknown",
+    );
+}

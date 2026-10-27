@@ -61,10 +61,13 @@ property of every printed sentence, by the gate in step 1
   dynamic and H2' cures it. H2' cures every use but a combination's input. so
   the only unknown input a combination may take is a bare parameter written
   once in S. a variable or field of unknown type is refused there, and so is an
-  operation over one or a column of a set operation. this is checked, as
+  operation over one, a column of a set operation, and an unknown at any
+  depth of an input (a list element, a record field, a table column), since
+  22.19 SR 4 combines those again. this is checked, as
   "22.19 SR 2 unknown", gate-only. the eighteenth review found `USE $b ..
   COALESCE ( $b , 1 )`, the nineteenth the alias `USE $b LET y = $b ..
-  COALESCE ( y , 1 )` and a named procedure's column used both ways. every
+  COALESCE ( y , 1 )` and a named procedure's column used both ways, the
+  twentieth `COALESCE ( RECORD { a : $b } , RECORD { a : 'a' } ) .. $b + 1`. every
   other unknown (a parameter, a catalog object, a procedure's column) is used
   only where a dynamic type is cured. so an environment giving each one a
   dynamic type, and each combination's parameter the type its other inputs

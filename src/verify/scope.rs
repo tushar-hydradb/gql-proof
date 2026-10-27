@@ -1150,7 +1150,19 @@ impl<'t> Checker<'t> {
             own(prs, "order by and page statement").and_then(|o| own(o, "order by clause"))
         {
             let mut refs = cols.clone();
-            if gbc.is_some() {
+            // "contains" reaches into the items' subqueries for DISTINCT and GROUP BY too:
+            // either one there leaves the sort keys the returned columns alone, the meet of
+            // every reading. a set operator counts whatever its quantifier, as one left out is
+            // DISTINCT (14.2 SR 1) (the twentieth review)
+            let nested = own(body, "return item list").is_some_and(|l| {
+                let mut qs = Vec::new();
+                find(l, "set quantifier", &mut qs);
+                contains(l, "group by clause")
+                    || contains(l, "set operator")
+                    || qs.iter().any(|q| q.text().eq_ignore_ascii_case("DISTINCT"))
+            });
+            if nested {
+            } else if gbc.is_some() {
                 for (_, g) in &grouping {
                     if !refs.contains_key(g) {
                         refs.insert(

@@ -684,3 +684,37 @@ permission rows (all in H4). no requirement phrased without "shall" is uncovered
 a tool note: a 3 variable repeatable-elements run on a reviewer claim ran past
 its --deadline 3600 by hours in the search phase and was stopped. the deadline
 does not bound that phase. speed, not soundness.
+
+## 2026-10-28: the twentieth review
+
+no printed counterexample. two unprinted gate holes, each making a sentence of
+the claim or the audit false, so this round is not clean. both closed:
+- 14.10 SR 4 c reads "contains" for the return's DISTINCT, GROUP BY and
+  aggregate alike, and the checker read only the aggregate through a subquery.
+  `MATCH ( x ) , ( z ) RETURN x , EXISTS { RETURN DISTINCT 1 AS a } AS e ORDER
+  BY z` passed, and so did a nested GROUP BY. a DISTINCT, a GROUP BY or a set
+  operator (one without a quantifier is DISTINCT, 14.2 SR 1; found on the
+  re-check) anywhere in the items now leaves the sort keys the returned columns
+  alone, the meet of every reading. the audit row's "stricter" was false for
+  these trees
+- 22.19 SR 4 combines list elements, record fields and table columns again, so
+  SR 2 holds at every depth, and "22.19 SR 2 unknown" read only an input's top
+  type. `COALESCE ( RECORD { a : $b } , RECORD { a : 'a' } ) .. $b + 1` and a
+  COLLECT_LIST column passed, which no request type serves. an unknown at any
+  depth of an input or set-operation column is refused now (`nested_unknown`).
+  the reviewer's splice harness, built from clean subtrees, finds 0 clean trees
+  of 9,126 and 118,638 (2,106 and 4,212 before), and 0 for the CASE, NULLIF and
+  UNION variants
+
+also checked and found to hold: INSERT, SET, REMOVE, DELETE; ORDER BY, OFFSET,
+LIMIT, GROUP BY and aggregates; session, transaction and catalog statements;
+procedure calls and YIELD; value types (18.9, 18.10); CAST; CASE, NULLIF,
+COALESCE; VALUE subqueries; TRIM; datetime and duration; record field names.
+
+a method note from the reviewer: a probe flagged on every parse at the 2048
+parse limit proves nothing when the limit is reached before the intended tree.
+splicing clean subtrees into a host reaches the exact tree.
+
+runs after the fixes: every count unchanged (1 variable 3,231 and 323 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
