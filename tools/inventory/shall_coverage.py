@@ -97,7 +97,7 @@ gaps = [(k, t) for k, t in sorted(rules.items(), key=lambda kv: (tuple(int(x) fo
 # a constraining row too (grammar/corrigendum.json, our own extraction).
 cor1 = json.load(open("grammar/corrigendum.json"))["items"]
 for item in cor1:
-    if item["kind"] != "syntax rule" or not re.search(r"\bshall\b", item["text"]):
+    if item["kind"] != "syntax rule" or not REQUIRES.search(item["text"]):
         continue
     n = int(re.match(r"\s*(\d+)", item["text"]).group(1))
     k = (item["subclause"], n)

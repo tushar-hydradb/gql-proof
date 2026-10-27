@@ -614,3 +614,23 @@ was read by hand. four gaps, none printed, all closed:
 runs after the fixes: counts identical to the seventeenth review's (whole
 grammar 3,055 rows, turbolay 3,400, 3 variables 3,408, neo4j at 1 variable
 41,103), with 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-27: the eighteenth review, part 2 (a clean round)
+
+no printed counterexample in the round, so it counts as clean, as the
+fourteenth and sixteenth did. part 2 closed the open gaps of the unknowns audit
+(`research/audit/unknowns-2026-10-26.md`):
+- no lost name over all whole grammar and turbolay sentences, or a 4,200
+  sentence neo4j sample
+- `Ty::Number` sound
+- `Ty::Graph` adds nothing beyond part 1's tables
+
+hand probes:
+- 63 ELEMENT_ID forms
+- 84 forms of FOR over a table
+- CAST's table, cell by cell
+- 66 pattern probes
+- about 110 comparison and function probes
+
+all were flagged as the text says. one tool fix: shall_coverage.py's cor 1 pass
+now uses the wider requirement test (shall, a syntax error, not omitted).
