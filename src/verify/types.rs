@@ -454,6 +454,24 @@ fn combine(types: &[Ty]) -> Result<Ty, Apart> {
             }
             Ok(Ty::Record(Some(out)))
         }
+        // SR 4 n iv for binding tables: a table type is closed by its columns, and no GQL type is
+        // a supertype of two different ones, so the known inputs must have one type; a table of
+        // unknown columns is the environment's (H1, the type S uses it at). The eighteenth review:
+        // `COALESCE ( TABLE { RETURN 1 AS a } , TABLE { RETURN 1 AS b } )` took the first's.
+        Class::Table if all(class) => {
+            let known: Vec<&Fields> = material
+                .iter()
+                .filter_map(|t| match t {
+                    Ty::Table(Some(cols)) => Some(cols),
+                    _ => None,
+                })
+                .collect();
+            match known.first() {
+                Some(cols) if known.iter().all(|c| c == cols) => Ok(Ty::Table(Some((*cols).clone()))),
+                Some(_) => apart,
+                None => Ok(Ty::Table(None)),
+            }
+        }
         // SR 4 n v: a supertype of every input of the base type, chosen by IW019. A supertype of
         // an open type is open; of one closed type, that type is read; of different closed
         // types, it is not followed
@@ -1311,6 +1329,9 @@ impl<'t> Checker<'t> {
                     "14.2 SR 10",
                     format!("column {n}: {lt} and {rt} are not comparable"),
                 );
+            }
+            if *lt == Ty::Any || *rt == Ty::Any {
+                self.parameter_once(qc);
             }
             let t = match combine(&[lt.clone(), rt.clone()]) {
                 Ok(t) => t,
@@ -2872,7 +2893,10 @@ impl<'t> Checker<'t> {
     }
 
     /// 22.18 applied for `rule`: the combination, or a report and the unknown type.
-    fn combined(&mut self, at: &Plain, types: &[Ty], rule: &'static str) -> Ty {
+    fn combined(&mut self, at: &'t Plain, types: &[Ty], rule: &'static str) -> Ty {
+        if types.contains(&Ty::Any) {
+            self.parameter_once(at);
+        }
         match combine(types) {
             Ok(t) => t,
             Err(Apart::Dynamic(d)) => {
@@ -2893,6 +2917,31 @@ impl<'t> Checker<'t> {
                     format!("{rule}: {} do not combine", names.join(", ")),
                 );
                 Ty::Any
+            }
+        }
+    }
+
+    /// H1 for a parameter in a combination (the eighteenth review: `USE $b MATCH ( x ) RETURN
+    /// COALESCE ( $b , 1 ) AS a` passed, though no type of $b serves both). The request's type
+    /// for a parameter makes S valid only if one type serves every use. A dynamic type serves
+    /// every use but a combination's input (22.19 SR 2, H2' cures no combination), so a
+    /// parameter in a combination of unknown inputs is written once in S (a reading, gate-only).
+    fn parameter_once(&mut self, at: &'t Plain) {
+        let mut root: &Plain = at;
+        while let Some(&p) = self.parent.get(&(root as *const Plain)) {
+            root = p;
+        }
+        let name_of = |n: &Plain| first(n, "parameter name").map_or_else(|| n.text(), ident);
+        let mut inside = Vec::new();
+        find(at, "dynamic parameter specification", &mut inside);
+        let mut all = Vec::new();
+        find(root, "dynamic parameter specification", &mut all);
+        let mut seen: Vec<String> = Vec::new();
+        for p in inside {
+            let n = name_of(p);
+            if !seen.contains(&n) && all.iter().filter(|q| name_of(q) == n).count() > 1 {
+                self.report(at, "22.19 SR 2 parameter", format!("(reading, H1) ${n} is in a combination and written again: no one type serves both"));
+                seen.push(n);
             }
         }
     }

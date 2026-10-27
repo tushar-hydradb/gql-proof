@@ -2392,7 +2392,9 @@ fn returns_one_row(prs: &Plain) -> bool {
     let limit_one = own(prs, "order by and page statement")
         .and_then(|ops| own(ops, "limit clause"))
         .and_then(|lc| own(lc, "non-negative integer specification"))
-        .is_some_and(|n| unsigned(&n.text()) == Some(1));
+        // 20.6 SR 10 a names `LIMIT 1` as written: the spelling `1`, not `0x1` or `01` (the
+        // eighteenth review; the strict side)
+        .is_some_and(|n| n.text().trim() == "1");
     let aggregate = own(prs, "return statement")
         .and_then(|rs| own(rs, "return statement body"))
         .is_some_and(|body| {
@@ -2401,20 +2403,6 @@ fn returns_one_row(prs: &Plain) -> bool {
                 && matches!(items.as_slice(), [ri] if directly(ri, "aggregate function"))
         });
     limit_one || aggregate
-}
-
-/// The value of an <unsigned integer> as spelled (21.4: decimal, or 0x, 0o, 0b prefixed,
-/// underscores allowed).
-fn unsigned(text: &str) -> Option<u64> {
-    let t: String = text.chars().filter(|c| *c != '_').collect();
-    let lower = t.to_ascii_lowercase();
-    let (digits, radix) = match lower.as_bytes() {
-        [b'0', b'x', ..] => (&lower[2..], 16),
-        [b'0', b'o', ..] => (&lower[2..], 8),
-        [b'0', b'b', ..] => (&lower[2..], 2),
-        _ => (lower.as_str(), 10),
-    };
-    u64::from_str_radix(digits, radix).ok()
 }
 
 /// 9.2 SR 13 and 20.6 SR 4-5: a procedure body whose declared type is the empty type, its

@@ -626,3 +626,20 @@ fn dump_clean_parses() {
         })
         .unwrap();
 }
+
+#[test]
+fn nineteenth_review_findings() {
+    // 22.19 SR 4 n iv: binding tables combine only with the same columns
+    bad("RETURN COALESCE ( TABLE { RETURN 1 AS a } , TABLE { RETURN 1 AS b } ) AS c", "22.19 SR 4");
+    bad("RETURN TABLE { RETURN 1 AS a } AS t UNION ALL RETURN TABLE { RETURN 1 AS b } AS t", "14.2 SR 10");
+    fine("RETURN COALESCE ( TABLE { RETURN 1 AS a } , TABLE { RETURN 2 AS a } ) AS c", "22.19 SR 4");
+    // H1: a parameter in a combination is written once
+    bad("USE $b MATCH ( x ) RETURN COALESCE ( $b , 1 ) AS a", "22.19 SR 2 parameter");
+    fine("MATCH ( x ) RETURN COALESCE ( $b , 1 ) AS a", "22.19 SR 2 parameter");
+    // H2, IL015: a list's maximum cardinality
+    bad("RETURN COUNT ( CAST ( NULL AS LIST [ 99999999999999999999 ] ) ) AS x", "18.9 SR 73");
+    fine("RETURN COUNT ( CAST ( NULL AS LIST [ 8 ] ) ) AS x", "18.9 SR 73");
+    // 20.6 SR 10 a: LIMIT 1 as written
+    bad("RETURN VALUE { RETURN 1 AS a LIMIT 0x1 } AS b", "20.6 SR 10");
+    fine("RETURN VALUE { RETURN 1 AS a LIMIT 1 } AS b", "20.6 SR 10");
+}

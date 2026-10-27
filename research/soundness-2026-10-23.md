@@ -590,3 +590,27 @@ runs after the fixes (`--join --keys --cdrc --deadline 3600`, different edges):
 0 generator bugs, apart from neo4j's known 34 (12.8 and 13.6 SR 2). the
 never-covered production counts are unchanged at 38, 160 and 150. the 47 lost
 turbolay sentences that use DURATION are the record forms, now refused.
+
+## 2026-10-27: the eighteenth review, part 1
+
+no printed counterexample. fresh runs: the whole grammar and turbolay at 2
+variables in all three modes; the whole grammar at 1 variable, portable; neo4j
+at 1 variable in all three modes and at 2 variables, portable (40,892 rows). the
+56 new sentences are mode-only pattern variants, all checked against 16.4 and
+16.7. every printed sentence with `||` (48), CAST (414), NOT NULL (371) and TRIM
+was read by hand. four gaps, none printed, all closed:
+- binding tables combined whatever their columns (combine took the first's).
+  a table type is closed by its columns (22.19 SR 4 n iv), so the known columns
+  must agree; a set operation over them is refused too ("14.2 SR 10")
+- a parameter at a material graph site and in a combination (`USE $b .. COALESCE
+  ( $b , 1 )`): no request type serves both. H1 is satisfiable now: a parameter
+  in a combination of unknown inputs is written once ("22.19 SR 2 parameter",
+  gate-only), and a dynamic type serves every other use through H2'
+- a list's maximum cardinality was unbounded (`LIST [ 99999999999999999999 ]`).
+  h2_bounds caps it at 888 ("18.9 SR 73", gate-only), and H2 names IL015. the
+  row's "reachable: no" was wrong: `LIST [ 8 ]` is printed
+- 20.6 SR 10 a read `LIMIT 0x1` as `LIMIT 1`; it reads the spelling `1` now
+
+runs after the fixes: counts identical to the seventeenth review's (whole
+grammar 3,055 rows, turbolay 3,400, 3 variables 3,408, neo4j at 1 variable
+41,103), with 0 generator bugs apart from neo4j's 34.

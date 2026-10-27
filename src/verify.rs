@@ -52,6 +52,9 @@ pub const GATE_ONLY: &[&str] = &[
     "18.3 SR 10",
     // the unknowns audit: a null source or two null list operands give no element type
     "14.8 SR 10 null",
+    // the eighteenth review: H2's list cardinality, and H1 for a parameter in a combination
+    "18.9 SR 73",
+    "22.19 SR 2 parameter",
     "20.15 SR 2 null",
     // H2's limits, which the generator keeps by settling values (tree.rs); the gate makes them
     // rest on no generator
@@ -2676,6 +2679,15 @@ fn h2_bounds(tree: &Plain, out: &mut Vec<Violation>) {
                     push(rule, format!("a length in {}", n.text()));
                 }
             }
+        }
+    }
+    // 18.9 SR 73 d i: a list's maximum cardinality is IL015's, which no guarantee bounds; H2
+    // names the most S declares, 888 (the eighteenth review: `LIST [ 99999999999999999999 ]`)
+    let mut lists = Vec::new();
+    find(tree, "list value type", &mut lists);
+    for n in lists {
+        if own(n, "max length").is_some_and(|v| integer_value(v) > 888) {
+            push("18.9 SR 73", format!("a maximum cardinality in {}", n.text()));
         }
     }
     for (ty, precision, scale, rule) in [

@@ -467,7 +467,8 @@ fn a_subquery_body_yields_a_table() {
     ok("RETURN EXISTS { FINISH NEXT RETURN 1 AS y } AS x");
     ok("RETURN VALUE { RETURN count(*) AS y } AS x");
     ok("RETURN VALUE { RETURN 1 AS y LIMIT 1 } AS x");
-    ok("RETURN VALUE { RETURN 1 AS y LIMIT 0x1 } AS x");
+    // 20.6 SR 10 a as written: the spelling `1` (the eighteenth review)
+    bad("RETURN VALUE { RETURN 1 AS y LIMIT 0x1 } AS x", "20.6 SR 10");
     ok("RETURN VALUE { { RETURN count(*) AS y } } AS x");
     ok("{ FINISH } NEXT RETURN 1 AS x");
     bad("RETURN EXISTS { FINISH } AS x", "19.4 SR 5");

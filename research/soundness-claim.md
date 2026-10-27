@@ -58,7 +58,11 @@ property of every printed sentence, by the gate in step 1
   graph a at both, as the text applies syntax rules to the whole program
   first). a parameter has the type the request gives it; one used at two
   incompatible types (`$b * 2` used as a graph) holds only if that type is
-  dynamic and H2' cures it. a named procedure called without YIELD returns no
+  dynamic and H2' cures it. H2' cures every use but a combination's input, so a
+  parameter in a combination of unknown inputs is written once in S (checked,
+  "22.19 SR 2 parameter", gate-only; the eighteenth review: `USE $b .. COALESCE
+  ( $b , 1 )` passed, and no request type served both). some request type
+  therefore serves every S, so H1 is never vacuous for S. a named procedure called without YIELD returns no
   column named like a field of the call's incoming record or table (15.1 SR 9,
   the two amended under cor 1, through the
   procedure's signature, which only the catalog gives). the session has a
@@ -258,8 +262,10 @@ review moved nine rows from `reading` to `permission`)
   byte lengths up to 888 (18.9 SR 25 guarantees 65,534), exact precisions
   up to 8, an approximate precision up to 88 bits (FLOAT128 has 113), and an
   approximate exponent scale of at most 8, FLOAT32's (`tree.rs` settles it;
-  the sixth review found `FLOAT ( 8 , 88 )`). the implementation's maximum
-  lengths and precisions are at least these
+  the sixth review found `FLOAT ( 8 , 88 )`). a list type's maximum
+  cardinality is at most 888 (IL015, which no guarantee bounds; checked on the
+  tree, "18.9 SR 73"). the implementation's maximum lengths, precisions and list
+  cardinalities are at least these
 - exact types of 18 decimal digits, an approximate literal type with the range
   of a 32 bit float (21.2 SR 18, 20; the checker reports past that)
 - IW014: names are confusable only as UTS #39's ASCII confusables are (`rn`
