@@ -903,3 +903,14 @@ fn thirty_ninth_review_findings() {
     fine("FOR x IN [ ] FINISH", "20.21 SR 3");
     fine("RETURN [ ] AS x", "22.19 SR 2");
 }
+
+#[test]
+fn fortieth_review_findings() {
+    // `[ ]`'s element is no supported property value type
+    bad_on_some_parse("FOR x IN [ ] INSERT ( { a : x } )", "16.5 SR 6");
+    bad_on_some_parse("MATCH ( n ) FOR x IN [ ] SET n . a = x", "13.3 SR 3");
+    // IL013 over the whole tree
+    bad_on_some_parse("LET a = CAST ( 'a' AS CHAR ( 9000 ) ) RETURN a || a AS b", "20.23 SR 1 bound");
+    bad_on_some_parse("RETURN CAST ( 'a' AS STRING ( 9000 , 9000 ) ) || CAST ( 'a' AS STRING ( 9000 , 9000 ) ) AS b", "20.23 SR 1 bound");
+    fine("RETURN SESSION_USER || SESSION_USER AS b", "20.23 SR 1 bound");
+}

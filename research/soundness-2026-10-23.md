@@ -1269,3 +1269,28 @@ branch, now named in H2'''.
 runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the thirty-ninth review
+
+new code attacked directly, and rows no round had named. no printed
+counterexample. two unprinted gate holes, so this round is not clean. both
+closed:
+- `[ ]`'s element passed the supported property value type test at SET and
+  INSERT, which matched every dynamic type: `FOR x IN [ ] INSERT ( { a : x } )`
+  passed. the empty type is no supported property value type (4.3.4 NOTE 11),
+  and ID004's choice is unknown; both sites exclude it now
+- the IL013 concatenation bound summed only fixed lengths written under the
+  `||`: a CHAR ( 9000 ) reaching it through a variable, and `STRING ( 9000 ,
+  9000 )` (fixed by equal bounds), passed. the bound is on the whole tree now
+  (the longest fixed length times one more than the concatenations). ID061
+  now says SESSION_USER's type is variable length, which the 364 printed
+  `SESSION_USER || SESSION_USER` rest on
+
+checked and found to hold: the rest of the Unset element's sites; withheld
+families (a parenthesized parameter is refused by 22.19 SR 2 unknown); the
+confusable skeleton; 21.2 SR 59-75; 13.3 SR 4, 5; 13.4; 16.5 SR 8-10; 20.9
+SR 4; 20.6 SR 4-10; the other h2_bounds limits; bounded_string's sites.
+
+runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.

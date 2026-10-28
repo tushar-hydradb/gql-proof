@@ -317,7 +317,10 @@ or a path union or alternation that declares an element variable
   record's field count (20.17 SR 3 c, 20.18 SR 4, 18.9 SR 79; checked on the
   tree, "20.17 SR 3 bound", "20.18 SR 4 bound"). a concatenation of
   fixed-length strings sums their lengths (20.23 SR 1 b, 3 b), at most the
-  guaranteed 16,383 or 65,534 ("20.23 SR 1 bound"). the implementation's
+  guaranteed 16,383 or 65,534: as string types carry no length in the checker,
+  the longest fixed length written in the tree times one more than its
+  concatenations is held to that ("20.23 SR 1 bound"; the thirty-ninth review
+  found a length reaching `||` through a variable, and `STRING ( n , n )`). the implementation's
   maximum lengths, precisions, list cardinalities and record field counts are
   at least these (the thirty-seventh review found the constructor, field and
   concatenation limits resting on the generator)
@@ -332,9 +335,11 @@ or a path union or alternation that declares an element variable
   reports two names of one sentence that do (the thirty-sixth review found
   `|`, `` ` `` and `"` missing; the thirty-seventh an ordering that kept `c1`
   and `cl` apart, and parameter names never compared)
-- ID061: SESSION_USER's character string type is assignable to every
-  character string type S declares for it; S declares no length-bounded one
-  (10.3 SR 8 reading, at any depth of the declared type)
+- ID061: SESSION_USER's character string type is a variable-length one,
+  assignable to every character string type S declares for it; S declares no
+  length-bounded one (10.3 SR 8 reading, at any depth of the declared type),
+  and its concatenations (364 printed `SESSION_USER || SESSION_USER`) are then
+  of variable length, which 20.23 SR 1 c truncates rather than refuses
 - IE001: an external object reference (`COPY OF urn:example:graph`)
   identifies a graph or graph type of the kind the statement wants (17.8 SR
   4, 5); an external object is no catalog object, so H1 does not cover it

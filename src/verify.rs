@@ -2944,25 +2944,38 @@ fn h2_bounds(tree: &Plain, out: &mut Vec<Violation>) {
             }
         }
     }
-    // IL013 for a concatenation of fixed-length strings (20.23 SR 1 b, 3 b): the fixed lengths
-    // written under it summed (an unwritten one is 1) are at most the guaranteed maximum
+    // IL013 for a concatenation of fixed-length strings (20.23 SR 1 b, 3 b). the checker's
+    // string types carry no length, and one may reach `||` through a variable or a column, so
+    // the bound is on the whole tree: every operand of a chain of fixed-length concatenations
+    // has at most the longest fixed length written anywhere (CHAR or BINARY, unwritten 1, or a
+    // min length equal to the max), and a chain has at most one operand more than the tree has
+    // concatenations; that product is at most the guaranteed maximum (the thirty-ninth review:
+    // `LET a = CAST ( 'a' AS CHAR ( 9000 ) ) RETURN a || a` and `STRING ( 9000 , 9000 )`)
     for (node, ty, fixed, most) in [
         ("character string concatenation", "character string type", "CHAR", 16383),
         ("byte string concatenation", "byte string type", "BINARY", 65534),
     ] {
-        let mut nodes = Vec::new();
-        find(tree, node, &mut nodes);
-        for n in nodes {
-            let mut types = Vec::new();
-            find(n, ty, &mut types);
-            let sum: u64 = types
-                .iter()
-                .filter(|t| t.text().to_ascii_uppercase().starts_with(fixed))
-                .map(|t| own(t, "fixed length").map_or(1, integer_value))
-                .sum();
-            if sum > most {
-                push("20.23 SR 1 bound", format!("fixed lengths summing to {sum} under {}", n.text()));
-            }
+        let mut concats = Vec::new();
+        find(tree, node, &mut concats);
+        if concats.is_empty() {
+            continue;
+        }
+        let mut types = Vec::new();
+        find(tree, ty, &mut types);
+        let longest = types
+            .iter()
+            .filter_map(|t| {
+                if t.text().to_ascii_uppercase().starts_with(fixed) {
+                    return Some(own(t, "fixed length").map_or(1, integer_value));
+                }
+                let min = own(t, "min length").map(integer_value)?;
+                (own(t, "max length").map(integer_value) == Some(min)).then_some(min)
+            })
+            .max()
+            .unwrap_or(0);
+        let operands = concats.len() as u64 + 1;
+        if longest.saturating_mul(operands) > most {
+            push("20.23 SR 1 bound", format!("{operands} operands of up to {longest} fixed"));
         }
     }
     // IL010 after the 21.2 SR 12 and 13 rewrites: an approximate literal's mantissa, and an

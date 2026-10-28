@@ -1806,7 +1806,9 @@ impl<'t> Checker<'t> {
                 } else {
                     self.ty(ve, env)
                 };
-                if !(t.scalar() || matches!(t, Ty::Any | Ty::Dyn(_))) {
+                // `[ ]`'s element is no supported property value type (4.3.4 NOTE 11 for the empty
+                // type; ID004's choice unknown; the thirty-ninth review)
+                if !(t.scalar() || matches!(t, Ty::Any) || matches!(&t, Ty::Dyn(u) if !matches!(u, Union::Unset))) {
                     self.report(
                         ve,
                         "13.3 SR 3",
@@ -1847,7 +1849,9 @@ impl<'t> Checker<'t> {
                 } else {
                     self.ty(ve, &Env::new(incoming.clone()))
                 };
-                if !(t.scalar() || matches!(t, Ty::Any | Ty::Dyn(_))) {
+                // `[ ]`'s element is no supported property value type (4.3.4 NOTE 11 for the empty
+                // type; ID004's choice unknown; the thirty-ninth review)
+                if !(t.scalar() || matches!(t, Ty::Any) || matches!(&t, Ty::Dyn(u) if !matches!(u, Union::Unset))) {
                     self.report(
                         ve,
                         "16.5 SR 6",
