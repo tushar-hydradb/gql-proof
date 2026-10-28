@@ -1092,6 +1092,14 @@ impl<'t> Checker<'t> {
             // rest of the table only inside aggregate functions.
             let mut group = scope.record.clone();
             for (r, g) in &grouping {
+                // 16.15 SR 2 b ii 2: a grouping element is a field of the GROUP BY's incoming
+                // record and table, the RETURN's, whatever alias shares its name; one naming
+                // only an alias is refused (the strict side; the thirty-first review: `RETURN
+                // 1 AS k GROUP BY k` passed)
+                if !incoming.contains_key(g) {
+                    self.report(r, "20.12 SR 8", format!("{g} is not a field of the incoming working record"));
+                    continue;
+                }
                 match named.iter().find(|(_, _, n, _)| n.as_ref() == Some(g)) {
                     Some((_, ave, _, _)) => {
                         group.insert(g.clone(), bound(ave, &incoming));

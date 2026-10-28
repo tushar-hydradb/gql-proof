@@ -823,3 +823,12 @@ fn thirty_first_review_families() {
     fine("MATCH ANY ( ) -> ( ) RETURN 1 AS a", "withheld family");
     fine("CALL a ( )", "withheld family");
 }
+
+#[test]
+fn thirty_second_review_findings() {
+    // 16.15 SR 2 b ii 2: a grouping element names an incoming field, not only an alias
+    bad_on_some_parse("RETURN 1 AS k GROUP BY k", "20.12 SR 8");
+    bad_on_some_parse("MATCH ( x ) RETURN x . a AS k , COUNT ( * ) AS c GROUP BY k", "20.12 SR 8");
+    fine("MATCH ( x ) RETURN x , COUNT ( * ) AS c GROUP BY x", "20.12 SR 8");
+    bad_on_some_parse("MATCH ( a ) RETURN a AS a , COUNT ( * ) AS c GROUP BY a , c", "20.12 SR 8");
+}

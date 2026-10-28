@@ -272,7 +272,9 @@ fn return_projects() {
     ok("MATCH (a) RETURN *");
     ok("MATCH (a) RETURN DISTINCT a.k AS k ORDER BY k");
     ok("MATCH (a)-[e]->(b) RETURN a, COUNT(e) AS n GROUP BY a");
-    ok("MATCH (a)-[e]->(b) RETURN a.k AS k, COUNT(e) AS n GROUP BY k ORDER BY k");
+    // 16.15 SR 2 b ii 2: a grouping element names an incoming field, not only an alias (the
+    // thirty-first review)
+    bad("MATCH (a)-[e]->(b) RETURN a.k AS k, COUNT(e) AS n GROUP BY k ORDER BY k", "20.12 SR 8");
     ok("MATCH (a)-[e]->(b) RETURN COUNT(e) AS n ORDER BY n");
     ok("MATCH (a) ORDER BY a.k LIMIT 1 RETURN a");
     // 14.11 SR 8: an expression needs an alias

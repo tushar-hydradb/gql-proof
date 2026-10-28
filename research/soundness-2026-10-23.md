@@ -1033,3 +1033,36 @@ result, a COALESCE or NULLIF operand, a list element, a concatenation
 operand). every count is then unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and
 198; neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the thirty-first review
+
+not clean: one printed family resting on an unnamed lenient reading, and one
+unprinted gate hole. both closed, and a third reading named:
+- printed: `VALUE x DATE = CURRENT_DATE FINISH` and four ZONED TIME, LOCAL
+  TIME and TIME forms of CURRENT_TIME (turbolay, 2 and 3 variables). 20.26 SR
+  1 types every <datetime value expression> a zoned or local datetime, and a
+  bare date or time primary derives only through one, so read literally no
+  expression has a date or time type and these break 10.3 SR 8. the checker
+  reads the rule as typing the operator forms (a reading since the ninth
+  review), but that reading lets more in and was named nowhere; the audit
+  row paraphrased the rule wrongly and said "read as written". it is an H4
+  permission now (the defect: no date or time expression could exist), the
+  row's status `permission`
+- unprinted: a grouping element naming only a return alias (`RETURN 1 AS k
+  GROUP BY k`) resolved to the alias; 16.15 SR 2 b ii 2 gives the element the
+  RETURN's incoming fields. refused now (strict); every printed GROUP BY names
+  an incoming column. tests that grouped on an alias now project first and
+  group after NEXT
+- 16.5 SR 11 read literally (no "another") forbids every insert edge; the
+  reading "another" (NOTE 231) lets more in and 55 printed sentences rest on
+  it, so it is an H4 permission too
+
+checked and found to hold: the withheld-family detector (a parenthesized
+parameter is refused by 22.19 SR 2 unknown instead), the whole 20.8 Table 4
+matrix (361 pairs; L to P refused, the strict side), 20.9 SR 3, 16.4 SR 6, 12,
+14 with KEEP, 13.3 SR 3-5, 16.5 SR 6, 21.2 numeric literal limits in every
+radix, TRIM and string function operands, 14.11 SR 10.
+
+runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.

@@ -655,7 +655,7 @@ fn unknown_operands_pass() {
 
 #[test]
 fn statements() {
-    ok("MATCH (a) RETURN a.k AS k, COUNT(*) AS c GROUP BY k");
+    ok("MATCH (a) RETURN a.k AS k NEXT RETURN k, COUNT(*) AS c GROUP BY k");
     ok("SELECT 1 + 1 AS x");
     bad("SELECT 'a' + 1 AS x", "20.21 SR 3");
     ok("INSERT (a {k: 1}) RETURN a");
@@ -910,11 +910,9 @@ fn composite_queries() {
 #[test]
 fn grouping_and_aggregating() {
     // 14.11 SR 10 a ii as Cor 1 has it
-    ok("MATCH (a) RETURN a.k AS k, COUNT(*) AS c GROUP BY k");
-    bad(
-        "MATCH (a) RETURN a AS a, COUNT(*) AS c GROUP BY a, c",
-        "14.11 SR 10",
-    );
+    ok("MATCH (a) RETURN a.k AS k NEXT RETURN k, COUNT(*) AS c GROUP BY k");
+    // grouping by an aggregating item's alias (`GROUP BY a, c`) is refused by scope before
+    // types, as a grouping element naming no incoming field (the thirty-first review)
 }
 
 #[test]
@@ -1076,6 +1074,7 @@ fn immaterial_types_nested_in_a_cast_target() {
 
 #[test]
 fn grouping_aliases_reach_aggregates() {
-    // 14.11 SR 10 a ix (the eighth review): SUM of a node through a grouping alias.
-    bad("MATCH ( x ) RETURN x AS y , SUM ( y ) AS z GROUP BY y", "20.9 SR 8");
+    // 14.11 SR 10 a ix (the eighth review): SUM of a node through a grouping column (a
+    // grouping element naming only an alias is refused by scope since the thirty-first review)
+    bad("MATCH ( x ) RETURN x AS y NEXT RETURN y , SUM ( y ) AS z GROUP BY y", "20.9 SR 8");
 }

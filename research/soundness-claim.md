@@ -413,3 +413,17 @@ each line names its audit rows (status `permission`)
   constructors over character or byte strings need a supported string type
   that is a supertype of every input; S's strings are short and every
   implementation is assumed to have one. rows: 22.19 SR 4 b ii, 22.19 SR 4 c ii
+- **a bare datetime primary keeps its own type.** 20.26 SR 1 gives every
+  <datetime value expression> a zoned or local datetime type; a bare
+  CURRENT_DATE, CURRENT_TIME or date or time primary derives only through
+  one, so read literally no expression ever has a date or time type and
+  `VALUE x DATE = CURRENT_DATE` breaks 10.3 SR 8. it is read as typing the
+  operator forms, a datetime moved by a duration, and a bare primary as its
+  own type (the thirty-first review; five turbolay sentences rest on it).
+  rows: 20.26 SR 1
+- **a second insert pattern is another one.** 16.5 SR 11 forbids an insert
+  edge pattern's variable to be declared by an insert pattern, without
+  saying "another"; after SR 2 every insert edge pattern declares one, so read
+  literally no insert edge is ever valid. it is read as "another", as NOTE 231
+  intends (the thirty-first review; 55 printed sentences rest on it). rows:
+  16.5 SR 11
