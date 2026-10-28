@@ -692,3 +692,26 @@ fn twenty_first_review_findings() {
         "22.19 SR 2 unknown",
     );
 }
+
+#[test]
+fn twenty_second_review_findings() {
+    // 22.19: the known inputs beside an unknown still combine, even one alone, and the result is
+    // theirs, so what follows is checked against it
+    bad_on_some_parse("RETURN NOT COALESCE ( $b , 1 ) AS c", "20.20 SR 3");
+    bad_on_some_parse("RETURN NOT CASE WHEN TRUE THEN $b ELSE 1 END AS c", "20.20 SR 3");
+    bad_on_some_parse("RETURN COALESCE ( $b , CAST ( NULL AS LIST < ANY > ) ) AS a", "22.19 SR 2");
+    bad_on_some_parse("RETURN COALESCE ( $b , CAST ( NULL AS ANY RECORD ) ) AS a", "22.19 SR 4");
+    fine("RETURN COALESCE ( $b , 1 ) + 1 AS c", "20.20 SR 3");
+    // a catalog table's columns are the environment's: no bare parameter, refused
+    bad_on_some_parse("RETURN COALESCE ( TABLE a , TABLE { RETURN 1 AS b } ) AS c", "22.19 SR 2 unknown");
+    fine("RETURN COALESCE ( TABLE { RETURN 1 AS b } , TABLE { RETURN 1 AS b } ) AS c", "22.19 SR 2 unknown");
+}
+
+#[test]
+fn twenty_third_review_findings() {
+    // 22.19 SR 2: a combination whose material inputs are all unknown has a type S cannot see
+    bad_on_some_parse("LET y = COALESCE ( $b , NULL ) FOR x IN y RETURN y + 1 AS a", "22.19 SR 2 unknown");
+    bad_on_some_parse("LET y = COALESCE ( $b , $c ) FOR x IN y RETURN y + 1 AS a", "22.19 SR 2 unknown");
+    bad_on_some_parse("LET y = CASE WHEN TRUE THEN $b END FOR x IN y RETURN y + 1 AS a", "22.19 SR 2 unknown");
+    fine("LET y = $b FOR x IN y RETURN y + 1 AS a", "22.19 SR 2 unknown");
+}

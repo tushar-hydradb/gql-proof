@@ -67,7 +67,14 @@ property of every printed sentence, by the gate in step 1
   "22.19 SR 2 unknown", gate-only. the eighteenth review found `USE $b ..
   COALESCE ( $b , 1 )`, the nineteenth the alias `USE $b LET y = $b ..
   COALESCE ( y , 1 )` and a named procedure's column used both ways, the
-  twentieth `COALESCE ( RECORD { a : $b } , RECORD { a : 'a' } ) .. $b + 1`. every
+  twentieth `COALESCE ( RECORD { a : $b } , RECORD { a : 'a' } ) .. $b + 1`. a
+  catalog table read as a value (its columns unknown) counts as unknown here
+  too, since no table type serves two column sets. a combination with a bare
+  parameter takes the type its known inputs combine to, which they must (the
+  twenty-first review: `NOT COALESCE ( $b , 1 )` passed), and one with no
+  known material input (`COALESCE ( $b , NULL )`, `COALESCE ( $b , $c )`, a
+  CASE without ELSE) is refused, as its type is one S cannot see (the
+  twenty-second review). every
   other unknown (a parameter, a catalog object, a procedure's column) is used
   only where a dynamic type is cured. so an environment giving each one a
   dynamic type, and each combination's parameter the type its other inputs

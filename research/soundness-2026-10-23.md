@@ -718,3 +718,58 @@ splicing clean subtrees into a host reaches the exact tree.
 runs after the fixes: every count unchanged (1 variable 3,231 and 323 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the twenty-first review
+
+no printed counterexample. two unprinted gate holes, each making the claim's
+"H1 is never vacuous" false, so this round is not clean. both closed:
+- a combination with an unknown input checked its known inputs only when there
+  were two or more, and typed its result unknown, waiving every rule after it.
+  `RETURN NOT COALESCE ( $b , 1 )` passed (39 of 507 parses), as did
+  `COALESCE ( $b , CAST ( NULL AS LIST < ANY > ) )` and the CASE forms. no type
+  of $b serves them. the known inputs now always combine, one alone included,
+  and the result is theirs, which is what H1 gives the bare parameter
+- a catalog table read as a value (`TABLE a`, columns unknown) combined with
+  any column set and took it, so `COALESCE ( TABLE a , TABLE { RETURN 1 AS b }
+  ) .. COALESCE ( TABLE a , TABLE { RETURN 1 AS d } )` passed (81 of 243
+  spliced trees), and no table type serves both. a table of unknown columns
+  counts as an unknown input now, at the top and at depth. all 507 parses of
+  the single combination are refused, and the check is local to that node
+
+also checked and found to hold, a sweep for checks that read only the top
+level where the text says "contains" or recurses: 9.1 SR 5-7, 9.2 SR 4-7,
+14.2 SR 3-5, 14.10 SR 4, 14.12 SR 19 and 27, 16.4 SR 6, 16.6 SR 8, 16.7 SR 9,
+20.1 SR 7, 20.9 SR 3, 4, 7, and the recursion of assignable, subtype,
+comparable and the CAST checks.
+
+runs after the fixes: every count unchanged (1 variable 3,231 and 323 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34. (the neo4j
+and 3 variable runs took 548 s and 873 s against 105 s and 193 s, with a
+virtual machine on the same host using about two cores.)
+
+## 2026-10-28: the twenty-second review
+
+no printed counterexample. one unprinted gate hole, making "H1 is never
+vacuous" false, so this round is not clean. closed:
+- a combination whose material inputs are all unknown (`COALESCE ( $b , NULL
+  )`, `COALESCE ( $b , $c )`, NULLIF, a CASE without ELSE) was typed unknown,
+  and the unknown waived what followed: `LET y = COALESCE ( $b , NULL ) FOR x
+  IN y RETURN y + 1` passed (13,182 clean of the first 30,000 parses). H1 must
+  give $b one static type, list for the FOR and numeric for the `+`. such a
+  combination is refused now ("22.19 SR 2 unknown"): 0 clean of 30,000 for
+  each form, the controls (`LET y = $b ..`, `COALESCE ( $b , 1 ) + 1`) still
+  pass
+
+also checked and found to hold: a differential run of 103 probes over every
+site class, each with the parameter typed unknown and again typed dynamic
+(Dyn(Open)); the verdicts differ only at a combination (`LIST [ $b ]`). so
+outside a combination a dynamic environment serves every use, which is what
+H1's non-vacuity rests on. aliasing through session parameters is served by a
+predefined session parameter (7.1 SR 6 d i, 22.1 SR 4 c i); procedure columns
+without YIELD, procedure arity (a range, 15.3), catalog tables and LIKE
+sources hold.
+
+the four last rounds all found holes in the same place, how the checker types
+the environment's unknowns at a combination. the differential run above is
+the structural form of the argument and is worth keeping as a test.

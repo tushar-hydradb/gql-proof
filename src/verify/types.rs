@@ -347,11 +347,18 @@ enum Apart {
 /// SR 5 (the material variant when every input is material) is not inferred: every type the
 /// checker computes stands for its nullable variant, and no rule here is read as needing a
 /// material operand, so the nullable result is the stricter one.
+/// The environment's type (H1) at a combination: an unknown, or a binding table of unknown
+/// columns (a catalog table), whose columns no one type serves at two uses, as no table type
+/// is a supertype of two column sets (the twenty-first review).
+fn unknown(t: &Ty) -> bool {
+    matches!(t, Ty::Any | Ty::Table(None))
+}
+
 /// An unknown type inside a list element, a record field or a table column. 22.19 SR 4 k ii,
 /// m iv 2 and n iv combine these again, so SR 2 holds at every depth; no input there is a bare
 /// parameter (the twentieth review).
 fn nested_unknown(t: &Ty) -> bool {
-    let any = |t: &Ty| *t == Ty::Any || nested_unknown(t);
+    let any = |t: &Ty| unknown(t) || nested_unknown(t);
     match t {
         Ty::List { elem, .. } => any(elem),
         Ty::Record(Some(fs)) | Ty::Table(Some(fs)) => fs.values().any(any),
@@ -374,13 +381,16 @@ fn combine(types: &[Ty]) -> Result<Ty, Apart> {
         return Ok(Ty::Null);
     };
     // an unknown input (the environment's) still leaves the known ones to combine (the
-    // twelfth review: `COALESCE ( $b , 8 , TRUE )` skipped the rest)
+    // twelfth review: `COALESCE ( $b , 8 , TRUE )` skipped the rest), even one alone, and the
+    // result is theirs: H1 gives the unknown the type they combine to (the twenty-first
+    // review: `NOT COALESCE ( $b , 1 )` and `COALESCE ( $b , CAST ( NULL AS LIST < ANY > ) )`
+    // passed). with none known, `combined` refuses the unknown result
     if material.contains(&&Ty::Any) {
         let known: Vec<Ty> = material.iter().filter(|t| ***t != Ty::Any).map(|t| (*t).clone()).collect();
-        if known.len() > 1 {
-            combine(&known)?;
+        if known.is_empty() {
+            return Ok(Ty::Any);
         }
-        return Ok(Ty::Any);
+        return combine(&known);
     }
     let apart = Err(Apart::Apart);
     let all = |c: Class| material.iter().all(|t| t.class() == Some(c));
@@ -1342,7 +1352,7 @@ impl<'t> Checker<'t> {
                     format!("column {n}: {lt} and {rt} are not comparable"),
                 );
             }
-            if [lt, rt].iter().any(|t| **t == Ty::Any || nested_unknown(t)) {
+            if [lt, rt].iter().any(|t| unknown(t) || nested_unknown(t)) {
                 self.unknown_input(qc, None);
             }
             let t = match combine(&[lt.clone(), rt.clone()]) {
@@ -2910,13 +2920,20 @@ impl<'t> Checker<'t> {
     /// 22.18 applied for `rule`: the combination, or a report and the unknown type.
     fn combined(&mut self, at: &'t Plain, types: &[Ty], inputs: &[&'t Plain], rule: &'static str) -> Ty {
         for (i, t) in types.iter().enumerate() {
-            if *t == Ty::Any {
+            if unknown(t) {
                 self.unknown_input(at, inputs.get(i).copied());
             } else if nested_unknown(t) {
                 self.unknown_input(at, None);
             }
         }
         match combine(types) {
+            // no known material input: H1 makes the result one static type the checker does
+            // not see, and an unknown would waive every rule after it (the twenty-second
+            // review: `LET y = COALESCE ( $b , NULL ) FOR x IN y RETURN y + 1`). refused
+            Ok(Ty::Any) if types.contains(&Ty::Any) => {
+                self.unknown_input(at, None);
+                Ty::Any
+            }
             Ok(t) => t,
             Err(Apart::Dynamic(d)) => {
                 self.report(
