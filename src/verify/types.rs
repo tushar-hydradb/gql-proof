@@ -2095,6 +2095,13 @@ impl<'t> Checker<'t> {
         {
             self.report(node, "20.10 SR 3", "(reading, ID076) ELEMENT_ID's value is taken only as a RETURN or SELECT item, an IS NULL operand or an equality of two of them".into());
         }
+        // 20.1 SR 1: a value expression other than a return item's has no empty type, and
+        // `[ ]`'s element is the empty type with GV72 (ID004's choice without); a FOR binding is
+        // the one way to take it out, so every reference to it is refused, a return item's too
+        // (the strict side; the fortieth review: `FOR x IN [ ] RETURN COUNT ( x )` passed)
+        if t == Ty::Dyn(Union::Unset) && name(node) == Some("binding variable reference") {
+            self.report(node, "20.1 SR 1 empty", "(reading) the element of [ ] is taken".into());
+        }
         t
     }
 
@@ -2413,10 +2420,11 @@ impl<'t> Checker<'t> {
                     .map(|l| owns(l, "list element"))
                     .unwrap_or_default();
                 let types: Vec<Ty> = elems.iter().map(|e| self.ty(e, env)).collect();
-                // 20.17 SR 3 b: ID004 or the empty type. Read as the open dynamic union, ANY: no
-                // one implementation's choice suits every use (the ninth review: casts of `[ ]`
-                // to lists of GRAPH NOT NULL and of ANY NOT NULL each held only for their own
-                // choice), so 22.19 SR 2 refuses it in a combination and a cast of it is refused
+                // 20.17 SR 3 b: ID004 or the empty type, `Union::Unset`: no one implementation's
+                // choice suits every use (the ninth review: casts of `[ ]` to lists of GRAPH NOT
+                // NULL and of ANY NOT NULL each held only for their own choice), so 22.19 SR 2
+                // refuses it in a combination, a cast of it is refused, and its element meets
+                // no requirement and is never taken (20.1 SR 1)
                 let elem = if types.is_empty() {
                     Ty::Dyn(Union::Unset)
                 } else {

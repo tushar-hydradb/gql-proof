@@ -63,6 +63,7 @@ pub const GATE_ONLY: &[&str] = &[
     "20.17 SR 3 bound",
     "20.18 SR 4 bound",
     "20.23 SR 1 bound",
+    "20.1 SR 1 empty",
     "17.1 SR 6 at",
     "22.19 SR 2 unknown",
     "11.1 SR 3 material",

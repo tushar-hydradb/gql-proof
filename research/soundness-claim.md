@@ -346,8 +346,9 @@ or a path union or alternation that declares an element variable
 - ID004 (without GV72): an empty list's element type is the implementation's,
   one choice for every sentence, so nothing may rest on it: the checker gives
   `[ ]`'s element a type that meets no requirement, goes to no site but one of
-  every type, casts to nothing and is refused in a combination, and refuses a
-  cast of `[ ]` (the ninth review found casts to lists of GRAPH NOT NULL and of
+  every type, casts to nothing and is refused in a combination, refuses every
+  reference to a variable bound to it (20.1 SR 1: with GV72 it is the empty
+  type; the fortieth review), and refuses a cast of `[ ]` (the ninth review found casts to lists of GRAPH NOT NULL and of
   ANY NOT NULL, each holding only for its own choice; the thirty-eighth
   `FOR x IN [ ] RETURN x + 1`, which the open dynamic union let pass)
 - ID005: ELEMENTS' element type is the implementation's; the checker types it

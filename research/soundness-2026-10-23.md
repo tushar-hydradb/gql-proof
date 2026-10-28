@@ -1294,3 +1294,25 @@ SR 4; 20.6 SR 4-10; the other h2_bounds limits; bounded_string's sites.
 runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the fortieth review
+
+every dynamic and unknown acceptance site in types.rs, and 99 audit rows no
+log had named. no printed counterexample. one unprinted gate hole, so this
+round is not clean. closed:
+- 20.1 SR 1 (a value expression other than a return item's has no empty
+  type) was checked by nothing, its row resting on "the empty type arises only
+  from NOTHING written in S"; since round 38 `[ ]`'s element is a second
+  source (the empty type with GV72), and `FOR x IN [ ] RETURN COUNT ( x )`, a
+  sort key and a LET value took it. every reference to a variable bound to it
+  is refused now ("20.1 SR 1 empty", gate-only); printed sentences bind it and
+  never use it
+
+checked and found to hold: every `Ty::Dyn(_)` match site, with probes of the
+element over arithmetic, signs, ABS, durations, DURATION_BETWEEN, CAST, `||`,
+lists, FILTER, properties; 19.4 SR 5, 14.2 SR 5, 20.6 SR 3, 5, 20.5 SR 3, 4,
+14.8 SR 10 c i 2, 20.19 SR 2, 19.10 SR 3, 19.11 SR 2 among the never-named rows.
+
+runs after the fix: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.

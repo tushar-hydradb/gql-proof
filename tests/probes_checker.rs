@@ -914,3 +914,12 @@ fn fortieth_review_findings() {
     bad_on_some_parse("RETURN CAST ( 'a' AS STRING ( 9000 , 9000 ) ) || CAST ( 'a' AS STRING ( 9000 , 9000 ) ) AS b", "20.23 SR 1 bound");
     fine("RETURN SESSION_USER || SESSION_USER AS b", "20.23 SR 1 bound");
 }
+
+#[test]
+fn forty_first_review_findings() {
+    // 20.1 SR 1: `[ ]`'s element is never taken
+    bad_on_some_parse("FOR x IN [ ] RETURN COUNT ( x ) AS b", "20.1 SR 1 empty");
+    bad_on_some_parse("FOR x IN [ ] RETURN 1 AS b ORDER BY x", "20.1 SR 1 empty");
+    bad_on_some_parse("FOR x IN [ ] LET y = x FINISH", "20.1 SR 1 empty");
+    fine("FOR x IN [ ] FINISH", "20.1 SR 1 empty");
+}
