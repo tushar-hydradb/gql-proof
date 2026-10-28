@@ -819,15 +819,35 @@ const ELEMENT: &[Class] = &[Class::Node, Class::Edge];
 
 /// Every static typing violation in a tree (2024 + Cor 1).
 pub fn check(tree: &Plain) -> Vec<Violation> {
-    let mut checker = Checker {
-        parent: HashMap::new(),
-        out: Vec::new(),
-        params: HashMap::new(),
+    let pass = |dynamic| {
+        let mut checker = Checker {
+            parent: HashMap::new(),
+            out: Vec::new(),
+            params: HashMap::new(),
+            dynamic,
+        };
+        checker.parents(tree);
+        checker.root(tree);
+        checker.value_types(tree);
+        checker.out
     };
-    checker.parents(tree);
-    checker.root(tree);
-    checker.value_types(tree);
-    checker.out
+    let mut out = pass(false);
+    // H1 made a check (the twenty-second review: four rounds running found an S no
+    // environment serves). The second pass types S in one environment E: a parameter written
+    // once as a combination's input has the type the other inputs combine to, and every other
+    // unknown the environment gives (a parameter, a session parameter S does not set, a named
+    // procedure's columns) is dynamic, which H2' cures at every use but a combination's. S
+    // passes only if it keeps every rule in E, so E serves it and H1 is not vacuous.
+    for v in pass(true) {
+        if !out.iter().any(|w| w.path == v.path && w.rule == v.rule) {
+            out.push(Violation {
+                detail: format!("(in the dynamic environment) {}: {}", v.rule, v.detail),
+                rule: "H1 environment",
+                path: v.path,
+            });
+        }
+    }
+    out
 }
 
 struct Checker<'t> {
@@ -836,6 +856,8 @@ struct Checker<'t> {
     /// The session parameters earlier SESSION SET commands of the program set, with their
     /// declared types (22.1 SR 5 d i).
     params: HashMap<String, Ty>,
+    /// The second pass of `check`: the environment's unknowns are dynamic.
+    dynamic: bool,
 }
 
 impl<'t> Checker<'t> {
@@ -1144,6 +1166,7 @@ impl<'t> Checker<'t> {
                                 parent: HashMap::new(),
                                 out: Vec::new(),
                                 params: self.params.clone(),
+                                dynamic: self.dynamic,
                             };
                             quiet.ty(ve, &env)
                         }
@@ -1287,7 +1310,7 @@ impl<'t> Checker<'t> {
         for next in owns(sb, "next statement") {
             let mut table = result.unwrap_or_default();
             if let Some(yc) = own(next, "yield clause") {
-                table = yield_columns(yc, &table);
+                table = yield_columns(yc, &table, &self.environment());
             }
             result = own(next, "statement").and_then(|st| {
                 self.statement(
@@ -1643,6 +1666,7 @@ impl<'t> Checker<'t> {
                                 parent: HashMap::new(),
                                 out: Vec::new(),
                                 params: self.params.clone(),
+                                dynamic: self.dynamic,
                             };
                             let cols = quiet.body(
                                 pb,
@@ -1705,7 +1729,7 @@ impl<'t> Checker<'t> {
                     self.walk(args, &Env::new(incoming.clone()));
                 }
                 // unmodelled: the catalog knows the result's column types
-                own(pc, "yield clause").map(|yc| yield_columns(yc, &Fields::new()))
+                own(pc, "yield clause").map(|yc| yield_columns(yc, &Fields::new(), &self.environment()))
             }
             _ => None,
         };
@@ -2108,6 +2132,7 @@ impl<'t> Checker<'t> {
             parent: self.parent.clone(),
             out: Vec::new(),
             params: self.params.clone(),
+            dynamic: self.dynamic,
         };
         quiet.ty_of(side, env) == Ty::Opaque
     }
@@ -2154,13 +2179,13 @@ impl<'t> Checker<'t> {
             // command's type (the ninth review); otherwise the request's (H4)
             "dynamic parameter specification" => {
                 let name = first(node, "parameter name").map_or_else(|| node.text(), ident);
-                self.params.get(&name).cloned().unwrap_or(Ty::Any)
+                self.params.get(&name).cloned().unwrap_or_else(|| self.environment())
             }
             // 20.12 SR 9
             "binding variable reference" => match env.vars.get(&ident(node)) {
                 Some(Ty::List { elem, group: true }) if env.agg => (**elem).clone(),
                 Some(t) => t.clone(),
-                None => Ty::Any,
+                None => self.environment(),
             },
             // 20.2, 20.20 SR 2
             "parenthesized value expression" | "parenthesized boolean value expression" => {
@@ -2465,6 +2490,7 @@ impl<'t> Checker<'t> {
                 match self.argument(node, env, &[Class::Numeric], "20.21 SR 3") {
                     Ty::Exact { .. } => Ty::Exact { int: true },
                     Ty::Approx => Ty::Approx,
+                    d @ Ty::Dyn(_) => d,
                     _ => Ty::Number,
                 }
             }
@@ -2785,6 +2811,10 @@ impl<'t> Checker<'t> {
                 // environment's too (the fifteenth review: `CARDINALITY ( .. ) + $b` as a TRIM
                 // count was a number of unknown scale)
                 (Ty::Any, _) | (_, Ty::Any) => Ty::Any,
+                // a dynamic numeric operand keeps the result dynamic (H2'), as the claim says
+                // (the twenty-third review: `x . a + 1` was a number); a temporal row that fits
+                // alone fixes its result, the type every arm of the cure has
+                (Ty::Dyn(_), _) | (_, Ty::Dyn(_)) => Ty::Dyn(Union::Open),
                 (Ty::Approx, _) | (_, Ty::Approx) => Ty::Approx,
                 // 20.21 SR 1 b ii-iv: scale max(S1, S2), S1 + S2, or implementation-defined
                 (Ty::Exact { int: a }, Ty::Exact { int: b }) => Ty::Exact {
@@ -2868,10 +2898,11 @@ impl<'t> Checker<'t> {
             return Ty::Any;
         }
         match known.first() {
-            // 20.15 SR 2: the regular variant of the combination
+            // 20.15 SR 2: the regular variant of the combination, of both operands, a dynamic
+            // or unknown one included, as at every other combination (the twenty-third review:
+            // `[ 1 ] || CAST ( NULL AS ANY )` dropped the dynamic operand)
             Some(Class::List) => {
-                let lists: Vec<Ty> = [l, r].into_iter().filter(|t| !t.wild()).collect();
-                match self.combined(node, &lists, &[], "20.15 SR 2") {
+                match self.combined(node, &[l, r], &[left, right], "20.15 SR 2") {
                     Ty::List { elem, .. } => Ty::List { elem, group: false },
                     t => t,
                 }
@@ -2884,14 +2915,17 @@ impl<'t> Checker<'t> {
             _ => match name(node) {
                 Some("character string concatenation") => Ty::Char,
                 Some("byte string concatenation") => Ty::Bytes,
-                // 20.15 SR 2 combines the operands' element types: an unknown operand's are the
-                // environment's (H1), a dynamic one's stay dynamic (H2'), and two null operands
-                // have none (a reading; the unknowns audit: `NULL || NULL` gave a list of unknown)
+                // 20.15 SR 2 combines the operands: a dynamic or unknown one goes to the
+                // combination like any other (the twenty-fourth review: `$b || $c` and
+                // `CAST ( NULL AS ANY ) || CAST ( NULL AS ANY )` skipped it), and two null
+                // operands have no element type (a reading; the unknowns audit: `NULL || NULL`
+                // gave a list of unknown)
                 Some("list concatenation") => {
-                    let elem = if [&l, &r].iter().any(|t| **t == Ty::Any) {
-                        Ty::Any
-                    } else if [&l, &r].iter().any(|t| matches!(t, Ty::Dyn(_))) {
-                        Ty::Dyn(Union::Open)
+                    let elem = if [&l, &r].iter().any(|t| matches!(t, Ty::Any | Ty::Dyn(_))) {
+                        return match self.combined(node, &[l.clone(), r.clone()], &[left, right], "20.15 SR 2") {
+                            Ty::List { elem, .. } => Ty::List { elem, group: false },
+                            t => t,
+                        };
                     } else {
                         self.report(node, "20.15 SR 2 null", format!("(reading) {l} || {r} has no element type"));
                         Ty::Any
@@ -2919,6 +2953,23 @@ impl<'t> Checker<'t> {
 
     /// 22.18 applied for `rule`: the combination, or a report and the unknown type.
     fn combined(&mut self, at: &'t Plain, types: &[Ty], inputs: &[&'t Plain], rule: &'static str) -> Ty {
+        // in the dynamic environment a parameter written once as this input is E's static
+        // type, the one the other inputs combine to: unknown to the combination, as in the
+        // first pass
+        let remapped: Vec<Ty>;
+        let types = if self.dynamic {
+            remapped = types
+                .iter()
+                .enumerate()
+                .map(|(i, t)| match inputs.get(i) {
+                    Some(&n) if *t == Ty::Dyn(Union::Open) && self.parameter_once(n) => Ty::Any,
+                    _ => t.clone(),
+                })
+                .collect();
+            &remapped[..]
+        } else {
+            types
+        };
         for (i, t) in types.iter().enumerate() {
             if unknown(t) {
                 self.unknown_input(at, inputs.get(i).copied());
@@ -2979,12 +3030,25 @@ impl<'t> Checker<'t> {
     /// that no one type serves (the eighteenth review: `USE $b .. COALESCE ( $b , 1 )`; the
     /// nineteenth: `USE $b LET y = $b .. COALESCE ( y , 1 )`). A reading, gate-only.
     fn unknown_input(&mut self, at: &'t Plain, input: Option<&'t Plain>) {
-        let mut root: &Plain = at;
+        if !input.is_some_and(|n| self.parameter_once(n)) {
+            let what = input.map_or_else(|| at.text(), Plain::text);
+            self.report(at, "22.19 SR 2 unknown", format!("(reading, H1) {what} has an unknown type in a combination and is no parameter written once"));
+        }
+    }
+
+    /// The environment's type for an unknown: unknown in the first pass, dynamic in the second.
+    fn environment(&self) -> Ty {
+        if self.dynamic { Ty::Dyn(Union::Open) } else { Ty::Any }
+    }
+
+    /// `input` is, through a one-child chain, a bare parameter written once in the whole tree.
+    fn parameter_once(&self, input: &Plain) -> bool {
+        let mut root: &Plain = input;
         while let Some(&p) = self.parent.get(&(root as *const Plain)) {
             root = p;
         }
         let name_of = |n: &Plain| first(n, "parameter name").map_or_else(|| n.text(), ident);
-        let mut bare = input;
+        let mut bare = Some(input);
         while let Some(n) = bare {
             if name(n) == Some("dynamic parameter specification") {
                 break;
@@ -2994,15 +3058,15 @@ impl<'t> Checker<'t> {
                 _ => None,
             };
         }
-        let once = bare.is_some_and(|p| {
+        // a SESSION SET of the name counts as a writing: the parameter is then the program's,
+        // its type fixed by S, not the request's (the twenty-sixth review: `SESSION SET VALUE
+        // $b = $c SESSION SET VALUE $e = COALESCE ( $b , 1 ) SESSION SET VALUE $b = 'x'`)
+        bare.is_some_and(|p| {
             let mut all = Vec::new();
             find(root, "dynamic parameter specification", &mut all);
+            find(root, "session parameter specification", &mut all);
             all.iter().filter(|q| name_of(q) == name_of(p)).count() == 1
-        });
-        if !once {
-            let what = input.map_or_else(|| at.text(), Plain::text);
-            self.report(at, "22.19 SR 2 unknown", format!("(reading, H1) {what} has an unknown type in a combination and is no parameter written once"));
-        }
+        })
     }
 
     /// 19.3 SR 2 and the operations of 22.13-22.14: `<comp op> <comparison predicand>` against
@@ -3896,7 +3960,7 @@ fn element_of(t: &Ty) -> Ty {
 }
 
 /// The columns of `table` a <yield clause> selects and renames (16.14).
-fn yield_columns(yc: &Plain, table: &Fields) -> Fields {
+fn yield_columns(yc: &Plain, table: &Fields, unknown: &Ty) -> Fields {
     let mut out = Fields::new();
     let mut items = Vec::new();
     find(yc, "yield item", &mut items);
@@ -3908,7 +3972,7 @@ fn yield_columns(yc: &Plain, table: &Fields) -> Fields {
         let to = own(item, "yield item alias")
             .and_then(|a| own(a, "binding variable"))
             .map_or_else(|| from.clone(), Plain::text);
-        out.insert(to, table.get(&from).cloned().unwrap_or(Ty::Any));
+        out.insert(to, table.get(&from).cloned().unwrap_or_else(|| unknown.clone()));
     }
     out
 }

@@ -715,3 +715,70 @@ fn twenty_third_review_findings() {
     bad_on_some_parse("LET y = CASE WHEN TRUE THEN $b END FOR x IN y RETURN y + 1 AS a", "22.19 SR 2 unknown");
     fine("LET y = $b FOR x IN y RETURN y + 1 AS a", "22.19 SR 2 unknown");
 }
+
+#[test]
+fn dynamic_environment_pass() {
+    // the second pass gives a parameter written once as a combination's input the other
+    // inputs' type, and every other unknown a dynamic type, cured outside combinations
+    fine("RETURN COALESCE ( $b , 1 ) + 1 AS c", "H1 environment");
+    fine("RETURN $b + 1 AS a , $b || 'x' AS c", "H1 environment");
+    fine("CALL p ( ) YIELD a RETURN a + 1 AS b , a || 'x' AS c", "H1 environment");
+}
+
+#[test]
+fn twenty_fourth_review_findings() {
+    // 20.15 SR 2: both operands of a list concatenation reach the combination
+    bad_on_some_parse("RETURN [ 1 ] || CAST ( NULL AS ANY ) AS b", "22.19 SR 2");
+    bad_on_some_parse("MATCH ( x ) RETURN [ 1 ] || x . a AS b", "22.19 SR 2");
+    bad_on_some_parse("USE $b RETURN [ 1 ] || $b AS c", "22.19 SR 2 unknown");
+    fine("RETURN [ 1 ] || [ 2 ] AS b", "22.19 SR 2");
+    // a dynamic operand keeps arithmetic and FLOOR dynamic, refused at a combination
+    bad_on_some_parse("MATCH ( x ) RETURN COALESCE ( x . a + 1 , 2 ) AS b", "22.19 SR 2");
+    bad_on_some_parse("MATCH ( x ) RETURN COALESCE ( FLOOR ( x . a ) , 2 ) AS b", "22.19 SR 2");
+}
+
+#[test]
+fn twenty_fifth_review_findings() {
+    // 20.15 SR 2: a list concatenation with no operand of a known class still combines
+    bad_on_some_parse("RETURN $b || $c AS a", "22.19 SR 2 unknown");
+    bad_on_some_parse("FOR x IN $b || $c FOR y IN x RETURN x + 1 AS a", "22.19 SR 2 unknown");
+    bad_on_some_parse("MATCH ( x ) RETURN x . a || x . a AS b", "22.19 SR 2");
+    bad_on_some_parse("RETURN NULL || CAST ( NULL AS ANY ) AS a", "22.19 SR 2");
+}
+
+#[test]
+fn twenty_sixth_review_findings() {
+    // procedures and schemas compared by the representative form of their own name
+    bad_on_some_parse("CALL a ( ) RETURN 1 AS y NEXT CALL { CALL CURRENT_SCHEMA / a ( ) }", "14.5 SR 3 kinds");
+    bad_on_some_parse("CALL a ( ) RETURN 1 AS y NEXT CALL { CALL \"a\" ( ) }", "14.5 SR 3 kinds");
+    bad_on_some_parse("AT / \"a\" DROP SCHEMA / a", "12.3 SR 7");
+    bad_on_some_parse("DROP GRAPH / \"a\" / b DROP SCHEMA / a", "12.3 SR 7");
+    // 15.1 SR 9: a named procedure called with and without YIELD
+    bad_on_some_parse("MATCH ( x ) CALL a ( ) RETURN 1 AS z NEXT CALL a ( ) YIELD x RETURN x", "15.1 SR 9 yield");
+    // IL010
+    bad_on_some_parse("RETURN 1234567890 AS a", "21.2 SR 14");
+    fine("RETURN 123456789 AS a", "21.2 SR 14");
+    bad_on_some_parse("RETURN 0xFFFFFFFF AS a", "21.2 SR 14");
+}
+
+#[test]
+fn twenty_seventh_review_findings() {
+    // a session parameter S sets is no parameter written once
+    bad_on_some_parse(
+        "SESSION SET VALUE $b = $c SESSION SET VALUE $e = COALESCE ( $b , 1 ) SESSION SET VALUE $b = 'x'",
+        "22.19 SR 2 unknown",
+    );
+    // 17.1 SR 6 d i: `..` under an AT that fixes the working schema
+    bad_on_some_parse("AT / s CREATE GRAPH .. / .. / t / g ANY", "17.1 SR 6 at");
+    bad_on_some_parse("AT / s USE .. / .. / t / g MATCH ( x ) RETURN x", "17.1 SR 6 at");
+    fine("SESSION SET SCHEMA .. / .. / t", "17.1 SR 6 at");
+}
+
+#[test]
+fn twenty_eighth_review_findings() {
+    // 16.6 SR 7 in both directions: a later statement or a pattern nested in the WHERE
+    bad_on_some_parse("MATCH ANY ( a ) -> ( m ) -> ( b ) MATCH ANY ( m ) -> ( c ) RETURN m", "16.6 SR 7");
+    bad_on_some_parse("MATCH ANY ( a ) -> ( m ) -> ( b ) MATCH ( m ) -> ( c ) RETURN m", "16.6 SR 7");
+    bad_on_some_parse("MATCH ANY ( a ) -> ( m ) -> ( b ) WHERE EXISTS { ( m ) } RETURN m", "16.6 SR 7");
+    fine("MATCH ANY ( a ) -> ( m ) -> ( b ) RETURN m", "16.6 SR 7");
+}

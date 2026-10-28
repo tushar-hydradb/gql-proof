@@ -74,16 +74,23 @@ property of every printed sentence, by the gate in step 1
   twenty-first review: `NOT COALESCE ( $b , 1 )` passed), and one with no
   known material input (`COALESCE ( $b , NULL )`, `COALESCE ( $b , $c )`, a
   CASE without ELSE) is refused, as its type is one S cannot see (the
-  twenty-second review). every
-  other unknown (a parameter, a catalog object, a procedure's column) is used
-  only where a dynamic type is cured. so an environment giving each one a
-  dynamic type, and each combination's parameter the type its other inputs
-  combine to, serves every S, and H1 is never vacuous for S. a named procedure called without YIELD returns no
+  twenty-second review). H1 is never vacuous for S, and this is checked, not
+  argued: the type checker types S a second time in one environment E, where
+  a parameter written once as a combination's input has the type the other
+  inputs combine to (at least one is known, by the above), and every other
+  unknown the environment gives (a parameter, a session parameter S does not
+  set, a named procedure's column, a field of a catalog table's row) is
+  dynamic, cured by H2' at every use but a combination's. a rule broken in E
+  only is reported as "H1 environment", gate-only. so every printed S keeps
+  every rule in E, and E serves it (four rounds running had found an S the
+  prose argument missed). a named procedure called without YIELD returns no
   column named like a field of the call's incoming record or table (15.1 SR 9,
   the two amended under cor 1, through the
   procedure's signature, which only the catalog gives). the session has a
   current working graph, a current working schema and a home schema wherever
-  S needs one (16.3 SR 23, 13.2 SR 5, 16.8 SR 2, 17.1 SR 4, 6, 17.6 SR 2 b i);
+  S needs one (16.3 SR 23, 13.2 SR 5, 16.8 SR 2, 17.1 SR 4, 6, 17.6 SR 2 b i),
+  where S does not fix it: a program whose AT names a schema absolutely takes
+  no `..` step ("17.1 SR 6 at", checked, the twenty-sixth review);
   a schema S drops is empty and is not the session's working schema, and a
   graph type S drops is no graph's type (12.3 SR 7, 12.7 SR 6), S itself never
   working in or naming into a schema it drops (checked). the `environment` rows of the audit hold under H1
@@ -113,11 +120,18 @@ property of every printed sentence, by the gate in step 1
   20.24 SR 3, 4 and 20.28 SR 1, 3 (a dynamic operand of an aggregate, a path,
   list, string or duration operation), and the dynamic element of a path constructor
   (`PATH [ x . a ]`). a combination (22.19 SR 2: CASE, COALESCE, NULLIF, a list
-  constructor) is not cured: the checker refuses an input it types dynamic
-  (a sign, ABS, MOD, LEFT, RIGHT, TRIM, UPPER, LOWER, NORMALIZE, arithmetic
-  over a dynamic operand, ELEMENTS, an empty list and an unwritten list
-  element type keep a dynamic type dynamic); an input of unknown type, an
-  environment's (H1), passes. the
+  constructor, a list concatenation) is not cured: the checker refuses an
+  input it types dynamic (a sign, ABS, MOD, LEFT, RIGHT, TRIM, UPPER, LOWER,
+  NORMALIZE, numeric arithmetic over a dynamic operand, FLOOR, CEIL,
+  ELEMENTS, an empty list and an unwritten list element type keep a dynamic
+  type dynamic; a datetime or duration operation whose one fitting row fixes
+  its result, an instant plus a duration or a duration times a number, has
+  that type, the type every arm of its cure has); an input of unknown type
+  passes only as H1 says, a parameter written once (the twenty-fourth
+  review). the cured variant is how the implementation executes S, not a
+  second program judged again: the CASE 4.14.4 builds is not itself held to
+  the syntax rules (without GV65 it would be a static combination its arms
+  may fail), and this is part of H2'. the
   cure never makes an operator's value a graph or a table: an operator, a
   function or a literal at a graph or table expression is refused on its tree
   the checker lets a dynamic operand meet every type
@@ -199,9 +213,10 @@ property of every printed sentence, by the gate in step 1
    syntax rule of the text (1,019; 275 say `shall`) and fails unless each rule
    with a `shall` has a row in `research/audit/audit.jsonl` that is not a
    definition, and so does each cor 1 syntax rule with a `shall` (read from
-   `grammar/corrigendum.json`). four are exempt, each with its reason in the
+   `grammar/corrigendum.json`). eight are exempt, each with its reason in the
    tool (two deleted by cor 1, one that defines how keywords are read, one
-   applied only hypothetically by its importers). coverage is per rule, not per
+   applied only hypothetically by its importers, and four whose "not
+   omitted" is a definition: 6 SR 5, 6, 8 and 18.1 SR 6). coverage is per rule, not per
    `shall` item: a rule with several items is covered by its rows together,
    which the review rounds read item by item
 3. **the checker reports every row.** `tools/inventory/audit.py` fails unless
@@ -314,7 +329,11 @@ review moved nine rows from `reading` to `permission`)
   identifier wherever it compares names by spelling (variables, fields,
   properties, parameters, aliases), and compares graph, type, label and
   catalog names by representative form (18.1 SR 10, 18.5 SR 1 and the graph
-  type rules)
+  type rules; created names, one kind per name, procedure kinds and YIELD,
+  schema drops, the last three by the object's own name, its parent left out,
+  the twenty-fifth review)
+- IL010: an unsigned integer has at most 9 digits, checked on the tree
+  ("21.2 SR 14", gate-only)
 - nothing about IW022 (nullability inference): a NOT NULL site takes no
   computed value (4.17.4.2, the checker's reading), so none is needed
 - IL018: the maximum quantifier bound is at least 255

@@ -773,3 +773,171 @@ sources hold.
 the four last rounds all found holes in the same place, how the checker types
 the environment's unknowns at a combination. the differential run above is
 the structural form of the argument and is worth keeping as a test.
+
+### H1 made a check
+
+after four rounds of H1 holes, the prose argument that some environment serves
+every S is replaced by a check. `types::check` types S a second time in one
+environment E: a parameter written once as a combination's input has the type
+the other inputs combine to, every other unknown the environment gives is
+dynamic (H2' cures it outside combinations). a rule broken only in E is
+reported as "H1 environment" (gate-only).
+
+cost: the 1 variable run withholds 1 more (3,230 rows), neo4j 220 more (40,883
+rows, 1,800 withheld), the rest unchanged, no new generator bug. the 220 are
+the TRIM count family, `TRIM ( NULL , $b + CARDINALITY ( MAX ( NULL ) ) )`: in
+E, `$b + 1` with $b dynamic is a number of unknown scale, not the integer a
+TRIM count needs, though $b INTEGER serves it. so E is stricter than needed
+there, a coverage lever (type an arithmetic result over a dynamic operand
+dynamic), not a soundness one.
+
+## 2026-10-28: the twenty-third review
+
+aimed at the second typing pass. no printed counterexample. one unprinted gate
+hole and one false sentence, so this round is not clean. both closed:
+- list concatenation dropped a dynamic or unknown operand before the 20.15 SR 2
+  combination, and passed no input nodes, so neither "22.19 SR 2" nor the H1
+  check saw it: `RETURN [ 1 ] || CAST ( NULL AS ANY )` (84 of all 4,368
+  parses), `[ 1 ] || x . a`, and `USE $b RETURN [ 1 ] || $b`, which passed
+  both passes and which no environment serves. both operands and their nodes
+  now go to `combined`, as at the list constructor
+- the claim says arithmetic over a dynamic operand keeps it dynamic, but `+`
+  and `-` with a numeric operand, FLOOR and CEIL gave a number, so `COALESCE (
+  x . a + 1 , 2 )` passed. they keep it dynamic now, which also makes E's
+  `$b + CARDINALITY ( .. )` a cured TRIM count
+
+checked and found to hold: every environment unknown is dynamic in the second
+pass (parameters, unset session parameters, procedure columns with and
+without YIELD, catalog table rows and fields, catalog tables and graphs); the
+remap is sound at every combination site, types and nodes aligned, and
+combine(T, known) is combine(known) for T = combine(known) in every class; set
+operations refuse dynamic and unknown columns; the dedup only relabels. none of
+the 1,524 distinct concatenation sentences in the neo4j sets has a dynamic or
+unknown list operand.
+
+runs after the fixes: neo4j back to 41,103 rows and 1,580 withheld (the 220 TRIM
+count sentences are served in E now); whole grammar, turbolay and 3 variables
+unchanged; the 1 variable run 3,227 rows (3 fewer than with the second pass
+alone). the 3 are `SELECT LET x = $b IN [ [ CEIL ( x ) ] , .. ] END` and its
+FLOOR and CEILING forms: valid with $b INTEGER, refused in E, where CEIL of a
+dynamic $b stays dynamic and meets a list constructor. coverage, not
+soundness: E types a parameter that is not itself a combination's input
+dynamic. 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the twenty-fourth review
+
+two sweeps of types.rs: every site that filters, drops or defaults a type
+before a check, and every site where the text applies 22.18/22.19. no printed
+counterexample. one unprinted gate hole and one false sentence, so this round
+is not clean:
+- list concatenation with no operand of a known class (`$b || $c`, `x . a ||
+  x . a`, `CAST ( NULL AS ANY ) || CAST ( NULL AS ANY )`) built a list of
+  unknown or dynamic elements and never reached `combined`; `FOR x IN $b || $c
+  FOR y IN x RETURN x + 1` passed both passes. a dynamic or unknown operand now
+  goes to the combination there too (round 23 had fixed only the arm with a
+  typed list). an instrumented run found the arm on 0 printed trees
+- the claim said arithmetic over a dynamic operand stays dynamic, but a
+  temporal row that fits alone (`LOCAL_TIMESTAMP + x . a`, a duration times
+  or over a number) gives its fixed type. the verdicts are right by the text
+  (every arm of the cure has that type); the sentence is corrected
+- an observation, now stated in H2': the CASE 4.14.4 builds is itself a
+  combination and is not judged again; the cured variant is how the
+  implementation executes S
+
+the sweeps list about 30 filter or default sites and 9 combination sites, all
+others held; an instrumented copy flagging every arm that returns unknown
+without a report fired 0 times over 7,139 printed sentences and four
+generation runs.
+
+runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the twenty-fifth review
+
+aimed at the argument's chain (gate wiring, coverage, the audit) and verify.rs.
+no printed counterexample. three unprinted gate holes, each making "H1 is never
+vacuous" false, and one false sentence, so this round is not clean. all closed:
+- `procedure_kinds` keyed a procedure on its written reference, so `CALL a ( )`
+  as a query and `CALL CURRENT_SCHEMA / a ( )` (or `. / a`, `"a"`) as a data
+  procedure passed, one procedure of two kinds. it keys on the representative
+  form of the procedure's own name now, parent left out (the strict side)
+- `schema_drops` compared paths as written: `AT / "a" DROP SCHEMA / a` and
+  `DROP GRAPH / "a" / b DROP SCHEMA / a` passed. it compares the dropped
+  schema's own name by representative form against the working schema's last
+  name and every name of a parent path
+- a named procedure called without YIELD is assumed (H1) to return no column
+  named like an incoming field, and a YIELD on another call of it can show such
+  a column: `MATCH ( x ) CALL a ( ) .. NEXT CALL a ( ) YIELD x` passed (78 of
+  4,563 parses). a procedure called both with and without YIELD is refused now
+  ("15.1 SR 9 yield", gate-only)
+- the claim said four rules are exempt from coverage; the tool exempts eight
+  (the four more are definitional "not omitted" rules, sound). corrected
+- from an observation: IL010 (an unsigned integer of at most 9 digits) rested
+  on H2's general clause; it is checked on the tree now ("21.2 SR 14",
+  gate-only), the written digits and the value a 0x, 0o or 0b form stands for
+
+checked and found to hold: the gate wiring (every printed sentence is the
+rendering of the tree all four checkers and both typing passes judged; no other
+print path); shall_coverage.py's clause attribution and requirement wordings,
+and its eight exemptions; audit.py's statuses, `generated` rows quoting
+non-gate-only strings (fail-closed); the 137 environment, implementation and
+hypothesis rows; verify.rs's 16.7, 16.11, 14.2 SR 10, created names, kinds per
+name, LIKE sources, H2 bounds, delimited names, the catalog root and reserved
+words.
+
+runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the twenty-sixth review
+
+a sweep of every name and identity comparison in the four checkers. no printed
+counterexample. two unprinted gate holes, each with a false premise, so this
+round is not clean. both closed:
+- a session parameter S sets counted as a parameter written once: `SESSION SET
+  VALUE $b = $c SESSION SET VALUE $e = COALESCE ( $b , 1 ) SESSION SET VALUE
+  $b = 'x'` passed both passes (4,563 of 4,563 spliced trees), and no type of
+  $c serves both the string assignment and the numeric combination. a session
+  parameter specification of the name counts as a writing now
+- `..` steps under an AT that names a schema absolutely: `AT / s CREATE GRAPH
+  .. / .. / t / g ANY` steps above the root (17.1 SR 6 d i), and the depth was
+  S's, not H1's. any `..` in a program with such an AT is refused now ("17.1
+  SR 6 at", gate-only; no set holds the two together). the audit note and the
+  claim's working-schema sentence said the depth was always the environment's;
+  both are corrected
+
+the sweep marked about 40 comparison sites in verify.rs, scope.rs, types.rs and
+graph_type.rs held: confusables, one kind per name, delimited names (every
+variable-like node is a regular identifier in the BNF), procedure kinds and
+yields, schema drops, rep_names and ident, LIKE sources, created names, the
+pattern variable clashes, labels, properties and graph type bodies.
+
+runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the twenty-seventh review
+
+aimed at scope.rs's pattern rules, data-modifying and catalog statements, and
+the rewrites. no printed counterexample. one unprinted gate hole, so this round
+is not clean. closed:
+- 16.6 SR 7 counted only earlier statements and the same graph pattern's other
+  path patterns as exterior or other-selective, so a mirror image passed:
+  `MATCH ANY ( a ) -> ( m ) -> ( b ) MATCH ANY ( m ) -> ( c )` (and with a
+  plain second MATCH, or `WHERE EXISTS { ( m ) }`) while the reversed order was
+  refused. SR 6 and 7 set no scope, depth or order, so a declaration of the name
+  anywhere else in the program now counts (the strict side). every probe 0
+  clean on all parses; a reused boundary variable still passes. no printed set
+  holds a selective pattern that declares a variable
+
+checked and found to hold: 16.7 SR 22 a-i against `expose`, SR 10 c, 11, 21,
+24; 20.12 SR 10-12; 16.4 SR 3-6, 12, 14; 16.6 SR 5, 8; 16.3 SR 4, 7, 9, 12, 16,
+20 and the SR 21 rewrite; 16.8 SR 4 under a closed type; INSERT, SET, REMOVE,
+DELETE and their interplay with CALL, NEXT, FINISH, YIELD; 12.x created names,
+drops, LIKE sources, the catalog root; the 19.4, 14.12, 16.3 SR 21, 16.7 SR 12
+and 14 rewrites.
+
+runs after the fix: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.

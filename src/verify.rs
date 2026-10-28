@@ -29,6 +29,8 @@ use unicode_general_category::{GeneralCategory, get_general_category};
 /// 18.1-18.5 (every alias, label and name is spelled `a`, so a body's consistency is a matter of
 /// which specifications sit together, not followed).
 pub const GATE_ONLY: &[&str] = &[
+    // types::check's second pass, in the dynamic environment (H1 made a check)
+    "H1 environment",
     // The audit's `checked` rows (tools/inventory/audit.py requires each listed here).
     "14.12 SR 22",
     "16.4 SR 6 nested",
@@ -46,6 +48,7 @@ pub const GATE_ONLY: &[&str] = &[
     "12.3 SR 7",
     "14.10 SR 4 let",
     "14.5 SR 3 kinds",
+    "15.1 SR 9 yield",
     // a key label set omitted under a claim without GG22: the generator follows no claim's
     // graph type bodies this way; the gate does
     "18.2 SR 9",
@@ -54,6 +57,8 @@ pub const GATE_ONLY: &[&str] = &[
     "14.8 SR 10 null",
     // the eighteenth review: H2's list cardinality, and H1 for a parameter in a combination
     "18.9 SR 73",
+    "21.2 SR 14",
+    "17.1 SR 6 at",
     "22.19 SR 2 unknown",
     "11.1 SR 3 material",
     "11.2 SR 4 material",
@@ -252,6 +257,7 @@ impl<'b> Verifier<'b> {
             schema_drops(tree, &mut out);
             h2_bounds(tree, &mut out);
             procedure_kinds(tree, &mut out);
+            procedure_yields(tree, &mut out);
             delimited_names(tree, &mut out);
             one_kind_per_name(tree, &mut out);
             syntax_rules(tree, id086, &mut Vec::new(), &mut out);
@@ -2636,7 +2642,11 @@ fn procedure_kinds(tree: &Plain, out: &mut Vec<Violation>) {
             find(c, "procedure call", &mut pcs);
             let Some(npc) = pcs.first().and_then(|pc| own(pc, "named procedure call")) else { continue };
             let Some(r) = own(npc, "procedure reference") else { continue };
-            let name: String = r.text().chars().filter(|c| !c.is_whitespace()).collect();
+            // by the representative form of the procedure's own name, its parent left out: `a`,
+            // `. / a`, `CURRENT_SCHEMA / a` and `"a"` may all name one procedure (17.5 SR 1,
+            // 17.1 SR 4 b, 21.3 SR 20), and two procedures of one name in two schemas are read
+            // as one, the strict side (the twenty-fifth review)
+            let name = rep_names(r).pop().unwrap_or_else(|| r.text());
             match seen.get(&name) {
                 Some(k) if *k != kind => {
                     out.push(Violation {
@@ -2650,6 +2660,30 @@ fn procedure_kinds(tree: &Plain, out: &mut Vec<Violation>) {
                     seen.insert(name, kind);
                 }
             }
+        }
+    }
+}
+
+/// 15.1 SR 9 with H1: a named procedure called without YIELD returns no column named like a
+/// field of the call's incoming record or table, which H1 assumes and no check sees. a YIELD on
+/// another call of it shows a column S may then meet (the twenty-fifth review: `MATCH ( x )
+/// CALL a ( ) .. NEXT CALL a ( ) YIELD x`), so a procedure called both with and without YIELD
+/// is refused (a reading, the strict side).
+fn procedure_yields(tree: &Plain, out: &mut Vec<Violation>) {
+    let mut npcs = Vec::new();
+    find(tree, "named procedure call", &mut npcs);
+    let mut with: HashMap<String, bool> = HashMap::new();
+    for npc in npcs {
+        let Some(r) = own(npc, "procedure reference") else { continue };
+        let name = rep_names(r).pop().unwrap_or_else(|| r.text());
+        let y = own(npc, "yield clause").is_some();
+        if with.insert(name.clone(), y).is_some_and(|before| before != y) {
+            out.push(Violation {
+                path: String::new(),
+                rule: "15.1 SR 9 yield",
+                detail: format!("{name} is called with and without YIELD (reading, H1)"),
+            });
+            return;
         }
     }
 }
@@ -2683,6 +2717,19 @@ fn h2_bounds(tree: &Plain, out: &mut Vec<Violation>) {
                     push(rule, format!("a length in {}", n.text()));
                 }
             }
+        }
+    }
+    // 21.2 SR 14, IL010: an unsigned integer of at most 9 digits, the least the text
+    // guarantees (the twenty-fifth review: it rested on H2's general clause alone)
+    let mut ints = Vec::new();
+    find(tree, "unsigned integer", &mut ints);
+    for i in ints {
+        let t = i.text().to_ascii_lowercase();
+        let digits = t.strip_prefix("0x").or_else(|| t.strip_prefix("0o")).or_else(|| t.strip_prefix("0b")).unwrap_or(&t);
+        // written digits, and the decimal digits of the value a 0x, 0o or 0b form is
+        // rewritten to (21.2 SR 6-8)
+        if digits.chars().filter(|c| *c != '_').count() > 9 || integer_value(i) > 999_999_999 {
+            push("21.2 SR 14", format!("the unsigned integer {}", i.text()));
         }
     }
     // 18.9 SR 73 d i: a list's maximum cardinality is IL015's, which no guarantee bounds; H2
@@ -2722,20 +2769,21 @@ fn schema_drops(tree: &Plain, out: &mut Vec<Violation>) {
     if drops.is_empty() {
         return;
     }
-    let path_of = |n: &Plain| -> String { n.text().chars().filter(|c| !c.is_whitespace()).collect() };
+    // by the representative form of the dropped schema's own name: a working schema whose
+    // reference ends in it, or a parent path through it, is read as the dropped one, whatever
+    // the rest of the path (the strict side; the twenty-fifth review: `AT / "a" DROP SCHEMA
+    // / a` and `DROP GRAPH / "a" / b DROP SCHEMA / a` compared the written text)
     for d in drops {
         let Some(pan) = own(d, "catalog schema parent and name") else { continue };
-        let dropped = path_of(pan);
+        let Some(dropped) = rep_names(pan).pop() else { continue };
         let mut ats = Vec::new();
         find(tree, "at schema clause", &mut ats);
-        let set = ats.iter().any(|a| own(a, "schema reference").is_some_and(|r| path_of(r) == dropped));
-        // a parent path inside the dropped schema: `/ a / b`, `/ a / x . y`
+        let set = ats.iter().any(|a| {
+            own(a, "schema reference").is_some_and(|r| rep_names(r).last() == Some(&dropped))
+        });
         let mut parents = Vec::new();
         find(tree, "catalog object parent reference", &mut parents);
-        let inside = parents.iter().any(|p| {
-            let t = path_of(p);
-            t == dropped || t.starts_with(&format!("{dropped}/"))
-        });
+        let inside = parents.iter().any(|p| rep_names(p).contains(&dropped));
         if set || inside {
             out.push(Violation {
                 path: String::new(),
@@ -2744,6 +2792,13 @@ fn schema_drops(tree: &Plain, out: &mut Vec<Violation>) {
             });
         }
     }
+}
+
+/// The representative forms of the <identifier>s under `node`, in order.
+fn rep_names(node: &Plain) -> Vec<String> {
+    let mut ids = Vec::new();
+    find(node, "identifier", &mut ids);
+    ids.into_iter().map(graph_type::ident).collect()
 }
 
 /// 12.6 SR 7 b iv (and 12.4 through its GR 5 rewrite): a LIKE source's declared type has a
@@ -2793,6 +2848,22 @@ fn catalog_root(tree: &Plain, out: &mut Vec<Violation>) {
             path: String::new(),
             rule: "17.1 SR 2",
             detail: "the catalog root is used as a schema (/) and as a directory (an absolute directory path): no environment has both (H1)".into(),
+        });
+    }
+    // 17.1 SR 6 d i: the `..` steps start below the root. an AT with an absolute reference
+    // fixes the working schema, and with it how many steps there are room for, so the depth is
+    // no longer H1's; any `..` in such a program is refused (a reading, the strict side; the
+    // twenty-sixth review: `AT / s CREATE GRAPH .. / .. / t / g ANY`)
+    let mut ats = Vec::new();
+    find(tree, "at schema clause", &mut ats);
+    let fixed = ats.iter().any(|a| contains(a, "absolute catalog schema reference"));
+    let mut rdps = Vec::new();
+    find(tree, "relative directory path", &mut rdps);
+    if fixed && !rdps.is_empty() {
+        out.push(Violation {
+            path: String::new(),
+            rule: "17.1 SR 6 at",
+            detail: "a `..` step in a program whose AT fixes the working schema (reading)".into(),
         });
     }
 }

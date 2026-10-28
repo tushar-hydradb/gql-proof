@@ -1409,7 +1409,11 @@ impl<'t> Checker<'t> {
                     .iter()
                     .enumerate()
                     .any(|(j, (_, f, s))| j != i && *s && f.contains_key(n));
-                if exterior.contains(n) || elsewhere {
+                // SR 6, 7 set no scope, depth or order: an element variable of the name declared
+                // anywhere else in the program, a later statement or a graph pattern nested in
+                // this one's WHERE included, is exterior or another selective pattern's (the
+                // strict side; the twenty-seventh review: only earlier ones were counted)
+                if exterior.contains(n) || elsewhere || self.declared_outside(ppe, n) {
                     self.report(
                         ppe,
                         "16.6 SR 7",
@@ -1418,6 +1422,23 @@ impl<'t> Checker<'t> {
                 }
             }
         }
+    }
+
+    /// An element variable named `n` is declared in the program outside `ppe`.
+    fn declared_outside(&self, ppe: &Plain, n: &str) -> bool {
+        let mut root: &Plain = ppe;
+        while let Some(&p) = self.parent.get(&(root as *const Plain)) {
+            root = p;
+        }
+        let count = |node: &Plain| {
+            let mut decls = Vec::new();
+            find(node, "element variable declaration", &mut decls);
+            decls
+                .iter()
+                .filter(|d| first(d, "binding variable").is_some_and(|b| b.text() == n))
+                .count()
+        };
+        count(root) > count(ppe)
     }
 
     /// 16.7 SR 22: the variables `node` exposes and their degree of exposure; also collects
