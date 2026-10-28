@@ -1371,3 +1371,22 @@ grammar, toward proving soundness on that finite grammar.
 runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the specification audit, batch 1 (clauses 4-14)
+
+a finite audit of every constraint and type row against the literal text,
+replacing open-ended rounds for the specification class (the feasibility pass
+found it 61% of the findings of rounds 19-42, and no method avoids it). batch 1:
+70 rows, 33 faithful, 18 stricter, 18 under a named hypothesis, 1 gap:
+- 12.3 SR 7 a: `AT HOME_SCHEMA DROP SCHEMA / a` (derivable: parses 3, derivable
+  1, clean and derivable 1). the drop check sees a working schema only when an
+  AT spells the dropped name, and HOME_SCHEMA spells none; H1 said the dropped
+  schema is not the session's working schema but not that it is not the home
+  schema. H1 says it now (environment, so no coverage is withheld)
+bookkeeping: 7.1 SR 6 c iii 3 A I and d ii 1 B rest on H4's omitted fixed length
+permission, which now names them; stale notes on 9.1 SR 5, 9.2 SR 4-6 and 14.12
+SR 8 b corrected.
+
+tool: tests/derivable_probe.rs splits a probe's clean trees by whether the
+generator's context rules and refinement automata accept them; gaps are
+reported with those counts.

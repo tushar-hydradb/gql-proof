@@ -96,7 +96,8 @@ property of every printed sentence, by the gate in step 1
   S needs one (16.3 SR 23, 13.2 SR 5, 16.8 SR 2, 17.1 SR 4, 6, 17.6 SR 2 b i),
   where S does not fix it: a program whose AT names a schema absolutely takes
   no `..` step ("17.1 SR 6 at", checked, the twenty-sixth review);
-  a schema S drops is empty and is not the session's working schema, and a
+  a schema S drops is empty and is not the session's working schema nor its
+  home schema (`AT HOME_SCHEMA DROP SCHEMA / a`; spec audit batch 1), and a
   graph type S drops is no graph's type (12.3 SR 7, 12.7 SR 6), S itself never
   working in or naming into a schema it drops (checked). the `environment` rows of the audit hold under H1
   and only under it. the type checker's unknown type comes only from H1: a
@@ -450,7 +451,8 @@ each line names its audit rows (status `permission`)
   bounds STRING and VARCHAR too, and no declared string type would be known
   to take a longer value (10.3 SR 8). it is read as applying to the forms
   whose production holds a <fixed length>, CHAR and BINARY, which the checker
-  then refuses as declared types. rows: 10.3 SR 8 b i 1, 18.9 SR 28 (a byte
+  then refuses as declared types. rows: 10.3 SR 8 b i 1, 7.1 SR 6 c iii 3 A I,
+  7.1 SR 6 d ii 1 B (the same reading at a session parameter), 18.9 SR 28 (a byte
   string's min and max length, read without the implicit fixed length)
 - **a supported string supertype exists.** CASE, COALESCE and list
   constructors over character or byte strings need a supported string type
