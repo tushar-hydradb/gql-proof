@@ -873,3 +873,10 @@ fn thirty_sixth_review_findings() {
     bad_on_some_parse("SESSION SET VALUE $p :: ( :a ) -[ { } ]-> ( ) = CAST ( NULL AS ( :b ) -[ { } ]-> ( ) )", "7.1 SR 6");
     fine("MATCH ( x ) RETURN CAST ( NULL AS NODE { a INT } ) IS NULL AS b", "10.3 SR 8");
 }
+
+#[test]
+fn thirty_seventh_review_findings() {
+    // 6 SR 4 under H2: UTS #39's ASCII-to-ASCII confusables include | and l
+    bad_on_some_parse("MATCH ( :\"|\" | l ) FINISH", "6 SR 4");
+    bad_on_some_parse("MATCH ( : \"|\" ) RETURN 1 AS l", "6 SR 4");
+}

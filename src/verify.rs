@@ -2489,13 +2489,25 @@ fn modifies(statement: &Plain) -> bool {
 }
 
 /// 6 SR 4 under hypothesis H2: the implementation's relation of visually confusable names
-/// (IW014) relates two different names only if they share a skeleton under the ASCII
-/// confusables of UTS #39 (`rn`/`m`, `vv`/`w`, `cl`/`d`, `1`/`I`/`l`, `0`/`O`/`o`), compared
-/// without case. Two different identifiers of one tree with one skeleton are reported.
+/// (IW014) relates two different names only if they share a skeleton under the ASCII-to-ASCII
+/// confusables of UTS #39 (`rn`/`m`, `1`/`I`/`l`, `|`/`l`, `0`/`O`, `` ` ``/`'`, `"`/`''`; the
+/// thirty-sixth review found `|`, `` ` `` and `"` missing), here widened by `vv`/`w`, `cl`/`d`,
+/// `0`/`o` and case, which only reports more. Two different identifiers of one tree with one
+/// skeleton are reported.
 fn confusables(tree: &Plain, out: &mut Vec<Violation>) {
     fn skeleton(name: &str) -> String {
         let mut s = name.to_lowercase();
-        for (from, to) in [("rn", "m"), ("vv", "w"), ("cl", "d"), ("1", "l"), ("i", "l"), ("0", "o")] {
+        for (from, to) in [
+            ("rn", "m"),
+            ("vv", "w"),
+            ("cl", "d"),
+            ("1", "l"),
+            ("i", "l"),
+            ("|", "l"),
+            ("0", "o"),
+            ("`", "'"),
+            ("\"", "''"),
+        ] {
             s = s.replace(from, to);
         }
         s

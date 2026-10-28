@@ -1182,3 +1182,30 @@ one tree and prints its rendering, and no checker re-parses.
 runs after the fix: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the thirty-sixth review
+
+comparison and ordering, graph type bodies, the claim's statement and H. no
+printed counterexample. one unprinted gate hole and one false sentence in H1,
+both on confusable names (IW014), so this round is not clean. both closed:
+- H2 names UTS #39's ASCII confusables, but the checker's skeleton lacked
+  three of its ASCII-to-ASCII pairs (`|` and `l`, `` ` `` and `'`, `"` and
+  `''`): `MATCH ( :"|" | l ) FINISH` passed. the skeleton has them now, and H2
+  lists the relation exactly (the checker's extra pairs, `vv`/`w`, `cl`/`d`,
+  case, only report more)
+- six environment rows (17.1 SR 2 b iv, 17.2-17.4 SR 2 d i 2, 17.5 SR 3 b
+  iii, 22.9 SR 4 b) need no sibling of a resolved object to be named
+  confusably with it, which H1 did not say though printed sentences (`USE
+  """" FINISH`) rest on it. H1 says it now. the 6 SR 4 audit note's premise
+  (names are one to three lowercase letters) was false too; corrected
+
+checked and found to hold: 19.3 and 22.13-22.15 have no syntax rule with a
+shall (comparability is conformance only, outside the theorem, as the claim
+says), and every syntax rule that needs comparable types is checked (14.2 SR
+10 a v and a vii, 20.28 SR 3 b, d, 20.24 SR 3, 4); duration units; graph
+type bodies against 18.1-18.5 and all 43 printed bodies by hand; closed graph
+types (16.8 SR 4, 20.11 SR 2, 3); the claim's run wiring.
+
+runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.

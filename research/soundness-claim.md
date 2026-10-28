@@ -56,7 +56,10 @@ property of every printed sentence, by the gate in step 1
   checked. H1 is one environment, and every syntax rule is
   judged against it before execution (`DROP GRAPH a NEXT DROP GRAPH a` needs
   graph a at both, as the text applies syntax rules to the whole program
-  first). a parameter has the type the request gives it; one used at two
+  first). no object of a schema or directory S resolves a name through is
+  named confusably (IW014, under H2's relation) with a name S uses there, so a
+  reference resolves (17.1 SR 2 b iv, 17.2-17.4 SR 2 d i 2, 17.5 SR 3 b iii,
+  22.9 SR 4 b; the thirty-sixth review: H1 said only which objects exist). a parameter has the type the request gives it; one used at two
   incompatible types (`$b * 2` used as a graph) holds only if that type is
   dynamic and H2' cures it. H2' cures every use but a combination's input. so
   the only unknown input a combination may take is a bare parameter written
@@ -308,9 +311,12 @@ or a path union or alternation that declares an element variable
   cardinalities are at least these
 - exact types of 18 decimal digits, an approximate literal type with the range
   of a 32 bit float (21.2 SR 18, 20; the checker reports past that)
-- IW014: names are confusable only as UTS #39's ASCII confusables are (`rn`
-  and `m`, `vv` and `w`, `cl` and `d`, `1`, `I` and `l`, `0` and `o`; the
-  checker reports two such names in one sentence)
+- IW014: names are confusable only as UTS #39's ASCII-to-ASCII confusables
+  are (`rn` and `m`, `1`, `I`, `|` and `l`, `0` and `O`, `` ` `` and `'`, `"`
+  and `''`); the checker reports two names of one sentence sharing a skeleton
+  under these, widened by `vv` and `w`, `cl` and `d`, `0` and `o` and case,
+  which only reports more (the thirty-sixth review found `|`, `` ` `` and `"`
+  missing)
 - ID061: SESSION_USER's character string type is assignable to every
   character string type S declares for it; S declares no length-bounded one
   (10.3 SR 8 reading, at any depth of the declared type)
