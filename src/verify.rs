@@ -2830,7 +2830,8 @@ fn bare_parameter(node: &Plain) -> bool {
 /// fifteenth review: `{ 256 }` passed): quantifier bounds at most 255 (16.11 SR 1, IL018),
 /// character lengths at most 16383 and byte lengths at most 65534, the maxima the text
 /// guarantees (18.9 SR 17, 25, IL013), an exact precision of at most 18 digits (SR 32, IL011),
-/// an approximate precision of at most 113 and a scale of at most 8 (SR 42, IL011).
+/// an approximate precision of at most 112, FLOAT128's (SR 43 d), and a scale of at most 8
+/// (SR 42, IL011).
 fn h2_bounds(tree: &Plain, out: &mut Vec<Violation>) {
     let mut push = |rule: &'static str, what: String| {
         out.push(Violation { path: String::new(), rule, detail: format!("{what} is past the limit H2 names") })
@@ -2881,7 +2882,7 @@ fn h2_bounds(tree: &Plain, out: &mut Vec<Violation>) {
     }
     for (ty, precision, scale, rule) in [
         ("exact numeric type", 18, 18, "18.9 SR 32"),
-        ("approximate numeric type", 113, 8, "18.9 SR 42"),
+        ("approximate numeric type", 112, 8, "18.9 SR 42"),
     ] {
         let mut nodes = Vec::new();
         find(tree, ty, &mut nodes);

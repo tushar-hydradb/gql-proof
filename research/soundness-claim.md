@@ -299,8 +299,9 @@ or a path union or alternation that declares an element variable
   the most the saved sets hold; the seventeenth review).
   lengths and precisions are spelled from the leaf digits: S writes string and
   byte lengths up to 888 (18.9 SR 25 guarantees 65,534), exact precisions
-  up to 8, an approximate precision up to 88 bits (FLOAT128 has 113), and an
-  approximate exponent scale of at most 8, FLOAT32's (`tree.rs` settles it;
+  up to 8, an approximate precision up to 88 bits (FLOAT128 has 112, 18.9 SR 43 d), and
+  an approximate exponent scale of at most 8, one past FLOAT32's 7, which H2
+  assumes the implementation takes (`tree.rs` settles it;
   the sixth review found `FLOAT ( 8 , 88 )`). a list type's maximum
   cardinality is at most 888 (IL015, which no guarantee bounds; checked on the
   tree, "18.9 SR 73"). the implementation's maximum lengths, precisions and list
@@ -348,7 +349,7 @@ or a path union or alternation that declares an element variable
 - the limits above are checked on the tree, not taken from the generator:
   a quantifier bound past 255, a character length past 16,383 or a byte
   length past 65,534 (the maxima 18.9 SR 17, 25 guarantee), an exact precision
-  past 18, an approximate precision past 113 or a scale past 8 is withheld
+  past 18, an approximate precision past 112 or a scale past 8 is withheld
   (`verify::h2_bounds`, gate-only; the generator settles values below them)
 - IL020: the directory nesting depth is at least what S uses (S holds
   absolute paths of a few directories and `..` steps)

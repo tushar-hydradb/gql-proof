@@ -1066,3 +1066,34 @@ radix, TRIM and string function operands, 14.11 SR 10.
 runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the thirty-second review
+
+a sweep of the direction of every reading (the 75 `reading` rows, n/a rows
+with reading notes, every "(reading)" in the checkers, the types.rs header
+list). no printed counterexample. one unprinted gate hole, a lenient reading
+named nowhere, so this round is not clean. closed:
+- a datetime value expression whose primary is dynamic or unknown, moved by a
+  duration, was typed dynamic or unknown: `VALUE v BOOL = CAST ( NULL AS ANY )
+  + DURATION ( 'P1Y2M' ) FINISH` passed (28 of 84). 20.26 SR 1 types it a
+  local datetime (a zoned one only for a zoned primary), and no rule of 20.26
+  asks anything of its operands that the cure could meet, so 10.3 SR 8 fails
+  on a static type. the datetime node is now typed by SR 1 before the dynamic
+  and unknown arms. no printed temporal sentence has a dynamic instant
+
+stale text corrected, none an argument step: FLOAT128's precision is 112 (18.9
+SR 43 d), not 113, and the precision bound checked on the tree is now 112;
+the scale of 8 is one past FLOAT32's 7, an H2 assumption, now said so; the
+types.rs header line calling 21.2 SR 73 no violation (verify checks it); the
+18.9 SR 85 note ("a union of several as nullable").
+
+readings marked strict: about 90 rows across 4.17-22.19, every verify.rs and
+scope.rs "(reading)", the types.rs header items. permission-named: the H4
+list. lenient-unnamed: only the finding above.
+
+the first fix typed every datetime node by SR 1, which dropped the 20.28 unit
+check on two durations and typed `x + 1` (integers) a datetime on that tree;
+it is limited to a dynamic, unknown or null operand, where the old arms gave up.
+runs after the fix: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.

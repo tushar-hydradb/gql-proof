@@ -832,3 +832,13 @@ fn thirty_second_review_findings() {
     fine("MATCH ( x ) RETURN x , COUNT ( * ) AS c GROUP BY x", "20.12 SR 8");
     bad_on_some_parse("MATCH ( a ) RETURN a AS a , COUNT ( * ) AS c GROUP BY a , c", "20.12 SR 8");
 }
+
+#[test]
+fn thirty_third_review_findings() {
+    // 20.26 SR 1: a datetime moved by a duration is a local or zoned datetime, its primary
+    // dynamic or unknown or not
+    bad_on_some_parse("VALUE v BOOL = CAST ( NULL AS ANY ) + DURATION ( 'P1Y2M' ) FINISH", "10.3 SR 8");
+    bad_on_some_parse("VALUE v BOOL = DURATION ( 'P1Y2M' ) + CAST ( NULL AS ANY ) FINISH", "10.3 SR 8");
+    bad_on_some_parse("RETURN CAST ( NULL AS ANY ) + DURATION ( 'P1Y2M' ) AS x NEXT RETURN UPPER ( x ) AS y", "20.23 SR 2");
+    fine("VALUE v LOCAL DATETIME = CAST ( NULL AS ANY ) + DURATION ( 'P1Y2M' ) FINISH", "10.3 SR 8");
+}

@@ -59,7 +59,7 @@
 //!   twenty-ninth review found both wrong for a variable under a quantifier)
 //! - a <normalized predicate> takes a character or a byte string as its grammar says (20.23)
 //! - 21.2 SR 73 is a condition on the <list literal> derivation, which a <list value constructor>
-//!   derivation of the same text always escapes, so it is no violation
+//!   derivation of the same text always escapes; `verify` checks it on the tree all the same
 //! - texts with a second derivation that always types are read that way: `9.M`, `9.F`, `9.E+3`
 //!   are numeric literals, not properties of 9 (20.1 SR 4-6 rules those out); `"g"` and `a.b` in
 //!   a graph or binding table expression are typed as the tree holds them (H3)
@@ -2807,6 +2807,20 @@ impl<'t> Checker<'t> {
                 let rule = if temporal { "4.16.6.4" } else { "20.21 SR 3" };
                 self.report(node, rule, format!("no operator {l} {op} {r}"));
                 Ty::Any
+            }
+            // 20.26 SR 1 types the datetime value expression on this tree whatever its
+            // operands: zoned for a zoned primary, local otherwise; a dynamic, unknown or null
+            // primary is no zoned one, and no rule of 20.26 asks anything of its operands that
+            // a cure could meet (the thirty-second review: `CAST ( NULL AS ANY ) + DURATION
+            // ( .. )` was dynamic and met BOOL)
+            _ if name(node) == Some("datetime value expression")
+                && [&l, &r].iter().any(|t| t.wild() || **t == Ty::Null) =>
+            {
+                if [&l, &r].contains(&&Ty::ZonedDatetime) {
+                    Ty::ZonedDatetime
+                } else {
+                    Ty::LocalDatetime
+                }
             }
             [(N, N)] => match (&l, &r) {
                 // an operand the environment types (a parameter, H1): its result is the
