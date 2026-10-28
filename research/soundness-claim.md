@@ -423,7 +423,8 @@ each line names its audit rows (status `permission`)
   covers only 67 b, a NULL whose context fixes no type
 - **a dynamic parameter's type is the request's.** `$b` as a graph or binding
   table is taken to have the type the request gives it (20.4 SR 2), which no
-  checker sees. rows: 11.1 SR 3 a ii, 11.2 SR 4 b ii
+  checker sees. rows: 11.1 SR 3 a ii, 11.2 SR 4 b ii, 16.6 SR 2 b ii (a
+  number of paths or groups given by a parameter)
 - **a kind-less edge type pattern is free.** 18.3 SR 4 b's otherwise, read
   literally, demands an undirected shape of every edge type pattern written
   with no edge kind, `( ) -[ { } ]-> ( )` included; it is read as applying
@@ -475,3 +476,10 @@ each line names its audit rows (status `permission`)
   literally no insert edge is ever valid. it is read as "another", as NOTE 231
   intends (the thirty-first review; 55 printed sentences rest on it). rows:
   16.5 SR 11
+- **a variable is the one its scope declares.** 16.7 SR 22 b forbids a
+  parenthesized path pattern that declares a subpath variable to contain
+  another that declares it; a subpath of the same name inside a nested graph
+  pattern (an EXISTS in a WHERE) is read as another variable, its graph pattern
+  being a scope of its own (4.11.4), not as the same name. read as a name, the
+  rule would refuse `MATCH ( a = ( ( x WHERE EXISTS { ( a = <- ) } ) <- ) )`,
+  which is derivable and not printed (spec audit batch 2). rows: 16.7 SR 22 b

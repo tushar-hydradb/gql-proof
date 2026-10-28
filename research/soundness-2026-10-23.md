@@ -1390,3 +1390,18 @@ SR 8 b corrected.
 tool: tests/derivable_probe.rs splits a probe's clean trees by whether the
 generator's context rules and refinement automata accept them; gaps are
 reported with those counts.
+
+## 2026-10-28: the specification audit, batch 2 (clauses 15-19)
+
+118 rows: 77 faithful, 29 stricter, 12 under a named hypothesis, 0 gaps. the
+Cor 1 changes the rows depend on (15.1 SR 9's IREDTPC, 18.2 SR 4 b's node type
+name, 16.8 SR 4 b ii's wording) were confirmed in the corrigendum's text.
+one reading recorded as undecided is now an H4 permission rather than left
+implicit: 16.7 SR 22 b's "declares EV", read as the variable of its scope, so a
+same-named subpath in a nested EXISTS is another variable (`MATCH ( a = ( ( x
+WHERE EXISTS { ( a = <- ) } ) <- ) )` is derivable and not printed).
+bookkeeping: 16.6 SR 2 b ii named in H4's dynamic parameter line; stale notes on
+16.6 SR 2, 18.9 SR 68, 16.5 SR 10 a ii and the graph type body rows corrected.
+noted, not a gap: 16.4 SR 12's KEEP case is kept only by the gate though the
+rule string is not in GATE_ONLY, so such a tree would count as a generator bug
+(still withheld); none has occurred.
