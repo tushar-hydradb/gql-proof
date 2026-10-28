@@ -138,5 +138,5 @@ just turbolay-oracle ~/code/turbolay     # each graph loaded, the query run, the
 ## docs
 
 two kinds, and the first line says which:
-- for people, written to be read: this readme, `approach.md` (the idea in five minutes, with a worked example and a comparison to turbolay#261), `roadmap.md`, `research/progress-2026-10-22.md`, `grammar/README.md`
+- for people, written to be read: this readme, `approach.md` (the idea in five minutes, with a worked example and a comparison to turbolay#261), `roadmap.md`, `research/progress-2026-10-22.md`, `grammar/README.md`, `blog/gql-proof.md` (a draft blog post: the process step by step, with the paper each step comes from)
 - for agents, terse on purpose and marked `> for agents` at the top: `reference.md` (every command, flag, reading and measurement), `algorithm.md` (how generation computes and what it costs), `research/` (dated working notes), `sentences/README.md`
