@@ -805,3 +805,21 @@ fn thirtieth_review_findings() {
     fine("MATCH ( ( ) -> ( ) ) { 1 , 2 } RETURN 1 AS a", "16.7 SR 22 group");
     fine("MATCH ( x ) RETURN CAST ( NULL AS LIST < INT > ) AS a", "16.7 SR 22 group");
 }
+
+#[test]
+fn thirty_first_review_families() {
+    // families no set prints, withheld whole
+    bad_on_some_parse("RETURN COALESCE ( $b , 1 ) AS a", "withheld family");
+    bad_on_some_parse("SESSION SET VALUE $b = 1 SESSION SET VALUE $c = $b", "withheld family");
+    bad_on_some_parse("CALL a ( ) YIELD x RETURN x", "withheld family");
+    bad_on_some_parse("MATCH ANY ( a ) -> ( b ) RETURN a", "withheld family");
+    bad_on_some_parse("MATCH ( x ) | ( x ) RETURN x", "withheld family");
+    // the printed neighbours stay
+    fine("SESSION SET GRAPH $b = $b", "withheld family");
+    fine("RETURN CASE 1 WHEN $b THEN 2 ELSE 3 END AS a", "withheld family");
+    bad_on_some_parse("RETURN CASE WHEN TRUE THEN $b ELSE 3 END AS a", "withheld family");
+    bad_on_some_parse("RETURN [ $b , 1 ] AS a", "withheld family");
+    fine("RETURN COALESCE ( 1 , 2 ) AS a", "withheld family");
+    fine("MATCH ANY ( ) -> ( ) RETURN 1 AS a", "withheld family");
+    fine("CALL a ( )", "withheld family");
+}

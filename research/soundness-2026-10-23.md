@@ -1000,3 +1000,36 @@ runs after the change: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580), so withholding the group family cost no printed
 sentence; 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the thirtieth review (clean)
+
+the first clean round since the eighteenth: no printed counterexample, no gate
+hole, no false premise an argument step uses. the reviewer parsed all 50,823
+distinct sentences of the sets (limit 64), grouped them by construct family,
+probed about 120 printed-adjacent variations (CALL scope, YIELD, set operation
+columns, LET, FOR, VALUE, SET and REMOVE, KEEP, graph type bodies, catalog
+names across spellings, ELEMENT_ID through columns, element predicates,
+session parameter typing, joins, named procedure columns in combinations) and
+read combine, assignable, cast_fault, combined and parameter_once against the
+text. all held. one stale clause in an audit note (16.7 SR 17, "no set holds
+TEMP": an old set did) is corrected; no step used it.
+
+a method note: the inherited probe harnesses build the verifier without the
+claim's conformance devices, so TEMP, NO BINDINGS and one-component unions
+look clean there; the real gate refuses them.
+
+the round also mapped every family the checkers reason about that no current
+set prints. five of them, where rounds 18-28 found their holes, are withheld
+whole now ("withheld family", gate-only): a parameter inside a combination, a
+session parameter set by one command and read by another, a named procedure
+call with YIELD, a selective path pattern that declares an element variable,
+and a path union or alternation that declares one. this only refuses more.
+
+runs after the change: the first parameter detector (any parameter inside a
+CASE) withheld 59 printed neo4j sentences (`CASE SESSION_USER WHEN ( $b ) .
+a ..`, `CASE WHEN NULL = TRIM ( NULL , $b ) ..`), whose parameter is no
+combination input; it now takes only an input that is a bare parameter (a CASE
+result, a COALESCE or NULLIF operand, a list element, a concatenation
+operand). every count is then unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and
+198; neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.

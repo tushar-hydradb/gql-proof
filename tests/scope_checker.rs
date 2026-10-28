@@ -37,7 +37,7 @@ fn violations(text: &str) -> Vec<Violation> {
             if verifier
                 .verify(&plain, &n.render(&PARSE))
                 .iter()
-                .all(|v| v.rule == "16.7 SR 22 group")
+                .all(|v| v.rule == "16.7 SR 22 group" || v.rule == "withheld family")
             {
                 let mut rules: Vec<_> = scope::check(&plain).iter().map(|v| v.rule).collect();
                 rules.sort();

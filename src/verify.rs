@@ -50,6 +50,7 @@ pub const GATE_ONLY: &[&str] = &[
     "14.5 SR 3 kinds",
     "15.1 SR 9 yield",
     "16.7 SR 22 group",
+    "withheld family",
     // a key label set omitted under a claim without GG22: the generator follows no claim's
     // graph type bodies this way; the gate does
     "18.2 SR 9",
@@ -260,6 +261,7 @@ impl<'b> Verifier<'b> {
             procedure_kinds(tree, &mut out);
             procedure_yields(tree, &mut out);
             group_variables(tree, &mut out);
+            unprinted_families(tree, &mut out);
             delimited_names(tree, &mut out);
             one_kind_per_name(tree, &mut out);
             syntax_rules(tree, id086, &mut Vec::new(), &mut out);
@@ -2708,6 +2710,119 @@ fn group_variables(tree: &Plain, out: &mut Vec<Violation>) {
             rule: "16.7 SR 22 group",
             detail: "a group variable or a group list type (withheld, reading)".into(),
         });
+    }
+}
+
+/// Families no set prints and on which rounds 18-28 found the checkers' logic wrong, withheld
+/// whole rather than read (the strict side; gate-only; the thirtieth review mapped them, each
+/// detector with no hit in a printed set):
+/// - a parameter inside a combination (CASE, COALESCE, NULLIF, a list constructor or a list
+///   concatenation): the H1 remap of a parameter written once
+/// - a session parameter one SESSION SET sets and another command reads (7.1 SR 6, 22.1 SR 5)
+/// - a named procedure call with YIELD (15.1 SR 9, 16.14)
+/// - a selective path pattern that declares an element variable (16.6 SR 5-8)
+/// - a path pattern union or multiset alternation that declares an element variable (16.7
+///   SR 10, 11, 22 d)
+fn unprinted_families(tree: &Plain, out: &mut Vec<Violation>) {
+    let mut push = |what: &str| {
+        out.push(Violation {
+            path: String::new(),
+            rule: "withheld family",
+            detail: format!("{what} (withheld whole, reading)"),
+        })
+    };
+    let param_name = |n: &Plain| {
+        let mut pn = Vec::new();
+        find(n, "parameter name", &mut pn);
+        pn.first().map_or_else(|| n.text(), |p| graph_type::ident(p))
+    };
+    let declares = |n: &Plain| contains(n, "element variable declaration");
+    // an input of a combination that is, through one-child nodes, a bare parameter
+    let mut inputs = Vec::new();
+    for c in ["simple case", "searched case"] {
+        let mut cases = Vec::new();
+        find(tree, c, &mut cases);
+        for case in cases {
+            find(case, "result expression", &mut inputs);
+        }
+    }
+    let mut lists = Vec::new();
+    find(tree, "list value constructor by enumeration", &mut lists);
+    for l in lists {
+        find(l, "list element", &mut inputs);
+    }
+    for c in ["case abbreviation", "list concatenation"] {
+        let mut nodes = Vec::new();
+        find(tree, c, &mut nodes);
+        for n in nodes {
+            inputs.extend(def_kids(n));
+        }
+    }
+    if inputs.iter().any(|i| bare_parameter(i)) {
+        push("a parameter as a combination's input");
+    }
+    let mut commands = Vec::new();
+    find(tree, "session set command", &mut commands);
+    for (i, c) in commands.iter().enumerate() {
+        let mut sps = Vec::new();
+        find(c, "session parameter specification", &mut sps);
+        let set: Vec<String> = sps.iter().map(|s| param_name(s)).collect();
+        let read = commands.iter().enumerate().any(|(j, d)| {
+            let mut dps = Vec::new();
+            find(d, "dynamic parameter specification", &mut dps);
+            j != i && dps.iter().any(|p| set.contains(&param_name(p)))
+        });
+        if read {
+            push("a session parameter set by one command and read by another");
+            break;
+        }
+    }
+    let mut npcs = Vec::new();
+    find(tree, "named procedure call", &mut npcs);
+    if npcs.iter().any(|n| own(n, "yield clause").is_some()) {
+        push("a named procedure call with YIELD");
+    }
+    let mut pps = Vec::new();
+    find(tree, "path pattern", &mut pps);
+    if pps.iter().any(|p| (contains(p, "any path search") || contains(p, "shortest path search")) && declares(p)) {
+        push("a selective path pattern that declares an element variable");
+    }
+    let mut unions = Vec::new();
+    find(tree, "path pattern union", &mut unions);
+    find(tree, "path multiset alternation", &mut unions);
+    if unions.iter().any(|u| declares(u)) {
+        push("a path pattern union or alternation that declares an element variable");
+    }
+}
+
+/// The non-terminal children of `node`, synthetic groups flattened.
+fn def_kids(node: &Plain) -> Vec<&Plain> {
+    let mut out = Vec::new();
+    if let Plain::Def { children, .. } = node {
+        for c in children {
+            match c {
+                Plain::Def { synthetic: true, .. } => out.extend(def_kids(c)),
+                Plain::Def { .. } => out.push(c),
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+/// `node` is, through nodes with one child each, a <dynamic parameter specification>.
+fn bare_parameter(node: &Plain) -> bool {
+    let mut n = node;
+    loop {
+        if matches!(n, Plain::Def { name, .. } if name == "dynamic parameter specification") {
+            return true;
+        }
+        let Plain::Def { children, .. } = n else { return false };
+        let all: Vec<&Plain> = children.iter().collect();
+        match def_kids(n).as_slice() {
+            [only] if all.len() == 1 || all.iter().all(|c| matches!(c, Plain::Def { .. })) => n = only,
+            _ => return false,
+        }
     }
 }
 

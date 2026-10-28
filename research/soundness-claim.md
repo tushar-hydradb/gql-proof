@@ -282,7 +282,11 @@ review moved nine rows from `reading` to `permission`). some families no set
 prints are withheld whole instead of read, which keeps out more than any
 reading: group variables and group list types ("16.7 SR 22 group": an element
 variable declared under a quantifier, a written GROUP list type; the
-twenty-ninth review found the checkers disagree on them)
+twenty-ninth review found the checkers disagree on them), and five more the
+thirtieth review mapped, where rounds 18-28 found holes ("withheld family"): a
+parameter inside a combination, a session parameter set by one command and
+read by another, a named procedure call with YIELD, a selective path pattern
+or a path union or alternation that declares an element variable
 
 ## hypothesis H2, the implementation choices named
 
