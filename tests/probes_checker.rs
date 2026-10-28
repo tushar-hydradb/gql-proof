@@ -934,3 +934,15 @@ fn forty_second_review_findings() {
     // IA019 in comments: a bidirectional control character in a comment leaf leaves the
     // sentence no parse (checked with the review harness)
 }
+
+#[test]
+fn forty_third_review_findings() {
+    // 4.7.1: only GQL language characters and the line feed
+    bad_on_some_parse("RETURN 'é' AS x", "4.7.1 repertoire");
+    fine("RETURN 'e' AS x", "4.7.1 repertoire");
+    // 21.2 SR 61: a time shift is a sign and `dd:dd` in ASCII digits
+    bad_on_some_parse("SESSION SET TIME ZONE '++5:00'", "21.2 SR 61");
+    bad_on_some_parse("SESSION SET TIME ZONE '+00:+0'", "21.2 SR 61");
+    bad_on_some_parse("SESSION SET TIME ZONE '-00:00'", "21.2 SR 61");
+    fine("SESSION SET TIME ZONE '+00:00'", "21.2 SR 61");
+}

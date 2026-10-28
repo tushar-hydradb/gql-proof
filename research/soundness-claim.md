@@ -392,6 +392,10 @@ or a path union or alternation that declares an element variable
 - IL020: the directory nesting depth is at least what S uses (S holds
   absolute paths of a few directories and `..` steps)
 - IA023: the line feed ends a line (comments, byte string separators)
+- IV001: the source repertoire holds the line feed; every other character of S
+  is a GQL language character (ASCII letters, digits, special characters, other
+  digits), which every repertoire holds, checked on the text ("4.7.1
+  repertoire", gate-only; the forty-second review)
 - IV023: truncating whitespace is the space
 - the supported property value types include the predefined types S
   inserts, sets, assigns to a property value type or casts a property to

@@ -64,6 +64,7 @@ pub const GATE_ONLY: &[&str] = &[
     "20.18 SR 4 bound",
     "20.23 SR 1 bound",
     "20.1 SR 1 empty",
+    "4.7.1 repertoire",
     "17.1 SR 6 at",
     "22.19 SR 2 unknown",
     "11.1 SR 3 material",
@@ -282,6 +283,19 @@ impl<'b> Verifier<'b> {
                 path: String::new(),
                 rule: "conformance rule",
                 detail: f.label.clone(),
+            });
+        }
+        // 4.7.1, IV001: the source repertoire is the implementation's subset of Unicode, holding
+        // every GQL language character (ASCII letters, digits, the special characters, other
+        // digits) and, by H2, the line feed; any other character is refused on the text (the
+        // forty-second review: `RETURN 'é' AS x` rested on no hypothesis)
+        if let Some(c) = rendered.chars().find(|&c| {
+            !(c.is_ascii_graphic() || c == ' ' || c == '\n' || (!c.is_ascii() && digit_value(c).is_some()))
+        }) {
+            out.push(Violation {
+                path: String::new(),
+                rule: "4.7.1 repertoire",
+                detail: format!("{c:?} is no GQL language character"),
             });
         }
         let expected = self.render(tree);
@@ -534,11 +548,15 @@ impl<'b> Verifier<'b> {
             }),
             "time zone string" => temporal(node, "21.2 SR 61", |c| {
                 let b = c.as_bytes();
+                // a sign and `dd:dd` in ASCII digits (`parse` took `+5`; the forty-second
+                // review), and no minus on a zero shift (the strict side)
                 c.len() == 6
                     && (b[0] == b'+' || b[0] == b'-')
                     && b[3] == b':'
+                    && [1, 2, 4, 5].iter().all(|&i| b[i].is_ascii_digit())
                     && c[1..3].parse::<u8>().is_ok_and(|h| h < 24)
                     && c[4..6].parse::<u8>().is_ok_and(|m| m < 60)
+                    && !(b[0] == b'-' && &c[1..] == "00:00")
             }),
             _ => Ok(()),
         }

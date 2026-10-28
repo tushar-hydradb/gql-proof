@@ -1343,3 +1343,31 @@ H1.
 runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the forty-second review
+
+a sweep of every prose leaf, and the gate wiring after main's oracle merge
+(unchanged: the record gained `vars` and `params`, nothing new prints). no
+printed counterexample. one unprinted gate hole and one argument gap, so this
+round is not clean. both closed:
+- 21.2 SR 61: a time zone string's digits were tested with `parse::<u8>`,
+  which takes a leading `+`, so `'++5:00'` and `'+00:+0'` passed. now a sign
+  and `dd:dd` in ASCII digits, and no minus on a zero shift (the strict side)
+- IV001: the source repertoire is the implementation's subset of Unicode,
+  named nowhere, and the 21.2 SR 41 b i row said it was the whole of Unicode;
+  `RETURN 'é' AS x` rested on it. the printed text is now held to GQL language
+  characters and the line feed ("4.7.1 repertoire", gate-only), and H2 says the
+  repertoire holds the line feed (the printed byte string separators use it)
+
+every other leaf held. weak points, not findings: `TIME '12:00:60'` (ISO 8601's
+leap second), a 13 digit fraction of a second.
+
+an approach tried and dropped after this round: withholding every production
+no printed tree uses would end the unprinted holes but freeze coverage, which
+the completeness argument cannot afford. instead a feasibility pass is
+classifying every rule as local or non-local over the generator's refined
+grammar, toward proving soundness on that finite grammar.
+
+runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
