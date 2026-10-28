@@ -864,3 +864,12 @@ fn thirty_fifth_review_findings() {
     bad_on_some_parse("RETURN DURATION 'P1M' - INTERVAL '1' DAY AS x", "20.28 SR 1");
     bad_on_some_parse("RETURN DURATION('P1Y') + DURATION 'PT1M' AS x", "20.28 SR 1");
 }
+
+#[test]
+fn thirty_sixth_review_findings() {
+    // a closed node or edge type at a declared-type site is not followed exactly, so refused
+    bad_on_some_parse("VALUE x ( :a ) -[ { } ]-> ( ) = CAST ( NULL AS ( :b ) -[ { } ]-> ( ) ) FINISH", "10.3 SR 8");
+    bad_on_some_parse("VALUE x NODE { a INT8 } = CAST ( NULL AS NODE { a INT64 } ) FINISH", "10.3 SR 8");
+    bad_on_some_parse("SESSION SET VALUE $p :: ( :a ) -[ { } ]-> ( ) = CAST ( NULL AS ( :b ) -[ { } ]-> ( ) )", "7.1 SR 6");
+    fine("MATCH ( x ) RETURN CAST ( NULL AS NODE { a INT } ) IS NULL AS b", "10.3 SR 8");
+}

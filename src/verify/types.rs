@@ -1017,7 +1017,7 @@ impl<'t> Checker<'t> {
                         self.report(
                             node,
                             "7.1 SR 6",
-                            "(reading) a length-bounded string or cardinality-bounded list type is not known to take every value of the initializer".into(),
+                            "(reading) a length-bounded string, cardinality-bounded list or closed element type is not known to take every value of the initializer".into(),
                         );
                     }
                     if !assignable(&t, &declared) {
@@ -1234,7 +1234,7 @@ impl<'t> Checker<'t> {
             self.report(
                 btrvt,
                 rule,
-                "(reading) a length- or cardinality-bounded column type is not known to take every value of the initializer".into(),
+                "(reading) a length-bounded, cardinality-bounded or closed element column type is not known to take every value of the initializer".into(),
             );
         }
         match cols {
@@ -1628,7 +1628,7 @@ impl<'t> Checker<'t> {
             self.report(
                 def,
                 "10.3 SR 8",
-                "(reading) a length-bounded string or cardinality-bounded list type is not known to take every value of the initializer".into(),
+                "(reading) a length-bounded string, cardinality-bounded list or closed element type is not known to take every value of the initializer".into(),
             );
         }
         // SR 8 b i 1
@@ -4355,7 +4355,11 @@ fn bounded_string(vt: &Plain) -> bool {
     // review: `VALUE x LIST < INT > [ 1 ] = [ 1 , 2 ]`)
     let mut lists = Vec::new();
     find(vt, "list value type", &mut lists);
-    types.iter().any(|t| {
+    // a closed node or edge type likewise: `Shape` keeps labels and coarse property kinds, not
+    // endpoints, direction or exact property types, so two different ones compare equal (the
+    // thirty-fifth review: `( :a ) -[ { } ]-> ( )` took `( :b ) -[ { } ]-> ( )`)
+    let closed = contains(vt, "closed node reference value type") || contains(vt, "closed edge reference value type");
+    closed || types.iter().any(|t| {
         contains(t, "min length")
             || contains(t, "max length")
             || contains(t, "fixed length")

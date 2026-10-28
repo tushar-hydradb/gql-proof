@@ -1156,3 +1156,29 @@ predicates; store assignment (13.3, 22.10).
 runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the thirty-fifth review
+
+assignability end to end, and parse dependence. no printed counterexample. one
+unprinted gate hole, so this round is not clean. closed:
+- closed node and edge types were compared by `Shape` (labels, property names,
+  coarse property kinds), which drops an edge type's endpoints and direction
+  and the exact property value types (INT8 against INT64, NOT NULL): `VALUE x
+  ( :a ) -[ { } ]-> ( ) = CAST ( NULL AS ( :b ) -[ { } ]-> ( ) )` passed (42
+  of 546), at 7.1 SR 6 too. a declared type containing a closed node or edge
+  type is refused now, as length- and cardinality-bounded types are. printed
+  sets use closed element types only as `CAST ( NULL AS .. )` under IS NULL or
+  IS TYPED. the same coarse equality in `combine` only decides label and
+  property checks, which such types share, and its result reaches no declared
+  site now
+
+checked and found to hold: assignable against 4.15.3, 4.15.4, 4.16.5, 4.16.6,
+4.16.8, 4.17.3 (record field sets exact, list element nullability by
+nested_not_null, bounds by the round 34 refusal at any depth, duration groups,
+unions with 18.9 SR 85, 86, 88); casts between reference types (Table 4);
+parse dependence: the gate exports, renders, verifies, scope- and type-checks
+one tree and prints its rendering, and no checker re-parses.
+
+runs after the fix: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
