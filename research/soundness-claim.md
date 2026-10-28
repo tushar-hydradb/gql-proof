@@ -500,3 +500,18 @@ each line names its audit rows (status `permission`)
   its own, so `MATCH ( a = <- ) WHERE EXISTS { ( a = <- ) }` holds; the
   generator spells every subpath variable `a` (round 43). rows: 16.7 SR 22 b,
   16.4 SR 4
+- **a statement's items see its incoming table.** 20.12 SR 8 asks a binding
+  variable reference to name a field of its incoming working record, and the
+  text amends that record with the incoming table's columns only at the sites it
+  names (WHERE, FOR's source, sort keys, insert property values, procedure
+  calls, a graph pattern's expressions, a binary set function's dependent
+  expression, grouped aggregating items). read literally, a return item without
+  GROUP BY (14.11 SR 10 b ii), a general set function's argument (20.9), a SET,
+  REMOVE or DELETE item (13.3 SR 3, 13.4 SR 3, 13.5 SR 5) and a SELECT item
+  (through 14.12 SR 25, 26) see no table column, so `MATCH ( x ) RETURN x`
+  would be invalid, though the text's own SELECT rewrite yields `MATCH ..
+  RETURN v AS v`. they are read as seeing the incoming table's columns as
+  fields; without GROUP BY that admits an item mixing an aggregate with a bare
+  column, which 14.11 GR 3 b gives a meaning (round 45; printed sentences rest
+  on it, `RETURN COUNT ( * ) AS x NEXT RETURN SUM ( x ) AS y` among them).
+  rows: 20.12 SR 8, 14.11 SR 10 b, 20.9 SR 8, 13.3 SR 3, 13.4 SR 3, 13.5 SR 5

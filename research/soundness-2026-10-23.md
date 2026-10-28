@@ -1485,3 +1485,24 @@ round is not clean:
   KEEP shapes against those rules all held. the claim and the code comment now
   say exactly this (no withholding added). the IW014 wording on case is made
   exact too
+
+## 2026-10-28: the forty-fifth review (derivable trees)
+
+one finding, with a printed effect, so this round is not clean:
+- 20.12 SR 8 read literally: the incoming working record is amended with the
+  incoming table's columns only at the sites the text names, not at a return
+  item without GROUP BY, a general set function's argument, a SET, REMOVE or
+  DELETE item, or a SELECT item; `MATCH ( x ) RETURN x` (derivable) and printed
+  `RETURN COUNT ( * ) AS x NEXT RETURN SUM ( x ) AS y` would break it. the text's
+  own SELECT rewrite yields `MATCH .. RETURN v AS v`, so it is a defect; the
+  checker amends at every site. the reading was named nowhere and the 20.12 SR 8
+  row called it "(narrower)" (spec audit batch 3 had it faithful). it is an H4
+  permission now ("a statement's items see its incoming table"), the row's
+  status `permission`; it admits, without GROUP BY, an item mixing an aggregate
+  with a bare column (14.11 GR 3 b gives it a meaning; not derivable)
+
+checked and found to hold, as derivable probes: 16.5 insert scope and SR 9-10;
+16.7 SR 24 and 16.3 SR 21 (path variables in element WHERE and property specs,
+20 shapes); 16.3 SR 12 YIELD; joins with incoming fields; CALL scope clauses and
+15.1 SR 9; EXISTS and VALUE two deep; graph and table variables (11.1 SR 2 b,
+10.1 SR 7); label expressions and element predicates; delimited spellings.
