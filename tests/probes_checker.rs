@@ -946,3 +946,10 @@ fn forty_third_review_findings() {
     bad_on_some_parse("SESSION SET TIME ZONE '-00:00'", "21.2 SR 61");
     fine("SESSION SET TIME ZONE '+00:00'", "21.2 SR 61");
 }
+
+#[test]
+fn spec_audit_batch_four() {
+    // 21.3 SR 13: an external object reference holds no comment opener and no quote (the bad
+    // forms leave no parse; checked with derivable_probe)
+    fine("CREATE GRAPH TYPE ab COPY OF urn:example:graph", "17.8 SR 2, 3");
+}

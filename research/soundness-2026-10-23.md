@@ -1419,3 +1419,27 @@ returns no column, which 20.6 SR 3 needs for `RETURN *` in a VALUE subquery
 (not derivable, not printed). bookkeeping: the null case in many clause 20
 notes rests on H4's null permission, not 4.14.4; stale notes on 20.9 SR 4,
 20.6 SR 5 a, 20.1 SR 1 corrected.
+
+## 2026-10-28: the specification audit, batch 4 (clause 21), and the audit's end
+
+47 rows: 21 faithful, 13 stricter, 6 under a named hypothesis, 6 gaps of three
+causes, 1 undecided. none printed; each gap probe clean and derivable. closed:
+- the repertoire: "4.7.1 repertoire" took every printable ASCII character but
+  H2's IV001 named only GQL language characters, which leave out `#`, `;`, `^`
+  (21.2 SR 41 b i, 21.3 SR 9, 10). H2 now names printable ASCII, which every
+  engine takes; no coverage is withheld
+- an external object reference could hold `/*b*/`, `--` or a quote, so the
+  printed chunk lexed as other tokens (21.3 SR 13; the row's premise false).
+  the leaf refuses them now; the bad forms have no parse
+- ISO 8601's agreements: years 0000-1582 in date and datetime strings, and the
+  undecided second of 60, are named in H2 (implementation agreements)
+bookkeeping: stale notes on 21.3 SR 5 c, d and 21.2 SR 41 b iv; tokens.rs's
+external reference justification.
+
+the audit is complete: 312 constraint and type rows read against the literal
+text, 7 gaps found (1 in batch 1, 6 in batch 4), all closed, four of them by
+naming an implementation choice or the environment in H and three by a check.
+
+runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.

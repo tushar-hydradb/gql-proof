@@ -26,7 +26,7 @@ pub const ASSUMED_TOKENS: &[(&str, &str)] = &[
     ),
     (
         "external object reference",
-        "17.8 SR 2, 3: a URI with a scheme; the stub avoids `//`, which would open a comment",
+        "17.8 SR 2, 3: a URI with a scheme; the leaf refuses `//`, `/*`, `*/`, `--` and a quote, which would open a comment or a string",
     ),
 ];
 

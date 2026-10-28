@@ -593,6 +593,11 @@ fn bidi_control(c: char) -> bool {
 /// a percent sign only before two hex digits, at most one `#` (the forty-first review:
 /// `urn:a<b`, `urn:a#b#c`, `urn:%zz` passed).
 fn uri_rest(rest: &str) -> bool {
+    // no comment opener or closer, and no quote: the chunk is one token, lexed as the tree
+    // has it (21.3 SR 13; spec audit batch 4: `urn:a/*b*/c`, `urn:a--b`, `urn:a'b`)
+    if rest.contains("/*") || rest.contains("*/") || rest.contains("--") || rest.contains('\'') {
+        return false;
+    }
     let b: Vec<char> = rest.chars().collect();
     let mut hashes = 0;
     let mut i = 0;
