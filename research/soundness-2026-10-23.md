@@ -1506,3 +1506,23 @@ checked and found to hold, as derivable probes: 16.5 insert scope and SR 9-10;
 20 shapes); 16.3 SR 12 YIELD; joins with incoming fields; CALL scope clauses and
 15.1 SR 9; EXISTS and VALUE two deep; graph and table variables (11.1 SR 2 b,
 10.1 SR 7); label expressions and element predicates; delimited spellings.
+
+## 2026-10-28: the forty-sixth review (derivable trees)
+
+one argument gap with a printed effect, so this round is not clean:
+- two outgoing types later rules read are declared by neither the text nor
+  4.8.1's one-child convention: an order by and page statement's outgoing
+  table and record (14.9 SR 4-6 give only its clauses' incoming types) and a
+  linear query statement's outgoing working table (14.3 SR 6 gives its own type
+  only; 14.2 SR 10 and 9.2 SR 12 b read it). scope.rs passes them through as
+  the evident ones, and its comment cited 14.9 SR 4-5 for that, which they do not
+  say. H4 now names the reading ("undeclared outgoing types are the evident
+  ones"); the comment is corrected. printed `RETURN COUNT ( * ) AS x NEXT ORDER
+  BY x FINISH` and every NEXT that reads the previous result rest on it
+
+checked and found to hold: 14.10 SR 4 c i 2 A I-V (27 probes); 9.2 SR 12 c
+under definitions, CALL and EXISTS; 9.2 SR 4-7 (21 chain probes); 16.14; 14.7
+under cor 1; 14.8 SR 7, 11; 14.11 SR 6, 10; 16.15; 20.1 SR 7; catalog shapes
+(26 probes); NEXT chains of 3-4 statements (300 splices, 600 multi-token
+mutations, a 551-probe cross product), all clean derivable trees valid apart
+from the order by and page cases above.

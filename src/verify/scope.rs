@@ -444,7 +444,9 @@ impl<'t> Checker<'t> {
             Some("match statement") => self.match_statement(node, scope),
             Some("let statement") => self.let_statement(node, scope),
             Some("for statement") => self.for_statement(node, scope),
-            // 14.6 SR 6-9, 14.9 SR 4-5: the scope passes through.
+            // 14.6 SR 6-9: FILTER passes the scope through. 14.9 SR 4-6 say only what an
+            // order by and page statement's clauses see, and declare no outgoing table or
+            // record: passing them through is H4's "undeclared outgoing types" (round 46).
             Some("filter statement" | "order by and page statement") => {
                 self.expr(node, &Env::new(scope.merged()), At::default());
                 scope

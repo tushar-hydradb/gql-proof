@@ -515,3 +515,15 @@ each line names its audit rows (status `permission`)
   column, which 14.11 GR 3 b gives a meaning (round 45; printed sentences rest
   on it, `RETURN COUNT ( * ) AS x NEXT RETURN SUM ( x ) AS y` among them).
   rows: 20.12 SR 8, 14.11 SR 10 b, 20.9 SR 8, 13.3 SR 3, 13.4 SR 3, 13.5 SR 5
+- **undeclared outgoing types are the evident ones.** the text declares a
+  statement's outgoing working table and record statement by statement, with
+  4.8.1's convention for a container of one child; two sites later rules use
+  are declared by neither: an order by and page statement (14.9 SR 4-6 give
+  only its clauses' incoming types) and a linear query statement's outgoing
+  working table (14.3 SR 6 gives its own type only, which 14.2 SR 10 a iv, b and
+  9.2 SR 12 b then read). they are read as the evident ones: the order by and
+  page statement passes its incoming table and record through, and a linear
+  query statement's outgoing working table has its declared type. every NEXT
+  that reads the previous result rests on the second (round 46; printed
+  `RETURN COUNT ( * ) AS x NEXT ORDER BY x FINISH`). rows: 14.9 SR 4, 5, 6,
+  14.3 SR 5, 6, 14.2 SR 10, 9.2 SR 12 b
