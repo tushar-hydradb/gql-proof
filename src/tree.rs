@@ -286,6 +286,13 @@ fn settle_values(
     {
         changed |= lower(cfg, holder, 8, spell);
     }
+    // and a precision at most 88, the most H2 names (the thirty-seventh review: H2 said 88 and
+    // the checker took 112)
+    if cfg.base(nt) == "approximate numeric type"
+        && let Some(holder) = through_groups(cfg, root, "precision")
+    {
+        changed |= lower(cfg, holder, 88, spell);
+    }
     for child in &mut root.children {
         changed |= settle_values(cfg, child, spell, rng);
     }

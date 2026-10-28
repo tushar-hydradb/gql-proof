@@ -60,6 +60,9 @@ pub const GATE_ONLY: &[&str] = &[
     // the eighteenth review: H2's list cardinality, and H1 for a parameter in a combination
     "18.9 SR 73",
     "21.2 SR 14",
+    "20.17 SR 3 bound",
+    "20.18 SR 4 bound",
+    "20.23 SR 1 bound",
     "17.1 SR 6 at",
     "22.19 SR 2 unknown",
     "11.1 SR 3 material",
@@ -1436,7 +1439,14 @@ fn syntax_rules<'t>(
                     let g = get_general_category(c);
                     matches!(
                         g,
-                        G::Control | G::Format | G::Unassigned | G::Surrogate | G::LineSeparator | G::ParagraphSeparator
+                        G::Control
+                            | G::Format
+                            | G::Unassigned
+                            | G::Surrogate
+                            | G::LineSeparator
+                            | G::ParagraphSeparator
+                            // 21.3 SR 5 e, IA020 read strictly (the thirty-seventh review)
+                            | G::PrivateUse
                     ) || (g == G::SpaceSeparator && c != ' ')
                 }) {
                     out.push(violation(
@@ -2495,26 +2505,31 @@ fn modifies(statement: &Plain) -> bool {
 /// `0`/`o` and case, which only reports more. Two different identifiers of one tree with one
 /// skeleton are reported.
 fn confusables(tree: &Plain, out: &mut Vec<Violation>) {
+    // one pass, character by character, lowercased: UTS #39's map (`1`, `I`, `|` to `l`, `0`
+    // to `O`, `` ` `` to `'`, `"` to `''`, `m` to `rn`) followed by a per-character widening
+    // (case, `w` to `vv`, `d` to `cl`), so two names with one UTS skeleton always share this
+    // one (the thirty-seventh review: rewriting `cl` to `d` before `1` to `l` kept `c1` and
+    // `cl` apart)
     fn skeleton(name: &str) -> String {
-        let mut s = name.to_lowercase();
-        for (from, to) in [
-            ("rn", "m"),
-            ("vv", "w"),
-            ("cl", "d"),
-            ("1", "l"),
-            ("i", "l"),
-            ("|", "l"),
-            ("0", "o"),
-            ("`", "'"),
-            ("\"", "''"),
-        ] {
-            s = s.replace(from, to);
-        }
-        s
+        name.to_lowercase()
+            .chars()
+            .map(|c| match c {
+                '1' | 'i' | '|' => "l".to_string(),
+                '0' => "o".to_string(),
+                '`' => "'".to_string(),
+                '"' => "''".to_string(),
+                'm' => "rn".to_string(),
+                'w' => "vv".to_string(),
+                'd' => "cl".to_string(),
+                c => c.to_string(),
+            })
+            .collect()
     }
-    // Regular and delimited identifiers alike: the representative form is what is compared.
+    // Regular, extended (a parameter's name) and delimited identifiers alike: the
+    // representative form is what is compared (the thirty-seventh review: `$1` against `l`)
     let mut ids = Vec::new();
     find(tree, "regular identifier", &mut ids);
+    find(tree, "extended identifier", &mut ids);
     find(tree, "delimited identifier", &mut ids);
     let mut seen: std::collections::BTreeMap<String, String> = Default::default();
     for id in ids {
@@ -2897,7 +2912,7 @@ fn h2_bounds(tree: &Plain, out: &mut Vec<Violation>) {
     }
     for (ty, precision, scale, rule) in [
         ("exact numeric type", 18, 18, "18.9 SR 32"),
-        ("approximate numeric type", 112, 8, "18.9 SR 42"),
+        ("approximate numeric type", 88, 8, "18.9 SR 42"),
     ] {
         let mut nodes = Vec::new();
         find(tree, ty, &mut nodes);
@@ -2908,6 +2923,70 @@ fn h2_bounds(tree: &Plain, out: &mut Vec<Violation>) {
             find(n, "scale", &mut ss);
             if ps.iter().any(|p| integer_value(p) > precision) || ss.iter().any(|v| integer_value(v) > scale) {
                 push(rule, format!("a precision or scale in {}", n.text()));
+            }
+        }
+    }
+    // the thirty-seventh review: limits that rested on the generator
+    // IL015 for a list constructor's elements (20.17 SR 3 c) and a record's fields (20.18 SR
+    // 4, 18.9 SR 79): at most 888, nested ones counted with their parent (over)
+    for (node, part, rule) in [
+        ("list value constructor by enumeration", "list element", "20.17 SR 3 bound"),
+        ("record constructor", "field", "20.18 SR 4 bound"),
+        ("field types specification", "field type", "20.18 SR 4 bound"),
+    ] {
+        let mut nodes = Vec::new();
+        find(tree, node, &mut nodes);
+        for n in nodes {
+            let mut parts = Vec::new();
+            find(n, part, &mut parts);
+            if parts.len() > 888 {
+                push(rule, format!("{} parts in a {node}", parts.len()));
+            }
+        }
+    }
+    // IL013 for a concatenation of fixed-length strings (20.23 SR 1 b, 3 b): the fixed lengths
+    // written under it summed (an unwritten one is 1) are at most the guaranteed maximum
+    for (node, ty, fixed, most) in [
+        ("character string concatenation", "character string type", "CHAR", 16383),
+        ("byte string concatenation", "byte string type", "BINARY", 65534),
+    ] {
+        let mut nodes = Vec::new();
+        find(tree, node, &mut nodes);
+        for n in nodes {
+            let mut types = Vec::new();
+            find(n, ty, &mut types);
+            let sum: u64 = types
+                .iter()
+                .filter(|t| t.text().to_ascii_uppercase().starts_with(fixed))
+                .map(|t| own(t, "fixed length").map_or(1, integer_value))
+                .sum();
+            if sum > most {
+                push("20.23 SR 1 bound", format!("fixed lengths summing to {sum} under {}", n.text()));
+            }
+        }
+    }
+    // IL010 after the 21.2 SR 12 and 13 rewrites: an approximate literal's mantissa, and an
+    // exact one in scientific notation written out (mantissa digits plus the exponent), have
+    // at most 9 digits (`1E9M` is `1000000000.`)
+    for lit in ["exact numeric literal", "approximate numeric literal"] {
+        let mut nodes = Vec::new();
+        find(tree, lit, &mut nodes);
+        for n in nodes {
+            let t = ascii_digits(&n.text()).to_ascii_uppercase().replace('_', "");
+            if t.len() > 1 && t.starts_with('0') && matches!(t.as_bytes()[1], b'X' | b'O' | b'B') {
+                continue;
+            }
+            let t = t.trim_end_matches(['M', 'F', 'D']);
+            let (mantissa, exp) = t.split_once('E').map_or((t, None), |(m, e)| (m, Some(e)));
+            let digits = mantissa.chars().filter(char::is_ascii_digit).count() as u64;
+            let exp = exp.map(|e| e.trim_start_matches(['+', '-']).parse::<u64>().unwrap_or(u64::MAX));
+            let over = match (lit, exp) {
+                ("exact numeric literal", Some(e)) => digits.saturating_add(e) > 9,
+                ("exact numeric literal", None) => false,
+                _ => digits > 9,
+            };
+            if over {
+                push("21.2 SR 14", format!("the literal {} written out", n.text()));
             }
         }
     }

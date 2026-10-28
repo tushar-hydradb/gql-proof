@@ -1209,3 +1209,33 @@ types (16.8 SR 4, 20.11 SR 2, 3); the claim's run wiring.
 runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the thirty-seventh review
+
+a sweep of H2 as a whole. no printed counterexample. seven unprinted gate holes
+or gaps on H2 items and one hypothesis named nowhere, so this round is not
+clean. all closed:
+- IW014: the skeleton rewrote `cl` to `d` before `1` to `l`, so `c1` and `cl`
+  (UTS-confusable) passed; now one per-character pass, a function of UTS's
+  skeleton, so UTS-related names always collide. extended identifiers
+  (parameter names) were never compared (`$1` and `l`); now they are
+- IL013: two `CHAR ( 16383 )` concatenated exceed the guaranteed maximum
+  (20.23 SR 1 b, 3 b); the summed fixed lengths are checked on the tree
+- IL015: a 901-element list constructor passed (20.17 SR 3 c), and record
+  field counts had no bound; both are at most 888 on the tree, named in H2
+- IL010 after the 21.2 SR 12, 13 rewrites: `1E9M` writes out to 10 digits,
+  `12345.67891F` to a 10 digit mantissa; checked now
+- IL011: H2 named an approximate precision of 88, the gate took 112; the gate
+  takes 88 now and the generator lowers a raised one to it
+- IA020: a private use character in an identifier passed; refused. IE003
+  (UAX31's default profile) is named in H2
+- IW011, IW012: pattern and insert variables are typed open, which no
+  hypothesis said; named in H2
+
+held: IL001-IL003 (relative wording), exact precision, the scale, declared
+lengths, list type cardinality, IL018, IL020, ID061, ID004, ID005, ID076,
+IA014, IE001, IA019, IA023, IV023, `$$`, ID079 and the literal bounds.
+
+runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.

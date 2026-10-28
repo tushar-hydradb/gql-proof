@@ -302,21 +302,31 @@ or a path union or alternation that declares an element variable
   the most the saved sets hold; the seventeenth review).
   lengths and precisions are spelled from the leaf digits: S writes string and
   byte lengths up to 888 (18.9 SR 25 guarantees 65,534), exact precisions
-  up to 8, an approximate precision up to 88 bits (FLOAT128 has 112, 18.9 SR 43 d), and
+  up to 8, an approximate precision up to 88 bits (checked on the tree, and
+  `tree.rs` lowers a raised one to it; FLOAT128 has 112, 18.9 SR 43 d), and
   an approximate exponent scale of at most 8, one past FLOAT32's 7, which H2
   assumes the implementation takes (`tree.rs` settles it;
   the sixth review found `FLOAT ( 8 , 88 )`). a list type's maximum
   cardinality is at most 888 (IL015, which no guarantee bounds; checked on the
-  tree, "18.9 SR 73"). the implementation's maximum lengths, precisions and list
-  cardinalities are at least these
+  tree, "18.9 SR 73"), and so is a list constructor's element count and a
+  record's field count (20.17 SR 3 c, 20.18 SR 4, 18.9 SR 79; checked on the
+  tree, "20.17 SR 3 bound", "20.18 SR 4 bound"). a concatenation of
+  fixed-length strings sums their lengths (20.23 SR 1 b, 3 b), at most the
+  guaranteed 16,383 or 65,534 ("20.23 SR 1 bound"). the implementation's
+  maximum lengths, precisions, list cardinalities and record field counts are
+  at least these (the thirty-seventh review found the constructor, field and
+  concatenation limits resting on the generator)
 - exact types of 18 decimal digits, an approximate literal type with the range
   of a 32 bit float (21.2 SR 18, 20; the checker reports past that)
 - IW014: names are confusable only as UTS #39's ASCII-to-ASCII confusables
   are (`rn` and `m`, `1`, `I`, `|` and `l`, `0` and `O`, `` ` `` and `'`, `"`
-  and `''`); the checker reports two names of one sentence sharing a skeleton
-  under these, widened by `vv` and `w`, `cl` and `d`, `0` and `o` and case,
-  which only reports more (the thirty-sixth review found `|`, `` ` `` and `"`
-  missing)
+  and `''`). the checker maps each character of a regular, extended (a
+  parameter's) or delimited identifier, lowercased, by these and by `w` to
+  `vv` and `d` to `cl`, in one pass; that map is a per-character function of
+  UTS's skeleton, so two names UTS relates always share it, and the checker
+  reports two names of one sentence that do (the thirty-sixth review found
+  `|`, `` ` `` and `"` missing; the thirty-seventh an ordering that kept `c1`
+  and `cl` apart, and parameter names never compared)
 - ID061: SESSION_USER's character string type is assignable to every
   character string type S declares for it; S declares no length-bounded one
   (10.3 SR 8 reading, at any depth of the declared type)
@@ -348,14 +358,23 @@ or a path union or alternation that declares an element variable
   schema drops, the last three by the object's own name, its parent left out,
   the twenty-fifth review)
 - IL010: an unsigned integer has at most 9 digits, checked on the tree
-  ("21.2 SR 14", gate-only)
+  ("21.2 SR 14", gate-only), also as the 21.2 SR 12 and 13 rewrites write a
+  numeric literal out (`1E9M` is a 10 digit integer; the thirty-seventh review)
+- IE003: the identifier profile is UAX31's default (XID_Start, XID_Continue),
+  the one the checker's leaf rules use; IA020: no private use character is in
+  an identifier (21.3 SR 5 e), refused on the tree
+- IW011, IW012: the declared type the implementation gives a graph pattern or
+  insert variable is open (the node or edge reference type with no
+  constraint); the checker types it so and lets a property or label of it pass
+  (20.12 SR 13, 20.11 SR 3 a; the thirty-seventh review: this rested on no
+  hypothesis)
 - nothing about IW022 (nullability inference): a NOT NULL site takes no
   computed value (4.17.4.2, the checker's reading), so none is needed
 - IL018: the maximum quantifier bound is at least 255
 - the limits above are checked on the tree, not taken from the generator:
   a quantifier bound past 255, a character length past 16,383 or a byte
   length past 65,534 (the maxima 18.9 SR 17, 25 guarantee), an exact precision
-  past 18, an approximate precision past 112 or a scale past 8 is withheld
+  past 18, an approximate precision past 88 or a scale past 8 is withheld
   (`verify::h2_bounds`, gate-only; the generator settles values below them)
 - IL020: the directory nesting depth is at least what S uses (S holds
   absolute paths of a few directories and `..` steps)

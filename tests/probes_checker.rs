@@ -880,3 +880,16 @@ fn thirty_seventh_review_findings() {
     bad_on_some_parse("MATCH ( :\"|\" | l ) FINISH", "6 SR 4");
     bad_on_some_parse("MATCH ( : \"|\" ) RETURN 1 AS l", "6 SR 4");
 }
+
+#[test]
+fn thirty_eighth_review_findings() {
+    bad_on_some_parse("MATCH ( :c1 | cl ) FINISH", "6 SR 4");
+    bad_on_some_parse("RETURN $1 AS x , $l AS y", "6 SR 4");
+    bad_on_some_parse("RETURN CAST ( NULL AS CHAR ( 16383 ) ) || CAST ( NULL AS CHAR ( 16383 ) ) AS x", "20.23 SR 1 bound");
+    bad_on_some_parse("RETURN 1E9M AS x", "21.2 SR 14");
+    bad_on_some_parse("RETURN 12345.67891F AS x", "21.2 SR 14");
+    fine("RETURN 8E8M AS x", "21.2 SR 14");
+    bad_on_some_parse("RETURN CAST ( NULL AS FLOAT ( 100 ) ) AS x", "18.9 SR 42");
+    fine("RETURN CAST ( NULL AS FLOAT ( 88 ) ) AS x", "18.9 SR 42");
+    fine("RETURN $b AS x , $bb AS y", "6 SR 4");
+}
