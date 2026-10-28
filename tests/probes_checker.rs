@@ -842,3 +842,12 @@ fn thirty_third_review_findings() {
     bad_on_some_parse("RETURN CAST ( NULL AS ANY ) + DURATION ( 'P1Y2M' ) AS x NEXT RETURN UPPER ( x ) AS y", "20.23 SR 2");
     fine("VALUE v LOCAL DATETIME = CAST ( NULL AS ANY ) + DURATION ( 'P1Y2M' ) FINISH", "10.3 SR 8");
 }
+
+#[test]
+fn thirty_fourth_review_findings() {
+    // 20.26 SR 1 literally: a datetime moved by a duration written after it is local
+    bad_on_some_parse("RETURN DURATION_BETWEEN ( CURRENT_TIMESTAMP + DURATION ( 'PT1H' ) , CURRENT_TIMESTAMP ) AS x", "20.28 SR 3");
+    bad_on_some_parse("RETURN DURATION_BETWEEN ( ZONED_DATETIME ( ) - DURATION ( 'PT1H' ) , ZONED_DATETIME ( ) ) AS x", "20.28 SR 3");
+    fine("RETURN DURATION_BETWEEN ( CURRENT_TIMESTAMP + DURATION ( 'PT1H' ) , LOCAL_TIMESTAMP ) AS x", "20.28 SR 3");
+    fine("RETURN DURATION_BETWEEN ( DURATION ( 'PT1H' ) + CURRENT_TIMESTAMP , CURRENT_TIMESTAMP ) AS x", "20.28 SR 3");
+}

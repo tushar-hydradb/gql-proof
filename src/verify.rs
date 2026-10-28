@@ -584,6 +584,9 @@ pub(crate) fn leaf_rule(def: &str, text: &str) -> Result<(), (&'static str, Stri
                 !matches!(c, '\'' | '"' | '`' | '\\')
                     && !c.is_control()
                     && get_general_category(c) != GeneralCategory::Unassigned
+                    // IA019, read strictly: no bidirectional control character (the
+                    // thirty-third review: the row argued only from the generator)
+                    && !matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
             }),
             "21.2 SR 31-33, 41",
         ),

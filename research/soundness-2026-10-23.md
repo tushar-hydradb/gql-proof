@@ -1097,3 +1097,35 @@ it is limited to a dynamic, unknown or null operand, where the old arms gave up.
 runs after the fix: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the thirty-third review
+
+literal typing of printed sentences by hand, and the trusted base. no printed
+counterexample. one unprinted gate hole, a lenient reading of 20.26 SR 1 named
+nowhere, so this round is not clean. closed:
+- `CURRENT_TIMESTAMP + DURATION ( 'PT1H' )` was typed zoned. 20.26 SR 1 makes
+  a datetime value expression zoned only when the datetime primary it simply
+  contains is zoned; `DVE + duration term` and `DVE - duration term` simply
+  contain none (5.3.2.1), so read literally they are local, and `DURATION_BETWEEN
+  ( CURRENT_TIMESTAMP + .. , CURRENT_TIMESTAMP )` breaks 20.28 SR 3 b. the
+  operator forms are now typed literally (no permission added: every printed
+  move is of a local datetime, where both readings agree). the audit row's
+  paraphrase had dropped "simply contains"; corrected
+
+checked and found to hold: the trusted base (printed text is the checked
+tree's rendering, compared on the tree, "21.3 SR 13, 14"; check-grammar's
+obligations; no comment opener outside quotes; separators between tokens;
+byte string separators; the Cor 1 grammar diff, five items; synthetic node
+names; leaf rules, other-script digits), and the hand typing of the printed
+DURATION_BETWEEN, datetime and duration arithmetic, COALESCE and NULLIF, simple
+CASE, GROUP BY items, LET, VALUE, FOR, session commands and graph type bodies.
+
+weak points noted, not findings: 20.28 SR 2 names a duration term 2 that the
+production lacks (the factor's type is used, as intended); IA019's row argues
+from the generator; the plain (non-JSONL) output splits a byte string's
+newline across lines (presentation only).
+also: IA019 is checked on the tree now, every bidirectional control character refused in a character representation.
+
+runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.

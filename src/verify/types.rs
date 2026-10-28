@@ -2816,11 +2816,7 @@ impl<'t> Checker<'t> {
             _ if name(node) == Some("datetime value expression")
                 && [&l, &r].iter().any(|t| t.wild() || **t == Ty::Null) =>
             {
-                if [&l, &r].contains(&&Ty::ZonedDatetime) {
-                    Ty::ZonedDatetime
-                } else {
-                    Ty::LocalDatetime
-                }
+                datetime_sr1(node, &r)
             }
             [(N, N)] => match (&l, &r) {
                 // an operand the environment types (a parameter, H1): its result is the
@@ -2839,6 +2835,7 @@ impl<'t> Checker<'t> {
                 _ => Ty::Number,
             },
             // 20.26 SR 1
+            [(I, D)] | [(D, I)] if name(node) == Some("datetime value expression") => datetime_sr1(node, &r),
             [(I, D)] | [(D, I)] => {
                 let instant = if l.class() == Some(I) { &l } else { &r };
                 match instant {
@@ -3979,6 +3976,22 @@ fn pattern_vars(node: &Plain, kind: Option<Ty>, group: bool, out: &mut Fields) {
                 pattern_vars(k, kind.clone(), group, out);
             }
         }
+    }
+}
+
+/// 20.26 SR 1 on a <datetime value expression> with an operator, read literally: zoned only
+/// when the datetime primary it simply contains is zoned. `DVE + duration term` and `DVE -
+/// duration term` simply contain none (the primary sits in the nested <datetime value
+/// expression>, 5.3.2.1), so they are local; `duration + datetime primary` takes its primary's
+/// zone (`right`) (the thirty-third review: `CURRENT_TIMESTAMP + DURATION ( 'PT1H' )` was zoned).
+fn datetime_sr1(node: &Plain, right: &Ty) -> Ty {
+    let datetime_first = kids(node)
+        .first()
+        .is_some_and(|k| name(k) == Some("datetime value expression"));
+    if !datetime_first && *right == Ty::ZonedDatetime {
+        Ty::ZonedDatetime
+    } else {
+        Ty::LocalDatetime
     }
 }
 

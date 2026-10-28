@@ -421,6 +421,9 @@ each line names its audit rows (status `permission`)
   `VALUE x DATE = CURRENT_DATE` breaks 10.3 SR 8. it is read as typing the
   operator forms, a datetime moved by a duration, and a bare primary as its
   own type (the thirty-first review; five turbolay sentences rest on it).
+  the operator forms follow SR 1 literally: one whose datetime is written
+  first simply contains no datetime primary and is local, one whose duration
+  is written first takes its primary's zone (the thirty-third review)
   rows: 20.26 SR 1
 - **a second insert pattern is another one.** 16.5 SR 11 forbids an insert
   edge pattern's variable to be declared by an insert pattern, without
