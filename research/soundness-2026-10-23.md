@@ -1405,3 +1405,17 @@ bookkeeping: 16.6 SR 2 b ii named in H4's dynamic parameter line; stale notes on
 noted, not a gap: 16.4 SR 12's KEEP case is kept only by the gate though the
 rule string is not in GATE_ONLY, so such a tree would count as a generator bug
 (still withheld); none has occurred.
+
+## 2026-10-28: the specification audit, batch 3 (clauses 20, 22)
+
+77 rows: 39 faithful, 12 stricter, 26 under a named hypothesis, 0 gaps. Cor 1's
+one change in the range (20.7 SR 2) was applied. the empty type lead from batch
+1 has no route: `Ty::Nothing` comes only from a written <empty type>, refused
+wherever a value is typed from a written type (one structural opening through a
+binding table column is closed by the refusal of every declared binding table
+type). readings confirmed literal: 20.6 SR 5 a, 20.8 SR 4, 5, 8, 22.18 SR 2.
+one gray area made explicit: H1 now says a named procedure called without YIELD
+returns no column, which 20.6 SR 3 needs for `RETURN *` in a VALUE subquery
+(not derivable, not printed). bookkeeping: the null case in many clause 20
+notes rests on H4's null permission, not 4.14.4; stale notes on 20.9 SR 4,
+20.6 SR 5 a, 20.1 SR 1 corrected.

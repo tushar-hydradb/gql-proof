@@ -89,9 +89,10 @@ property of every printed sentence, by the gate in step 1
   only is reported as "H1 environment", gate-only. so every printed S keeps
   every rule in E, and E serves it (four rounds running had found an S the
   prose argument missed). a named procedure called without YIELD returns no
-  column named like a field of the call's incoming record or table (15.1 SR 9,
-  the two amended under cor 1, through the
-  procedure's signature, which only the catalog gives). the session has a
+  column at all, so none named like a field of the call's incoming record or
+  table (15.1 SR 9, the two amended under cor 1) and none a `RETURN *` would
+  carry into a VALUE subquery's one column (20.6 SR 3; spec audit batch 3),
+  through the procedure's signature, which only the catalog gives. the session has a
   current working graph, a current working schema and a home schema wherever
   S needs one (16.3 SR 23, 13.2 SR 5, 16.8 SR 2, 17.1 SR 4, 6, 17.6 SR 2 b i),
   where S does not fix it: a program whose AT names a schema absolutely takes
