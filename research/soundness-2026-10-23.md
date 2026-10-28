@@ -1469,3 +1469,19 @@ normal reserved words.
 runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the forty-fourth review (derivable trees)
+
+about 3,300 derivable probes, 1,500 of them random one-token mutations of
+printed sentences, over value expressions, ORDER BY, OFFSET, LIMIT, GROUP BY,
+set operations in subqueries, path modes and search prefixes, session
+commands, FOR ordinality, and LET, VALUE and CALL scope. no printed
+counterexample, no derivable hole, no moot hole. one argument gap, so this
+round is not clean:
+- the claim said a selective path pattern declaring an element variable is
+  withheld whole; the detector sees only a path pattern's own ANY or SHORTEST,
+  and a KEEP prefix (16.4 SR 6 b v) makes path patterns selective outside it,
+  so 16.6 SR 7 and 8 are judged there by scope.rs's selective rules. about 45
+  KEEP shapes against those rules all held. the claim and the code comment now
+  say exactly this (no withholding added). the IW014 wording on case is made
+  exact too

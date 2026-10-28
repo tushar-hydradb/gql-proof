@@ -2803,7 +2803,8 @@ fn group_variables(tree: &Plain, out: &mut Vec<Violation>) {
 ///   concatenation): the H1 remap of a parameter written once
 /// - a session parameter one SESSION SET sets and another command reads (7.1 SR 6, 22.1 SR 5)
 /// - a named procedure call with YIELD (15.1 SR 9, 16.14)
-/// - a selective path pattern that declares an element variable (16.6 SR 5-8)
+/// - a path pattern with its own ANY or SHORTEST prefix that declares an element variable
+///   (16.6 SR 5-8); one made selective by KEEP is read by scope.rs's selective rules
 /// - a path pattern union or multiset alternation that declares an element variable (16.7
 ///   SR 10, 11, 22 d)
 fn unprinted_families(tree: &Plain, out: &mut Vec<Violation>) {

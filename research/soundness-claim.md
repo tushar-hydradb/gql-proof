@@ -295,8 +295,13 @@ variable declared under a quantifier, a written GROUP list type; the
 twenty-ninth review found the checkers disagree on them), and five more the
 thirtieth review mapped, where rounds 18-28 found holes ("withheld family"): a
 parameter inside a combination, a session parameter set by one command and
-read by another, a named procedure call with YIELD, a selective path pattern
-or a path union or alternation that declares an element variable
+read by another, a named procedure call with YIELD, a path pattern with its
+own ANY or SHORTEST prefix or a path union or alternation that declares an
+element variable. a path pattern made selective by the graph pattern's KEEP
+prefix (16.4 SR 6 b v) is not withheld: 16.6 SR 7 and 8 are judged there by
+scope.rs's selective rules, which round 27 made whole-program and rounds 43
+and 44 probed on derivable KEEP shapes (the forty-fourth review found the
+earlier wording claimed more)
 
 ## hypothesis H2, the implementation choices named
 
@@ -334,7 +339,9 @@ or a path union or alternation that declares an element variable
   parameter's) or delimited identifier, lowercased, by these and by `w` to
   `vv` and `d` to `cl`, in one pass; that map is a per-character function of
   UTS's skeleton, so two names UTS relates always share it, and the checker
-  reports two names of one sentence that do (the thirty-sixth review found
+  reports two names of one sentence that do, two names differing only in case
+  being distinct names (ID022) that UTS relates by no other pair, so not
+  compared (the thirty-sixth review found
   `|`, `` ` `` and `"` missing; the thirty-seventh an ordering that kept `c1`
   and `cl` apart, and parameter names never compared)
 - ID061: SESSION_USER's character string type is a variable-length one,
