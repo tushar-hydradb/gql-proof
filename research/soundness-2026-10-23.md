@@ -1443,3 +1443,29 @@ naming an implementation choice or the environment in H and three by a check.
 runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the forty-third review (derivable trees)
+
+the first round scoped to trees the generator derives (tests/derivable_probe.rs);
+underivable holes are reported apart as moot. no printed counterexample. one
+derivable hole and an argument gap of one cause, so this round is not clean:
+- 16.4 SR 4: `MATCH ( a = <- ) WHERE EXISTS { ( a = <- ) } FINISH` (parses 6,
+  derivable 1, clean and derivable 1) exposes subpath `a` in the graph pattern
+  and again in a nested one; the checker compares only the top path pattern
+  list, and the row called that "stricter". it is the scope question batch 2
+  settled for 16.7 SR 22 b, so the same H4 permission now names 16.4 SR 4 and
+  the row's status is `permission`; nothing is withheld (the generator spells
+  every subpath variable `a`)
+moot, closed anyway: 18.9 SR 88 took a component wrapping a union of NOT NULL
+types as known not nullable; read literally it is possibly nullable now.
+stale notes on 16.4 SR 6 b i and 16.4 SR 14 corrected.
+
+checked and found to hold, as derivable probes: 9.2 SR 4-7, 12 c; 15.1 SR 9,
+15.2 SR 6; 11.1 SR 2's variable or catalog name; 16.3 SR 7, 9; 16.4 SR 6, 12;
+16.6 SR 2 b ii with other digits; 14.2 SR 3-5, 10; 14.10; SET, REMOVE, DELETE;
+16.5 SR 6, 9-11; graph type bodies; 7.1 SR 6; catalog create and drop; case
+normal reserved words.
+
+runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.

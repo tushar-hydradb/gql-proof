@@ -487,4 +487,9 @@ each line names its audit rows (status `permission`)
   pattern (an EXISTS in a WHERE) is read as another variable, its graph pattern
   being a scope of its own (4.11.4), not as the same name. read as a name, the
   rule would refuse `MATCH ( a = ( ( x WHERE EXISTS { ( a = <- ) } ) <- ) )`,
-  which is derivable and not printed (spec audit batch 2). rows: 16.7 SR 22 b
+  which is derivable and not printed (spec audit batch 2). 16.4 SR 4 is read
+  the same way: two path patterns of one graph pattern expose no subpath
+  variable twice, a nested graph pattern (an EXISTS in a WHERE) being a scope of
+  its own, so `MATCH ( a = <- ) WHERE EXISTS { ( a = <- ) }` holds; the
+  generator spells every subpath variable `a` (round 43). rows: 16.7 SR 22 b,
+  16.4 SR 4

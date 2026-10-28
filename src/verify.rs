@@ -1953,16 +1953,9 @@ fn known_not_null(vt: &Plain) -> bool {
     let mut nots = Vec::new();
     find_simply(vt, "not null", "value type", &mut nots);
     find_simply(vt, "empty type", "value type", &mut nots);
-    if !nots.is_empty() {
-        return true;
-    }
-    let mut unions = Vec::new();
-    find_simply(vt, "component type list", "value type", &mut unions);
-    unions.first().is_some_and(|ctl| {
-        let mut comps = Vec::new();
-        find_simply(ctl, "value type", "value type", &mut comps);
-        !comps.is_empty() && comps.iter().all(|c| known_not_null(c))
-    })
+    // a component wrapping a union simply contains no <not null> and is read possibly
+    // nullable, as SR 4 has it literally (round 43: the union's own NOT NULLs were taken)
+    !nots.is_empty()
 }
 
 /// One-child wrappers down to an <unsigned numeric literal>.
