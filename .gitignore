@@ -1,10 +1,10 @@
 /target
 
 # copyrighted papers and the iso pdf stay local
-/papers/
+/papers
 
 # the standard's text, extracted from your pdf: `just iso-text`
-/iso-text/
+/iso-text
 
 # local tooling
 /.venv-pdf/

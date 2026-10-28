@@ -9,6 +9,7 @@ pub mod context;
 pub mod coverage;
 pub mod features;
 pub mod leaf;
+pub mod oracle;
 pub mod parse;
 pub mod purdom;
 pub mod refine;
