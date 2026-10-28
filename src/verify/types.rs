@@ -54,7 +54,9 @@
 //! - inside an aggregate function a group variable stands for one of its elements, as `scope`
 //!   reads 20.1 SR 7 and 20.9; inside an element pattern WHERE clause, a parenthesized path
 //!   pattern WHERE clause or a property specification of the pattern that declares it, a graph
-//!   pattern variable is a single node or edge (20.12 SR 11 a ii)
+//!   pattern variable is a single node or edge (20.12 SR 11 a ii). neither reading is relied
+//!   on: the gate refuses every group variable and group list type ("16.7 SR 22 group", the
+//!   twenty-ninth review found both wrong for a variable under a quantifier)
 //! - a <normalized predicate> takes a character or a byte string as its grammar says (20.23)
 //! - 21.2 SR 73 is a condition on the <list literal> derivation, which a <list value constructor>
 //!   derivation of the same text always escapes, so it is no violation

@@ -49,6 +49,7 @@ pub const GATE_ONLY: &[&str] = &[
     "14.10 SR 4 let",
     "14.5 SR 3 kinds",
     "15.1 SR 9 yield",
+    "16.7 SR 22 group",
     // a key label set omitted under a claim without GG22: the generator follows no claim's
     // graph type bodies this way; the gate does
     "18.2 SR 9",
@@ -258,6 +259,7 @@ impl<'b> Verifier<'b> {
             h2_bounds(tree, &mut out);
             procedure_kinds(tree, &mut out);
             procedure_yields(tree, &mut out);
+            group_variables(tree, &mut out);
             delimited_names(tree, &mut out);
             one_kind_per_name(tree, &mut out);
             syntax_rules(tree, id086, &mut Vec::new(), &mut out);
@@ -2685,6 +2687,27 @@ fn procedure_yields(tree: &Plain, out: &mut Vec<Violation>) {
             });
             return;
         }
+    }
+}
+
+/// Group variables and group list types are refused on the tree: an element variable declared
+/// under a quantifier (16.7 SR 22 e) and a written GROUP list type (18.9 SR 68). no set prints
+/// either, and rounds 28 and 29 found the checkers disagree on them (a union's degree, a
+/// parenthesized WHERE, vertical aggregates, 20.1 SR 7 by degree rather than type), so the
+/// family is withheld whole rather than read (a reading, the strict side; gate-only).
+fn group_variables(tree: &Plain, out: &mut Vec<Violation>) {
+    let mut qs = Vec::new();
+    find(tree, "quantified path primary", &mut qs);
+    let declared = qs.iter().any(|q| contains(q, "element variable declaration"));
+    let mut names = Vec::new();
+    find(tree, "list value type name", &mut names);
+    let written = names.iter().any(|n| n.text().to_ascii_uppercase().starts_with("GROUP"));
+    if declared || written {
+        out.push(Violation {
+            path: String::new(),
+            rule: "16.7 SR 22 group",
+            detail: "a group variable or a group list type (withheld, reading)".into(),
+        });
     }
 }
 

@@ -278,7 +278,11 @@ sentence valid under the reading is valid under the text: the audit's
 a reading that lets more in is not a reading but part of H: the 4.14.4 cure is
 H2', the rest are the permissions of H4. the direction of each reading is the
 auditors' judgement, checked row by row in the review rounds (the fourth
-review moved nine rows from `reading` to `permission`)
+review moved nine rows from `reading` to `permission`). some families no set
+prints are withheld whole instead of read, which keeps out more than any
+reading: group variables and group list types ("16.7 SR 22 group": an element
+variable declared under a quantifier, a written GROUP list type; the
+twenty-ninth review found the checkers disagree on them)
 
 ## hypothesis H2, the implementation choices named
 

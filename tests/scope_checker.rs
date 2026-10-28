@@ -32,7 +32,13 @@ fn violations(text: &str) -> Vec<Violation> {
     let parsed = parser
         .parse(text, |n| {
             let plain = n.export(&PARSE);
-            if verifier.verify(&plain, &n.render(&PARSE)).is_empty() {
+            // the gate withholds group variables whole ("16.7 SR 22 group"); scope's own
+            // degrees are still tested here
+            if verifier
+                .verify(&plain, &n.render(&PARSE))
+                .iter()
+                .all(|v| v.rule == "16.7 SR 22 group")
+            {
                 let mut rules: Vec<_> = scope::check(&plain).iter().map(|v| v.rule).collect();
                 rules.sort();
                 verdicts.borrow_mut().push((rules, plain));

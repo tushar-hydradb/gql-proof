@@ -795,3 +795,13 @@ fn twenty_ninth_review_findings() {
         "22.19 SR 4",
     );
 }
+
+#[test]
+fn thirtieth_review_findings() {
+    // group variables and group list types are withheld whole
+    bad_on_some_parse("MATCH ( ( ( x ) -> ( ) ) { 1 , 2 } WHERE CAST ( x AS NODE ) IS NULL ) RETURN x", "16.7 SR 22 group");
+    bad_on_some_parse("MATCH ( ( x ) -> ( ) ) { 1 , 2 } RETURN SUM ( x . a ) AS s", "16.7 SR 22 group");
+    bad_on_some_parse("RETURN CAST ( NULL AS GROUP LIST < NODE > ) AS a", "16.7 SR 22 group");
+    fine("MATCH ( ( ) -> ( ) ) { 1 , 2 } RETURN 1 AS a", "16.7 SR 22 group");
+    fine("MATCH ( x ) RETURN CAST ( NULL AS LIST < INT > ) AS a", "16.7 SR 22 group");
+}

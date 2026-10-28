@@ -967,3 +967,36 @@ checker; clarified.
 runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the twenty-ninth review
+
+facts scope.rs and types.rs each compute on their own. no printed
+counterexample. three unprinted gate holes, all on group variables, so this
+round is not clean:
+- types.rs gave a group variable singleton type in a parenthesized WHERE of the
+  pattern declaring it under a quantifier: `MATCH ( ( ( x ) -> ( ) ) { 1 , 2 }
+  WHERE CAST ( x AS NODE ) IS NULL )` (9 of 1,014 clean)
+- inside every aggregate, vertical too, a group variable was typed as its
+  element: `RETURN SUM ( x . a )` over a group x passed, though a vertical
+  aggregate's argument sees the whole list (20.9 GR 5 b); a reading the claim
+  never named
+- 20.1 SR 7 was judged by scope's degree bookkeeping, which follows only a bare
+  reference: `LET y = ( x ) .. COUNT ( COALESCE ( y , x ) )` passed (2,187 of
+  2,187 spliced), as did a CAST to a GROUP list type
+
+no set prints a group variable (none declares an element variable under a
+quantifier, over 49,673 distinct sentences) nor a GROUP list type. rounds 28
+and 29 found four holes in this one family, so it is withheld whole now: an
+element variable declared under a quantifier or a written GROUP list type is
+refused on the tree ("16.7 SR 22 group", gate-only). the two readings the
+types.rs header states for group variables are no longer relied on.
+
+the comparison marked agree: bindings per statement, FOR over a group, LET
+shadowing, columns after RETURN, GROUP BY and ORDER BY, set operation columns,
+SELECT, union degree, `?`, subpath and path variables, subquery scope, a
+variable's kind.
+
+runs after the change: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580), so withholding the group family cost no printed
+sentence; 0 generator bugs apart from neo4j's 34.
