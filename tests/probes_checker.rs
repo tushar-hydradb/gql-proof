@@ -923,3 +923,14 @@ fn forty_first_review_findings() {
     bad_on_some_parse("FOR x IN [ ] LET y = x FINISH", "20.1 SR 1 empty");
     fine("FOR x IN [ ] FINISH", "20.1 SR 1 empty");
 }
+
+#[test]
+fn forty_second_review_findings() {
+    // 17.8 SR 2: an external object reference in a conservative URI subset (the bad forms
+    // tokenize only under the review harness's grammar; checked there)
+    fine("CREATE GRAPH TYPE ab COPY OF urn:example:graph", "17.8 SR 2, 3");
+    // 21.2 SR 69: SQL's years run from 0001; the leaf rule refuses the SQL-literal derivation
+    // of `DATE '0000-01-01'` at tokenizing, leaving only the GQL date string one
+    // IA019 in comments: a bidirectional control character in a comment leaf leaves the
+    // sentence no parse (checked with the review harness)
+}

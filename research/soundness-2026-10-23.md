@@ -1316,3 +1316,30 @@ lists, FILTER, properties; 19.4 SR 5, 14.2 SR 5, 20.6 SR 3, 5, 20.5 SR 3, 4,
 runs after the fix: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the forty-first review
+
+the audit rows that argue from what the generator writes. no printed
+counterexample. three unprinted gaps in leaf rules, so this round is not
+clean. all closed:
+- 17.8 SR 2: an external object reference was checked for a scheme only, so
+  `urn:a<b`, `urn:a#b#c`, `urn:%zz` passed; the row rested on the generator's
+  one fixed spelling. the leaf now takes a conservative URI subset; the bad
+  forms have no parse, `urn:example:graph` still passes
+- IA019 in comments: rounds 33 and 37 said IA019 was checked on the tree, but
+  only string literal characters were; a bidirectional control character in a
+  `/* */`, `//` or `--` comment passed (27 printed sentences have such comments,
+  plain). both comment leaves refuse them now. the earlier entries overstated it
+- 21.2 SR 69: the SQL-literal derivation of `DATE '0000-01-01'` passed (chrono
+  takes year 0); SQL's years run from 0001. refused now; the GQL date string
+  derivation of the same text (ISO 8601 has year 0000) is untouched. a minor
+  point, kept as it only refuses more
+
+checked and found to hold, as enforced on the tree: 21.2 SR 31 b, 41 b iii,
+iv; 21.3 SR 5 c-e; 16.8 SR 4 a ii; 14.12's bodied SELECT rows; 13.3 SR 4; 20.8
+SR 8 and 10; 20.24 SR 3, 4; 22.19 SR 4 h; and 15.3, 16.1 SR 2, 16.3 SR 23 under
+H1.
+
+runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.

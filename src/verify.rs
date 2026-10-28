@@ -565,6 +565,39 @@ pub(crate) fn leaf_span(def: &str) -> Span {
 }
 
 /// Each prose leaf against the Syntax Rule that defines it. Where a rule depends on context
+/// A bidirectional control character (IA019 read strictly).
+fn bidi_control(c: char) -> bool {
+    matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+}
+
+/// The text after an external object reference's scheme, in a conservative subset of RFC
+/// 3986's URI syntax (17.8 SR 2): unreserved and sub-delimiter characters, `:`, `@`, `/`, `?`,
+/// a percent sign only before two hex digits, at most one `#` (the forty-first review:
+/// `urn:a<b`, `urn:a#b#c`, `urn:%zz` passed).
+fn uri_rest(rest: &str) -> bool {
+    let b: Vec<char> = rest.chars().collect();
+    let mut hashes = 0;
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        match c {
+            '%' => {
+                if !(b.get(i + 1).is_some_and(char::is_ascii_hexdigit) && b.get(i + 2).is_some_and(char::is_ascii_hexdigit)) {
+                    return false;
+                }
+                i += 3;
+                continue;
+            }
+            '#' => hashes += 1,
+            c if c.is_ascii_alphanumeric() => {}
+            '-' | '.' | '_' | '~' | '!' | '$' | '&' | '\'' | '(' | ')' | '*' | '+' | ',' | ';' | '=' | ':' | '@' | '/' | '?' => {}
+            _ => return false,
+        }
+        i += 1;
+    }
+    hashes <= 1
+}
+
 /// or on implementation choices, this checks a stricter form.
 pub(crate) fn leaf_rule(def: &str, text: &str) -> Result<(), (&'static str, String)> {
     let mut chars = text.chars();
@@ -590,7 +623,7 @@ pub(crate) fn leaf_rule(def: &str, text: &str) -> Result<(), (&'static str, Stri
                     && get_general_category(c) != GeneralCategory::Unassigned
                     // IA019, read strictly: no bidirectional control character (the
                     // thirty-third review: the row argued only from the generator)
-                    && !matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+                    && !bidi_control(c)
             }),
             "21.2 SR 31-33, 41",
         ),
@@ -605,8 +638,9 @@ pub(crate) fn leaf_rule(def: &str, text: &str) -> Result<(), (&'static str, Stri
         ),
         // Our implementation-defined (IA023) end-of-line indicator.
         "newline" => ok(text == "\n", "21.3 SR 12"),
-        "simple comment character" => ok(one.is_some_and(|c| c != '\n' && c != '\r'), "21.3 SR 9"),
-        "bracketed comment contents" => ok(!text.contains("*/"), "21.3 SR 10"),
+        // IA019 read strictly in comments too (the forty-first review)
+        "simple comment character" => ok(one.is_some_and(|c| c != '\n' && c != '\r' && !bidi_control(c)), "21.3 SR 9"),
+        "bracketed comment contents" => ok(!text.contains("*/") && !text.chars().any(bidi_control), "21.3 SR 10"),
         "bidirectional control character" => ok(
             one.is_some_and(|c| matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')),
             "21.3 SR 8",
@@ -627,6 +661,7 @@ pub(crate) fn leaf_rule(def: &str, text: &str) -> Result<(), (&'static str, Stri
                 scheme.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
                     && scheme.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
                     && !rest.is_empty()
+                    && uri_rest(rest)
             }) && !text.contains("//")
                 && !text.chars().any(char::is_whitespace),
             "17.8 SR 2, 3",
@@ -634,7 +669,8 @@ pub(crate) fn leaf_rule(def: &str, text: &str) -> Result<(), (&'static str, Stri
         "SQL-datetime literal" => ok(
             text.strip_prefix("DATE '")
                 .and_then(|r| r.strip_suffix('\''))
-                .is_some_and(|d| iso_shape(d, "dddd-dd-dd") && NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok()),
+                // SQL's Gregorian years run from 0001 (the forty-first review: `0000` passed)
+                .is_some_and(|d| iso_shape(d, "dddd-dd-dd") && !d.starts_with("0000") && NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok()),
             "21.2 SR 69",
         ),
         "SQL-interval literal" => ok(
