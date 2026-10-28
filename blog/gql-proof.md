@@ -19,8 +19,8 @@ The trouble is that "supports" is doing a lot of heavy lifting in that sentence.
 Supports according to whom? Tested how? Against which parts of a standard that
 runs to several hundred pages?
 
-At [HydraDB](https://hydradb.com) we build [turbolay](TODO-link), a graph engine
-with a GQL frontend, and we wanted an honest answer to that question for
+At HydraDB we build [hydradb](https://github.com/hydra-db/hydradb), a graph
+engine with a GQL frontend, and we wanted an honest answer to that question for
 ourselves. Not "we wrote a lot of tests", but "here is every construct the
 standard defines for the features we claim, here is a valid query using each
 one, here is what our engine did with it, and here is the list of things we
@@ -325,8 +325,8 @@ So every target ends up in one of three states, a shape borrowed from code
 coverage
 ([Bardin et al., ICST 2015](https://doi.org/10.1109/ICST.2015.7102607)):
 **covered**, **proven infeasible** (no valid tree exists, and the labels say
-why), or **unknown**. At three variables, with turbolay's claim, that is 4,399
-of 4,540 productions covered and 141 never, and an audit at two variables had
+why), or **unknown**. At three variables, with hydradb's claim, that is 4,399 of
+4,540 productions covered and 141 never, and an audit at two variables had
 predicted exactly those counts before the three variable run ever finished.
 
 ## Step 8: trust nothing, check everything twice
@@ -343,8 +343,8 @@ same instinct behind [JEST](https://doi.org/10.1109/ICSE43902.2021.00015), which
 runs JavaScript engines against a mechanised spec and blames whichever side
 disagrees, the spec included.
 
-It pays off in both directions. Running the generated set against turbolay has
-found queries that turbolay refused rightly, because the generator broke a rule
+It pays off in both directions. Running the generated set against hydradb has
+found queries that hydradb refused rightly, because the generator broke a rule
 we had not modelled yet. Each of those became a rule, not a patch.
 
 ## Step 9: the right answer, not just an answer
@@ -367,7 +367,7 @@ literal on purpose. The method follows
 write the semantics executably, run it against real engines, and use the
 standard to settle every disagreement.
 
-Run against turbolay, this found bugs no amount of "does it parse" testing would
+Run against hydradb, this found bugs no amount of "does it parse" testing would
 have. A quantified `?` that dropped its one iteration case, so `( <- ? )` did
 not mean `{0,1}`. A multiset alternation `|+|` counted as a union with a
 remainder. `SUM(NULL)` answering 0 where the standard says null. Each one was
@@ -392,11 +392,11 @@ honest list of what we could not reach.
 
 ---
 
-## Where this leaves turbolay
+## Where this leaves hydradb
 
 Running this against our own engine was humbling in a useful way. On the first
-typed set, turbolay accepted 52% of the queries. Some of the rest were our
-generator's mistakes, which became rules. Some were turbolay's parse gaps and
+typed set, hydradb accepted 52% of the queries. Some of the rest were our
+generator's mistakes, which became rules. Some were hydradb's parse gaps and
 planning gaps, which became fixes. Some were documented deviations, which is
 fine, as long as they are documented. Today it accepts 73% of the three variable
 set, and handles 89% of the valid queries that sit outside its documented
@@ -407,7 +407,7 @@ and the list of causes comes from the standard, not from us.
 
 ## Why this matters beyond one engine
 
-Nothing in gql-proof is specific to turbolay. Anything that accepts GQL text can
+Nothing in gql-proof is specific to hydradb. Anything that accepts GQL text can
 be tested with it, and it already runs against Neo4j too.
 
 - **For engine developers**, it is a conformance yardstick you can run in CI and
