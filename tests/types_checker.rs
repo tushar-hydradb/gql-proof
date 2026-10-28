@@ -28,6 +28,9 @@ static PARSE: LazyLock<Cfg> = LazyLock::new(|| {
 /// trees of a sentence and fail on others (H3): 20.1 SR 2, 3; 11.1 SR 3 and 11.2 SR 4, whose
 /// object expression primary (`"g"`, `x . a`) is also a catalog reference on another tree.
 const PER_TREE: &[&str] = &[
+    // an operator form on the <datetime value expression> tree is a datetime whatever its
+    // operands (20.26 SR 1, the thirty-fourth review), so another tree of the text decides
+    "20.28 SR 1",
     "20.1 SR 2",
     "20.1 SR 3",
     "11.1 SR 3",
@@ -239,11 +242,9 @@ fn temporal_expressions() {
     bad("RETURN (CURRENT_DATE) * 2 AS x", "4.16.6.4");
     bad("RETURN (CURRENT_DATE) + 1 AS x", "4.16.6.4");
     // 20.28 SR 1 a
-    bad("RETURN DURATION 'P1Y' + DURATION 'PT1H' AS x", "20.28 SR 1");
-    bad(
-        "RETURN DURATION 'P1M' - INTERVAL '1' DAY AS x",
-        "20.28 SR 1",
-    );
+    // `DURATION 'P1Y' + DURATION 'PT1H'` is a datetime on one tree (20.26 SR 1), so its 20.28 SR 1
+    // is per tree: probes_checker's thirty_fifth_review_findings
+    // and `DURATION 'P1M' - INTERVAL '1' DAY` likewise
     // 20.28 SR 3
     ok("RETURN DURATION_BETWEEN(CURRENT_DATE, DATE '2020-01-01') AS x");
     ok("RETURN DURATION_BETWEEN(LOCAL_TIME, LOCAL_TIME) AS x");
@@ -262,10 +263,6 @@ fn temporal_expressions() {
     // 20.27 SR 6-10
     ok("RETURN DATE('2020-01-01') AS a, ZONED_TIME() AS b, LOCAL_DATETIME() AS c");
     ok("RETURN DURATION('P1Y') + DURATION 'P1M' AS x");
-    bad(
-        "RETURN DURATION('P1Y') + DURATION 'PT1M' AS x",
-        "20.28 SR 1",
-    );
     // 20.26 SR 1: date + duration is a local datetime
     ok("RETURN CURRENT_DATE + DURATION 'P1DT0H' > LOCAL_TIMESTAMP AS x");
     bad(
@@ -625,7 +622,8 @@ fn subqueries() {
         "20.6 SR 3",
     );
     // inner queries see the outer variables
-    ok("LET x = 1 CALL { RETURN x + 1 AS y } RETURN y * 2 AS z");
+    // `x * 2`: `x + 1` is a datetime on its <datetime value expression> tree (20.26 SR 1)
+    ok("LET x = 1 CALL { RETURN x * 2 AS y } RETURN y * 2 AS z");
     bad(
         "LET x = 'a' CALL { RETURN x + 1 AS y } RETURN y AS z",
         "20.21 SR 3",

@@ -851,3 +851,16 @@ fn thirty_fourth_review_findings() {
     fine("RETURN DURATION_BETWEEN ( CURRENT_TIMESTAMP + DURATION ( 'PT1H' ) , LOCAL_TIMESTAMP ) AS x", "20.28 SR 3");
     fine("RETURN DURATION_BETWEEN ( DURATION ( 'PT1H' ) + CURRENT_TIMESTAMP , CURRENT_TIMESTAMP ) AS x", "20.28 SR 3");
 }
+
+#[test]
+fn thirty_fifth_review_findings() {
+    // 20.26 SR 1: an operator form on the datetime tree is a datetime, its operands numbers or not
+    bad_on_some_parse("VALUE x INT = 1 + 1 FINISH", "10.3 SR 8");
+    bad_on_some_parse("RETURN CAST ( 1 + 1 AS INT ) AS x", "20.8 SR 8");
+    // 4.15.3: a cardinality-bounded list type takes no list the checker cannot bound
+    bad_on_some_parse("VALUE x LIST < INT > [ 1 ] = [ 1 , 2 ] FINISH", "10.3 SR 8");
+    fine("VALUE x LIST < INT > = [ 1 , 2 ] FINISH", "10.3 SR 8");
+    bad_on_some_parse("RETURN DURATION 'P1Y' + DURATION 'PT1H' AS x", "20.28 SR 1");
+    bad_on_some_parse("RETURN DURATION 'P1M' - INTERVAL '1' DAY AS x", "20.28 SR 1");
+    bad_on_some_parse("RETURN DURATION('P1Y') + DURATION 'PT1M' AS x", "20.28 SR 1");
+}

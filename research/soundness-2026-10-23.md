@@ -1129,3 +1129,30 @@ also: IA019 is checked on the tree now, every bidirectional control character re
 runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the thirty-fourth review
+
+literal declared types, value family by value family. no printed
+counterexample. two unprinted gate holes, so this round is not clean. both
+closed:
+- a datetime operator form was typed by its operands' classes: on the
+  <datetime value expression> tree of `1 + 1` (or `( DURATION .. ) +
+  DURATION ..`) it was a number (a duration), but 20.26 SR 1 makes it a local
+  datetime, so `VALUE x INT = 1 + 1`, `ABS ( ( 1 + 1 ) )` and `CAST ( 1 + 1 AS
+  INT )` passed on that tree. every operator form on the node is typed by SR 1
+  now. verdicts that depend on the tree because of it (`x + 1` then `y * 2`,
+  two durations of different groups) are probed per parse; the type tests
+  moved accordingly
+- a declared list type's maximum cardinality was not followed at assignment:
+  `VALUE x LIST < INT > [ 1 ] = [ 1 , 2 ]` passed (54 of 13,182). a list type
+  with a written maximum cardinality is refused at a declared-type site, as a
+  length-bounded string was, and in a binding table's declared columns too
+
+families compared and held: numeric (20.21, 20.22), strings (20.23-20.25),
+lists and paths (types), records (20.18, 20.19), durations (20.28 SR 1-4,
+DURATION_BETWEEN), CASE and CAST, aggregates, value queries and LET,
+predicates; store assignment (13.3, 22.10).
+
+runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.

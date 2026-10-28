@@ -46,8 +46,11 @@
 //! - a graph's type is not followed, and a binding table's only as a nested query's columns: a
 //!   closed declared type over any other initializer is reported (10.1-10.2 SR 8, 7.1 SR 6 c)
 //! - a datetime or duration operand that is no temporal instant or duration breaks 20.26 GR 1
-//!   and Table 1 at every evaluation, so it is rejected statically; DURATION_BETWEEN's operands
-//!   alike (20.28 SR 3 b already asks them to be essentially comparable)
+//!   and Table 1 at every evaluation, so it is rejected statically where no operator row fits;
+//!   DURATION_BETWEEN's operands alike (20.28 SR 3 b already asks them to be essentially
+//!   comparable). an operator form on the <datetime value expression> tree is a datetime by
+//!   20.26 SR 1 whatever its operands (`1 + 1` there is a local datetime), so the tree's own
+//!   context refuses it where a number is needed
 //! - only a datetime is moved by a duration (20.26 SR 1 read literally makes a moved date or
 //!   time a datetime, a defect; the fifteenth review): a moved date or time is refused
 //! - a <result> that is just NULL specifies no <result expression> on any tree (20.7 SR 3)
@@ -1014,7 +1017,7 @@ impl<'t> Checker<'t> {
                         self.report(
                             node,
                             "7.1 SR 6",
-                            "(reading) a length-bounded string type is not known to take every value of the initializer".into(),
+                            "(reading) a length-bounded string or cardinality-bounded list type is not known to take every value of the initializer".into(),
                         );
                     }
                     if !assignable(&t, &declared) {
@@ -1227,6 +1230,13 @@ impl<'t> Checker<'t> {
         };
         let declared = table_fields(btrvt);
         let typed = Some(columns(btrvt));
+        if bounded_string(btrvt) {
+            self.report(
+                btrvt,
+                rule,
+                "(reading) a length- or cardinality-bounded column type is not known to take every value of the initializer".into(),
+            );
+        }
         match cols {
             None => self.report(
                 btrvt,
@@ -1618,7 +1628,7 @@ impl<'t> Checker<'t> {
             self.report(
                 def,
                 "10.3 SR 8",
-                "(reading) a length-bounded string type is not known to take every value of the initializer".into(),
+                "(reading) a length-bounded string or cardinality-bounded list type is not known to take every value of the initializer".into(),
             );
         }
         // SR 8 b i 1
@@ -2813,11 +2823,9 @@ impl<'t> Checker<'t> {
             // primary is no zoned one, and no rule of 20.26 asks anything of its operands that
             // a cure could meet (the thirty-second review: `CAST ( NULL AS ANY ) + DURATION
             // ( .. )` was dynamic and met BOOL)
-            _ if name(node) == Some("datetime value expression")
-                && [&l, &r].iter().any(|t| t.wild() || **t == Ty::Null) =>
-            {
-                datetime_sr1(node, &r)
-            }
+            // every operator form of the node, whatever its operands' classes (the thirty-fourth
+            // review: `1 + 1` on this tree was typed a number)
+            _ if name(node) == Some("datetime value expression") => datetime_sr1(node, &r),
             [(N, N)] => match (&l, &r) {
                 // an operand the environment types (a parameter, H1): its result is the
                 // environment's too (the fifteenth review: `CARDINALITY ( .. ) + $b` as a TRIM
@@ -2835,7 +2843,6 @@ impl<'t> Checker<'t> {
                 _ => Ty::Number,
             },
             // 20.26 SR 1
-            [(I, D)] | [(D, I)] if name(node) == Some("datetime value expression") => datetime_sr1(node, &r),
             [(I, D)] | [(D, I)] => {
                 let instant = if l.class() == Some(I) { &l } else { &r };
                 match instant {
@@ -4343,10 +4350,15 @@ fn unwrap(mut node: &Plain) -> &Plain {
 fn bounded_string(vt: &Plain) -> bool {
     let mut types = Vec::new();
     find_any(vt, &["character string type", "byte string type"], &mut types);
+    // a list type with a written maximum cardinality likewise: the checker follows no
+    // cardinality, and a longer list is not assignable to it (4.15.3; the thirty-fourth
+    // review: `VALUE x LIST < INT > [ 1 ] = [ 1 , 2 ]`)
+    let mut lists = Vec::new();
+    find(vt, "list value type", &mut lists);
     types.iter().any(|t| {
         contains(t, "min length")
             || contains(t, "max length")
             || contains(t, "fixed length")
             || kids(t).iter().any(|k| keyword(k, "CHAR") || keyword(k, "BINARY"))
-    })
+    }) || lists.iter().any(|l| own(l, "max length").is_some())
 }
