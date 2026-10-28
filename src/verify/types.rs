@@ -3931,7 +3931,17 @@ fn pattern_vars(node: &Plain, kind: Option<Ty>, group: bool, out: &mut Fields) {
                 } else {
                     t
                 };
-                out.entry(ident(bv)).or_insert(t);
+                // a group declaration anywhere wins over a singleton one: a union of the two
+                // exposes an effectively bounded group (16.7 SR 22 d), and any other mix is
+                // refused by scope (the twenty-eighth review: the first operand's type was kept)
+                let grouped = matches!(t, Ty::List { group: true, .. });
+                match out.get(&ident(bv)) {
+                    Some(Ty::List { group: true, .. }) => {}
+                    Some(_) if !grouped => {}
+                    _ => {
+                        out.insert(ident(bv), t);
+                    }
+                }
             }
         }
         Some("path variable declaration") => {
@@ -3941,8 +3951,13 @@ fn pattern_vars(node: &Plain, kind: Option<Ty>, group: bool, out: &mut Fields) {
         }
         // a subpath variable is not referenceable (4.11.5)
         Some("subpath variable declaration") => {}
-        // the WHERE clause of a nested pattern binds nothing
-        Some("graph pattern where clause" | "element pattern predicate") => {}
+        // the WHERE clause of a nested pattern binds nothing, the parenthesized one included
+        // (the twenty-eighth review: `( ( a ) WHERE EXISTS { ( z ) } )` leaked z)
+        Some(
+            "graph pattern where clause"
+            | "element pattern predicate"
+            | "parenthesized path pattern where clause",
+        ) => {}
         _ => {
             for k in kids(node) {
                 pattern_vars(k, kind.clone(), group, out);

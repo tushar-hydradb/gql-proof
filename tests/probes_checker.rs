@@ -782,3 +782,16 @@ fn twenty_eighth_review_findings() {
     bad_on_some_parse("MATCH ANY ( a ) -> ( m ) -> ( b ) WHERE EXISTS { ( m ) } RETURN m", "16.6 SR 7");
     fine("MATCH ANY ( a ) -> ( m ) -> ( b ) RETURN m", "16.6 SR 7");
 }
+
+#[test]
+fn twenty_ninth_review_findings() {
+    // 16.7 SR 22 d: a variable singleton in one union operand and a group in another is a group,
+    // in either order
+    bad_on_some_parse("MATCH ( x ) | ( ( x ) -> ( ) ) { 1 , 2 } RETURN CAST ( x AS NODE ) AS b", "20.8 SR 8");
+    bad_on_some_parse("MATCH ( x ) | ( ( x ) -> ( ) ) { 1 , 2 } , ( y ) RETURN COALESCE ( x , y ) AS b", "22.19 SR 4");
+    // a pattern in a parenthesized WHERE binds nothing outside it
+    bad_on_some_parse(
+        "MATCH ( ( a ) WHERE EXISTS { ( z ) } ) MATCH ( ( z ) -> ( ) ) { 1 , 2 } RETURN COALESCE ( z , a ) AS c",
+        "22.19 SR 4",
+    );
+}

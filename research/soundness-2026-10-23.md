@@ -941,3 +941,29 @@ and 14 rewrites.
 runs after the fix: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the twenty-eighth review
+
+a sweep for order and direction dependence in all four checkers. no printed
+counterexample. two unprinted gate holes, both in types.rs `pattern_vars`, so
+this round is not clean. both closed:
+- a variable a singleton in one union operand and a group in another took the
+  first operand's type: `MATCH ( x ) | ( ( x ) -> ( ) ) { 1 , 2 } RETURN CAST (
+  x AS NODE )` passed (9 of 1,014), its mirror was refused. 16.7 SR 22 d makes
+  it an effectively bounded group; a group declaration now wins
+- a pattern inside a parenthesized path pattern WHERE leaked its declarations
+  into the outer pattern's types (scope saw none), and a later MATCH binding the
+  name kept the phantom type. that WHERE is skipped now, as the other two were
+
+each probe 0 clean on all parses; a union of two singletons still types a
+node. no printed set holds a union whose operands declare one variable, nor a
+subquery declaring a variable in a parenthesized WHERE.
+
+the sweep marked about 50 order-dependent sites in the four checkers held,
+graph_type.rs's 18.1-18.5 pairwise and first-match checks included. an audit
+note (16.5 SR 10 b "never redeclared") described the generator, not the
+checker; clarified.
+
+runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
