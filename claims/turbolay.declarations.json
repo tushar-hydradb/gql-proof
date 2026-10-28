@@ -1,0 +1,6 @@
+{
+  "session_user": "anonymous",
+  "exact_division": "truncate",
+  "avg_exact": "float",
+  "element_id": "{kind}:{id}"
+}
