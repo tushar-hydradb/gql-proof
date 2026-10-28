@@ -893,3 +893,13 @@ fn thirty_eighth_review_findings() {
     fine("RETURN CAST ( NULL AS FLOAT ( 88 ) ) AS x", "18.9 SR 42");
     fine("RETURN $b AS x , $bb AS y", "6 SR 4");
 }
+
+#[test]
+fn thirty_ninth_review_findings() {
+    // `[ ]`'s element type is the empty type (GV72) or ID004's choice: it meets no requirement
+    bad_on_some_parse("FOR x IN [ ] RETURN x + 1 AS y", "20.21 SR 3");
+    bad_on_some_parse("FOR x IN [ ] RETURN UPPER ( x ) AS y", "20.23 SR 2");
+    bad_on_some_parse("LET y = [ ] FOR x IN y RETURN x + 1 AS z", "20.21 SR 3");
+    fine("FOR x IN [ ] FINISH", "20.21 SR 3");
+    fine("RETURN [ ] AS x", "22.19 SR 2");
+}

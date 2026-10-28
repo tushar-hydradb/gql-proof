@@ -147,6 +147,11 @@ enum Union {
     Property,
     /// A <component type list> of these types (18.9 SR 84, 87).
     Closed(Vec<Ty>),
+    /// The element type of `[ ]` (20.17 SR 3 b): the empty type with GV72, ID004's choice
+    /// without. Neither meets a type requirement for every use, so it is dynamic only to be
+    /// refused in a combination (22.19 SR 2) and is of `Class::Unset`, which meets none (the
+    /// thirty-eighth review: `FOR x IN [ ] RETURN x + 1` passed as ANY)
+    Unset,
 }
 
 /// The constraining GQL-object type of a node or edge reference value type.
@@ -194,11 +199,14 @@ enum Class {
     Edge,
     Graph,
     Table,
+    /// The element type of `[ ]`: meets no requirement.
+    Unset,
 }
 
 impl Ty {
     fn class(&self) -> Option<Class> {
         Some(match self {
+            Ty::Dyn(Union::Unset) => Class::Unset,
             Ty::Any | Ty::Opaque | Ty::Dyn(_) | Ty::Null | Ty::Nothing => return None,
             Ty::Bool => Class::Bool,
             Ty::Exact { .. } | Ty::Approx | Ty::Number => Class::Numeric,
@@ -265,6 +273,7 @@ impl fmt::Display for Ty {
             Ty::Opaque => write!(f, "ELEMENT_ID's type"),
             Ty::Dyn(Union::Open) => write!(f, "ANY"),
             Ty::Dyn(Union::Property) => write!(f, "ANY PROPERTY VALUE"),
+            Ty::Dyn(Union::Unset) => write!(f, "the element type of [ ]"),
             Ty::Dyn(Union::Closed(cs)) => {
                 let cs: Vec<String> = cs.iter().map(Ty::to_string).collect();
                 write!(f, "ANY<{}>", cs.join(" | "))
@@ -538,6 +547,8 @@ fn assignable(src: &Ty, tgt: &Declared) -> bool {
         return false;
     }
     match (src, &tgt.ty) {
+        // `[ ]`'s element goes only to a site of every type (ID004's choice is unknown)
+        (Ty::Dyn(Union::Unset), t) => matches!(t, Ty::Any | Ty::Dyn(Union::Open)),
         // a dynamic source: 4.14.4 lets the implementation test the value at run time
         (Ty::Any | Ty::Dyn(_) | Ty::Nothing, _) | (_, Ty::Any) => true,
         // 4.16.8: the null value only goes to a nullable site
@@ -678,6 +689,8 @@ fn within(s: &Ty, u: &Union) -> bool {
         (Ty::Any | Ty::Dyn(_), _) => false,
         (s, Union::Property) => s.scalar(),
         (s, Union::Closed(cs)) => cs.iter().any(|c| subtype(s, c)),
+        // no type is written as `[ ]`'s element type
+        (_, Union::Unset) => false,
     }
 }
 
@@ -715,6 +728,8 @@ fn cast_fault(sd: &Ty, td: &Ty) -> Option<&'static str> {
         (Ty::List { group: false, .. }, t) if !matches!(t, Ty::List { group: false, .. }) => {
             return Some("20.8 SR 11");
         }
+        // `[ ]`'s element casts to nothing known (ID004)
+        (Ty::Dyn(Union::Unset), _) => return Some("20.8 SR 10"),
         // SR 9
         (_, Ty::Dyn(u)) => return (!within(sd, u)).then_some("20.8 SR 9"),
         // SR 10: a component of the source casts to the target
@@ -726,6 +741,7 @@ fn cast_fault(sd: &Ty, td: &Ty) -> Option<&'static str> {
                     .iter()
                     .any(|c| cast_fault(c, td).is_none()),
                 Union::Closed(cs) => cs.iter().any(|c| cast_fault(c, td).is_none()),
+                Union::Unset => false,
             };
             return (!some).then_some("20.8 SR 10");
         }
@@ -1421,7 +1437,7 @@ impl<'t> Checker<'t> {
                                 cs.iter().all(|a| cs.iter().all(|b| comparable(a, b)))
                             }
                             // H2: the predefined types include non-comparable ones
-                            Union::Open | Union::Property => false,
+                            Union::Open | Union::Property | Union::Unset => false,
                         }
                     {
                         self.report(
@@ -2398,7 +2414,7 @@ impl<'t> Checker<'t> {
                 // to lists of GRAPH NOT NULL and of ANY NOT NULL each held only for their own
                 // choice), so 22.19 SR 2 refuses it in a combination and a cast of it is refused
                 let elem = if types.is_empty() {
-                    Ty::Dyn(Union::Open)
+                    Ty::Dyn(Union::Unset)
                 } else {
                     self.combined(node, &types, &elems, "20.17 SR 3")
                 };

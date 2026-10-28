@@ -8,7 +8,9 @@
 --phase cover --sentences` prints on stdout (stderr also echoes some withheld
 sentences, which are not printed in this sense), with the default `--start GQL-program` (another
 start prints fragments, not programs, outside the theorem), under any `--claim`
-and any `--match-mode-default` (the gate checks with both; H2'' and H2''' ask
+that claims GV71 (every claim the runs use does: all, turbolay, neo4j; without
+it a NULL whose context fixes no type has ID085's static type, which no
+hypothesis names; the thirty-eighth review) and any `--match-mode-default` (the gate checks with both; H2'' and H2''' ask
 the engine to match them). then S, read by the derivation tree it was
 printed from, satisfies every syntax rule of iso/iec 39075:2024 with cor 1 whose
 kind is constraint or type, under the readings listed below, given hypothesis H.
@@ -163,8 +165,11 @@ property of every printed sentence, by the gate in step 1
   gate-only; the seventeenth review found 44 such bodies printed without it). 22.18 SR 2 (GV65), 22.18 SR 9 c (GV66, GV67), 20.17 SR 3 b (GV72)
   and every rule asking for comparable value types (4.4.2: GA04, GA09; 20.24
   SR 3, 4, 14.2 SR 10) turn on features too; the checker reads each as without the feature
-  (static combination, no empty list typed NOTHING), the stricter side, so
-  they need nothing of the claim
+  (static combination), the stricter side, and 20.17 SR 3 b stricter than
+  either branch (`[ ]`'s element meets no type requirement, neither the empty
+  type nor one implementation's choice being known to meet it), so they need
+  nothing of the claim. 22.17 SR 2 (GG26) is read stricter than either branch
+  too: only identical property value types combine (the thirty-eighth review)
 - **H2'', ID086.** the sets are printed for an implementation whose default
   match mode is the one passed as `--match-mode-default` (the turbolay and
   whole grammar sets: DIFFERENT EDGES); 16.4 SR 14 d and 16.4 SR 12 read it
@@ -334,10 +339,12 @@ or a path union or alternation that declares an element variable
   identifies a graph or graph type of the kind the statement wants (17.8 SR
   4, 5); an external object is no catalog object, so H1 does not cover it
 - ID004 (without GV72): an empty list's element type is the implementation's,
-  one choice for every sentence, so nothing may rest on it: the checker types
-  `[ ]`'s element as the open dynamic union and refuses a cast of `[ ]` and
-  `[ ]` in a combination (the ninth review found casts to lists of GRAPH NOT
-  NULL and of ANY NOT NULL, each holding only for its own choice)
+  one choice for every sentence, so nothing may rest on it: the checker gives
+  `[ ]`'s element a type that meets no requirement, goes to no site but one of
+  every type, casts to nothing and is refused in a combination, and refuses a
+  cast of `[ ]` (the ninth review found casts to lists of GRAPH NOT NULL and of
+  ANY NOT NULL, each holding only for its own choice; the thirty-eighth
+  `FOR x IN [ ] RETURN x + 1`, which the open dynamic union let pass)
 - ID005: ELEMENTS' element type is the implementation's; the checker types it
   the open dynamic union, so 22.19 SR 2 refuses it in a combination
 - ID076: ELEMENT_ID's type is whatever the implementation defines; the

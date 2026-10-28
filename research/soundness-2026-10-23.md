@@ -1239,3 +1239,33 @@ IA014, IE001, IA019, IA023, IV023, `$$`, ID079 and the literal bounds.
 runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
 whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
 neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
+
+## 2026-10-28: the thirty-eighth review
+
+the parts of H not yet swept: H3, H2''' (features and the conformance
+devices), H2'' and H2'. no printed counterexample. two unprinted gaps, so this
+round is not clean. both closed:
+- GV72 and ID004: `[ ]`'s element was typed the open dynamic union, which the
+  cure lets meet every requirement, so `FOR x IN [ ] RETURN x + 1` passed. with
+  GV72 the element is the empty type, which meets no class requirement, and
+  without it one implementation choice cannot be numeric and a string at once.
+  the element now has a type of its own (`Union::Unset`, `Class::Unset`): it
+  meets no requirement, goes to no site but one of every type, casts to
+  nothing, and is still refused in a combination. H2''' said this rule was read
+  stricter than either branch; now it is
+- GV71: without it, a NULL whose context fixes no type has ID085's static
+  type, so `LET x = NULL RETURN x + 1 , UPPER ( x )` holds under no choice; no
+  hypothesis named ID085. the theorem is now stated for claims with GV71,
+  which every claim the runs use has
+
+checked and found to hold: H3 is a legitimate hypothesis (the text neither
+forces a derivation nor demands validity under every one: 4.7.3, 5.2, 24.4.1);
+the five unconditional conformance rules are devices the gate enforces under
+every claim; GG22 both ways; GV65-67 static combination stricter; H2'' (16.4
+SR 10-14 the only rules reading the match mode, portable the strict side);
+H2' as stated matches 4.14.4.1; 22.17 SR 2 (GG26) read stricter than either
+branch, now named in H2'''.
+
+runs after the fixes: every count unchanged (1 variable 3,227 and 327 withheld;
+whole grammar 3,055 and 523; turbolay 3,400 and 186; 3 variables 3,408 and 198;
+neo4j 41,103 and 1,580); 0 generator bugs apart from neo4j's 34.
