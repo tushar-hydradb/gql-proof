@@ -1625,3 +1625,26 @@ not clean, one derivable hole:
 
 runs after the fix: the same rows and withheld counts as round 49 in all five;
 0 generator bugs apart from neo4j's 34.
+
+## the fifty-first review (derivable trees)
+
+not clean, one derivable hole and the H1 gap under it:
+- 7.1 SR 6 d ii 1 B: `SESSION SET VALUE $b = TRUE SESSION SET VALUE $b ANY =
+  CURRENT_DATE` (also after a graph, with PROPERTY VALUE, ANY VALUE, IF NOT
+  EXISTS), each 1 derivable tree, clean. the later set's type is the written
+  ANY, and `assignable` let any dynamic source through (4.14.4's run-time
+  test), which is for a value, not a written type. not printed: no set sets
+  one parameter twice
+- the gap: a predefined `$b ANY` serves every such S (7.1 SR 6 d i, d ii not
+  applying), and H1 had not said S's own parameters are not predefined. H1 now
+  says so, except one S reads in the command that first sets it, which is
+  predefined at a dynamic type (E). the checker judges d ii between S's sets
+  in both cases, the stricter side; round 50's finding rests on the same line
+- fixed: a written dynamic type is assignable only to ANY or itself
+- moot: `NULL || NULL` is refused only on the list tree; the string, byte and
+  path trees rest on H4's null reading (the claim's sentence holds for the
+  list arm only); `CALL a ( ) CALL a ( )` and the PATH_LENGTH variants differ
+  by tree (H3)
+
+runs after the fix: the same rows and withheld counts as round 50 in all five;
+0 generator bugs apart from neo4j's 34.

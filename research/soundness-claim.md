@@ -61,7 +61,14 @@ property of every printed sentence, by the gate in step 1
   first). no object of a schema or directory S resolves a name through is
   named confusably (IW014, under H2's relation) with a name S uses there, so a
   reference resolves (17.1 SR 2 b iv, 17.2-17.4 SR 2 d i 2, 17.5 SR 3 b iii,
-  22.9 SR 4 b; the thirty-sixth review: H1 said only which objects exist). a parameter has the type the request gives it; one used at two
+  22.9 SR 4 b; the thirty-sixth review: H1 said only which objects exist). a
+  session parameter S sets is not defined before S, unless S reads it in the
+  command that first sets it (`SESSION SET GRAPH $b = $b`); then it is defined
+  at a dynamic type (E), which every value type is assignable to (7.1 SR 6 d
+  i). so a later set of a parameter is judged against the earlier set (7.1 SR
+  6 d ii), and the checker judges it so in both cases, the stricter side (the
+  fifty-first review: a predefined ANY would have served every set, and H1
+  had not said it is not there). a parameter has the type the request gives it; one used at two
   incompatible types (`$b * 2` used as a graph) holds only if that type is
   dynamic and H2' cures it. H2' cures every use but a combination's input. so
   the only unknown input a combination may take is a bare parameter written
@@ -108,7 +115,9 @@ property of every printed sentence, by the gate in step 1
   `research/audit/unknowns-2026-10-26.md`. the sources S itself fixes are typed:
   ELEMENT_ID's value (H2, ID076), a table variable's columns, a dynamic list's
   dynamic elements. two sources that have no type are refused: a FOR over NULL,
-  and `NULL || NULL` (`14.8 SR 10 null`, `20.15 SR 2 null`)
+  and `NULL || NULL` read as a list concatenation (`14.8 SR 10 null`, `20.15
+  SR 2 null`); read as a string, byte string or path concatenation it has that
+  type, under H4's null reading (the fifty-first review)
 - **H2, implementation-defined choices.** the implementation-defined rules
   S's validity depends on take the choice that does not raise a syntax error:
   listed per row (`implementation` kind) in the audit. S avoids every

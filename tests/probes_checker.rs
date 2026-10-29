@@ -978,3 +978,14 @@ fn fiftieth_review_findings() {
     // 7.1 SR 6 d ii 1 B, 20.20 SR 1: a NULL routed as a boolean value expression is a boolean
     bad_on_some_parse("SESSION SET VALUE $b = 1 SESSION SET VALUE $b = NULL", "7.1 SR 6");
 }
+
+#[test]
+fn fifty_first_review_findings() {
+    // 7.1 SR 6 d ii 1 B: a written dynamic type is not assignable to a narrower earlier one
+    bad_on_some_parse("SESSION SET VALUE $b = TRUE SESSION SET VALUE $b ANY = CURRENT_DATE", "7.1 SR 6");
+    bad_on_some_parse(
+        "SESSION SET GRAPH $b = CURRENT_PROPERTY_GRAPH SESSION SET VALUE $b ANY = CURRENT_DATE",
+        "7.1 SR 6",
+    );
+    bad_on_some_parse("SESSION SET VALUE $b = TRUE SESSION SET VALUE $b PROPERTY VALUE = TRUE", "7.1 SR 6");
+}

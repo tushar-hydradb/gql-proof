@@ -1119,6 +1119,13 @@ impl<'t> Checker<'t> {
                         Some(written) => closed.as_deref() == Some(written.as_str()),
                         // a table's columns are not followed here (the twelfth review)
                         None if matches!(pvt.ty, Ty::Table(_)) || matches!(dt.ty, Ty::Table(_)) => false,
+                        // a written dynamic type is no value: 4.14.4 tests a value at run
+                        // time, so it is assignable only to a type holding all of it (the
+                        // fifty-first review)
+                        None if written_dynamic(clause, &pvt.ty) => {
+                            (matches!(dt.ty, Ty::Any | Ty::Dyn(Union::Open)) || pvt.ty == dt.ty)
+                                && (dt.nullable || !pvt.nullable)
+                        }
                         None => {
                             assignable(&pvt.ty, dt)
                                 && (dt.nullable || !pvt.nullable || matches!(pvt.ty, Ty::Nothing))
@@ -4097,6 +4104,12 @@ fn null_typed(node: &Plain) -> bool {
             _ => return false,
         }
     }
+}
+
+/// A session set value clause whose written <value type> is dynamic.
+fn written_dynamic(clause: &Plain, ty: &Ty) -> bool {
+    matches!(ty, Ty::Dyn(_))
+        && own(clause, "opt typed value initializer").and_then(|o| own(o, "value type")).is_some()
 }
 
 /// Text that is a <null literal> whichever way it derives.
