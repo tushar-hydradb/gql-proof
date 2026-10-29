@@ -1,0 +1,119 @@
+clause	sr	item	verdict	reason	probe	derivable counts
+15.1	9		H	Cor 1 replaces ITART with IREDTPC (record amended with table); scope.rs:call checks every result column against scope.merged(), exactly that, for inline calls (body's result columns); a named call without YIELD rests on H1 (named there, 15.1 SR 9); a named call with YIELD is withheld (withheld family, and 15.1 SR 9 yield)		
+15.2	6	a ii	faithful	scope.rs:call compares the listed references' names (BTreeSet); a delimited spelling is refused everywhere (21.3 SR 4 names), so text equality is name equality		
+16.3	4		faithful	scope.rs:names over this pattern's own declarations (same depth: expose walks only the path structure): node/edge clash 16.4 SR 5, subpath/element and path/other clash 16.3 SR 4, path twice 4.11.4; a name declared twice as one sort is one variable (4.11.4 joins)		
+16.3	7		faithful	scope.rs:pattern_match checks every subpath name the pattern exposes (all declarations reach exposed) against scope.record; independent of the name pools		
+16.3	9		faithful	as SR 7, against scope.table		
+16.3	12	a i	faithful	scope.rs:pattern_match: explicit names collected in a set, a repeat reported		
+16.3	12	a ii	faithful	globals = every exposed element and path variable of GP (GPVARS, subpaths apart); a yielded name outside it reported		
+16.3	15		faithful	by 20.12 SR 10 and 4.11.4 (a GPBT is one namespace) a yield reference has GP as binding graph pattern exactly when GP declares the name; refused otherwise under 16.3 SR 12		
+16.3	16	a i	faithful	scope.rs:pattern_match compares group degree of the incoming field and the yielded variable over every yielded name (explicit, overlap and implicit); group variables are also withheld whole (16.7 SR 22 group)		
+16.3	16	a ii	faithful	as a i, the same comparison both ways		
+16.3	20		stricter	scope.rs:joinable: same kind (node, edge, path) and never a value column; 22.13 admits at least these		
+16.4	3		faithful	scope.rs:graph_pattern compares each name across the list's path patterns and refuses unless Single in both; the KEEP prefix applied first changes only group degrees (22 e ii), never singleton-ness		
+16.4	4		stricter	refused when either sort is a subpath, so also a subpath beside an element variable		
+16.4	5		faithful	scope.rs:names over the pattern's own element declarations (same depth); a clash with an incoming variable falls to 16.3 SR 20		
+16.4	6	b i	stricter	verify.rs graph pattern arm: own-prefix search with KEEP (16.4 SR 6), and any path pattern or nested KEEP below with a search prefix (16.4 SR 6 nested, gate-only), the literal 'contains' and a bit more (the GP's WHERE too)		
+16.4	12		faithful	verify.rs: DIFFERENT EDGES explicit or any default but REPEATABLE (H2'' fixes the default), >1 top-level path patterns, one selective by its own search prefix or by the KEEP prefix (16.4 SR 6 rewrite)		
+16.4	14		faithful	verify.rs guarded (nearest GP) and guarded_everywhere (every enclosing GP, gate-only '16.4 SR 14 nested'); restrictive = path mode other than WALK, selective = search prefix other than ALL, a path pattern prefix counts per SR 7, KEEP for its own GP (an outer KEEP not counted, the strict side), MM per GP; simplified quantifiers included (16.12 SR 6)		
+16.5	6	c	H	types.rs insert: predefined scalars (H2: supported property value types include them), a dynamic type (H2', 16.5 SR 6 c named), an unknown one (H1: a parameter has the type S uses it at); lists, records, references, NULL refused (stricter)		
+16.5	9		faithful	subsumed by SR 10 a iii: a bound insert element pattern with any label and property set specification is refused (scope.rs insert)		
+16.5	10	a i	faithful	scope.rs insert: an incoming name (record or table) on an insert edge pattern reported		
+16.5	10	a ii	stricter	scope.rs insert: the incoming variable must be Kind::Node singleton (a value column refused whatever its type)		
+16.5	10	a iii	faithful	scope.rs insert: a bound pattern immediately containing a label and property set specification reported (the filler immediately contains it)		
+16.5	10	b	faithful	scope.rs insert: patterns in document order; a later unbound redeclaration with labels or properties reported		
+16.5	11		H	H4 'a second insert pattern is another one' names 16.5 SR 11; checker refuses any redeclaration next to an edge and a bound edge (SR 10)		
+16.6	2	b ii type	H	<unsigned integer> is exact numeric scale 0 by the grammar; a dynamic parameter has the type the request gives it (H1, 'with the type S uses it at'; a parameter used at two types rests on H2')		
+16.6	2	b ii value	faithful	verify.rs 'number of paths' | 'number of groups': an unsigned integer of value 0 reported (all radices, underscores); the generator settles it in tree.rs (the probe's derivability does not apply tree.rs: MATCH ANY 0 <- is derivable 1, clean 0)		
+16.6	7		stricter	scope.rs selective_rules: strict interior = exposed, not subpath, not a Single first/last node variable outside unions and quantifiers; refused if declared in a non-selective pattern, incoming, in another selective pattern, or declared anywhere else in the program; KEEP prefix counted (probe: MATCH REPEATABLE ELEMENTS ( x ) , ( y ) <- ( x ) <- ( z ) KEEP ANY derivable 1, clean 0)		
+16.6	8		stricter	scope.rs verdict: every reference from a WHERE or property specification inside a selective pattern to a name it does not expose is refused, incoming names included; a subquery inside one refused whole (16.6 SR 8 nested, gate-only)		
+16.7	4		faithful	verify.rs: the printed text is the tree's tokens joined by one space (21.3 SR 13, 14), so a separator stands between every two tokens		
+16.7	8		faithful	verify.rs length_zero: minimum path length per SR 7 after SR 14 a, for quantified, questioned and simplified forms		
+16.7	9		faithful	verify.rs nests_quantifier: any quantified or simplified quantified below, stopping only at a graph pattern (a filler or WHERE holds one only through a nested graph pattern)		
+16.7	10	c	stricter	scope.rs expose: subpath names exposed by two operands, nested ones included (the literal asks only simply contained)		
+16.7	11		faithful	scope.rs verdict: a reference from inside a union operand to a name exposed by neither the operand nor any declaration outside the union reported; a union declaring an element variable is also withheld whole (withheld family)		
+16.7	16		H	H4 'the minimum node count counts touching node patterns' names 16.7 SR 16; verify.rs minimums is zero exactly when that reading's count is		
+16.7	20		H	H4 names 16.7 SR 20; verify.rs checks named subpaths and each multiset alternation operand (SR 10's rewrite)		
+16.7	21		faithful	scope.rs expose: an element pattern whose predicate contains (5.3.2.1, nested too) an element WHERE and whose filler declares no variable reported		
+16.7	22	b	faithful	scope.rs expose: the inner exposure of a subpath's own expression holding the name reported; read by variable: a same-named subpath in a nested graph pattern is another variable (4.11.4: a GPBT is one namespace), see undecided note		
+16.7	22	c i	faithful	scope.rs expose: both Single and either a subpath reported		
+16.7	22	c ii	faithful	scope.rs expose: exposed by both and not Single in both reported		
+16.7	24		stricter	scope.rs: a path variable (pattern's or incoming) referenced from an element or parenthesized WHERE marked bad, carried into nested subqueries through the record		
+16.8	4	a ii, closed graph	H	no closed graph type S fixes reaches a working graph (cast targets, typed initializers, '11.1 SR 3 material' for list/record elements, 10.1 SR 8); a catalog, session or parameter graph's type is H1's ('with the type S uses it at')		
+16.8	4	b ii	H	Cor 1: closed graph element reference type. types.rs labels checks Closed shapes, refuses Unfollowed; an element variable reference must name a pattern, insert or bound node/edge variable (scope 16.10 SR 3), whose type is open by H2 (IW011, IW012)		
+16.9	2		faithful	path variable reference occurs only as a yield item; pattern_match: a path global is always Single (16.4 SR 15)		
+16.9	3		faithful	pattern_match: a yielded path variable reference to a non-path global reported (an unknown name falls to 16.3 SR 12)		
+16.10	3	a	stricter	scope.rs: every element variable reference must name a Node or Edge variable (stricter: a node-typed value column refused); types.rs element as well		
+16.10	3	b	faithful	group variables and GROUP list types withheld whole (16.7 SR 22 group); types.rs element accepts only a group list of elements for a group		
+16.11	3	a i	faithful	verify.rs: fixed quantifier 0 and upper bound 0 reported; values below 10^9 (21.2 SR 14 gate) so no saturation		
+16.11	3	a ii	faithful	verify.rs general quantifier: upper below lower reported; a missing lower is 0		
+16.12	1		stricter	verify.rs complex() (any concatenation, quantified, questioned, multiset alternation below) plus a direction override		
+16.12	2		faithful	verify.rs: a direction override anywhere below a direction override		
+16.12	3		faithful	verify.rs complex() below a direction override		
+16.12	4		stricter	as SR 1, plus a direction override		
+16.14	4	b i	faithful	<binding variable> is a <regular identifier>; <field name> is regular or delimited; scope.rs yield_clause reports an unaliased delimited one		
+16.14	6		faithful	scope.rs yield_clause: aliases (or names, unaliased) in a map, a repeat reported; delimited aliases refused globally		
+16.14	7	b iii	faithful	scope.rs block: NEXT's yield names must be columns of the previous result (empty for a FINISH or catalog statement); a named call's YIELD is withheld whole (withheld family)		
+17.1	5	a, with 2 a i	faithful	verify.rs catalog_root: a bare / schema reference with an absolute or relative directory path refused (gate-only); the rest is H1's single environment		
+17.2	2	d i 1, one kind	stricter	verify.rs one_kind_per_name: a representative form used at two kinds anywhere, parents not compared, bare graph/table expression names and directories included		
+17.6	1	a	faithful	verify.rs: a schema reference whose text is / beside an immediate solidus reported		
+17.6	1	b	faithful	verify.rs: any other schema reference without the solidus, and a parent with no schema reference (the literal 'otherwise'), reported		
+17.6	5	object name	stricter	verify.rs: any object name in a parent refused		
+17.8	2		faithful	verify.rs leaf rule: RFC 3986 scheme, a non-empty rest of pchar/'/'/'?' with valid percent escapes, at most one '#', no '//' and no whitespace: every accepted string is a URI with a scheme (path-rootless or path-absolute)		
+17.8	3		faithful	the same leaf rule demands the colon		
+18.1	8		stricter	graph_type.rs body: effective key label sets of the body's own node type specifications, computed with and without GG22 inference, a repeat reported under either		
+18.1	9		stricter	implies per SR 6 (both readings of GG22); inconsistent needs label subset, property names subset and identical value type trees (stricter than 22.17)		
+18.1	10		faithful	aliases (local alias, else node type name by Cor 1 18.2 SR 4 b, verified in the Cor 1 text) of the body's node types compared		
+18.1	11	a	faithful	graph_type.rs endpoint: alias resolved by alias (18.3 SR 17 a), key label set by key and identical type (b), else a body node type with equal label set and identical property types (c); unresolved reported		
+18.1	11	b	faithful	as item a, for the destination		
+18.1	14		stricter	pairs of edge types with equal effective key label sets: direction, label set, property shapes (identical trees) compared, both GG22 readings		
+18.1	16	a	stricter	as 18.1 SR 9 for edge types		
+18.1	16	b	stricter	endpoint consistency over the resolved source/destination node type specifications, both orders for undirected, a direction mismatch refused (SR 15 b)		
+18.2	2		faithful	verify.rs: parent is closed node reference value type and the specification simply contains an alias, key label set or name		
+18.2	3	a	faithful	verify.rs: a name with a key label set simply contained		
+18.2	3	b	faithful	verify.rs: a name with an alias simply contained		
+18.2	7		faithful	graph_type.rs disjoint: key (key label set or :NTN) against the implied label set, every node type specification		
+18.2	9	a ii	stricter	verify.rs with_key_label_sets_required (claims without GG22): every node type specification without a written key label set refused, a named one and one outside a body included		
+18.3	2	a	faithful	verify.rs: parent closed edge reference value type, an edge key label set or edge type name simply contained		
+18.3	2	b	faithful	the same, a source or destination alias		
+18.3	2	c	stricter	the same, a node type key label set anywhere simply inside the edge specification		
+18.3	2	d	stricter	as c		
+18.3	3		faithful	verify.rs: edge type name with edge key label set simply contained		
+18.3	4	a	faithful	verify.rs: a simply contained DIRECTED edge kind without a simply contained directed endpoint pair or pattern		
+18.3	4	b	H	H4 'a kind-less edge type pattern is free' names 18.3 SR 4 b; the checker applies b only when UNDIRECTED is written		
+18.3	8		faithful	graph_type.rs disjoint for edges		
+18.3	10	a ii	stricter	as 18.2 SR 9 a ii for edge type specifications		
+18.3	17	a ii	faithful	graph_type.rs: alias matched against the body's node type aliases (alias or name, Cor 1 18.2 SR 4 b)		
+18.3	17	b ii	stricter	key matched against the body's node type key label sets; a key label set with no label set phrase refused (reading)		
+18.3	17	b v	stricter	same label set and identical property type trees required (18.2 SR 17 a then gives one normal form)		
+18.3	18	a ii	faithful	as 18.3 SR 17 a ii for the destination		
+18.3	18	b ii	stricter	as 18.3 SR 17 b ii		
+18.3	18	b v	stricter	as 18.3 SR 17 b v		
+18.5	1		faithful	graph_type.rs distinct_properties: names of the property types simply contained (boundaries stop at nested specifications), by representative form, every property types specification		
+18.6	4		H	H2 names the supported property value types (predefined scalars, 18.6, 18.7 SR 4); types.rs and verify.rs refuse every non-predefined, reference or immaterial property value type		
+18.7	4		H	as 18.6 SR 4		
+18.9	7		faithful	verify.rs: max length 0 in character string, byte string and list value types, the only productions holding <max length>		
+18.9	8		faithful	grammar: unsigned integer		
+18.9	10		faithful	verify.rs: fixed length 0 in character and byte string types, the only productions holding <fixed length>		
+18.9	13		faithful	verify.rs: given min above given max (a min is written only beside a max; an omitted min is 0)		
+18.9	21		faithful	as SR 13 for byte strings		
+18.9	28		H	H4 'an omitted fixed length is CHAR's and BINARY's' names 18.9 SR 28; under it SR 28 is SR 21		
+18.9	29		faithful	verify.rs: precision 0 in the five productions holding <precision>		
+18.9	37		faithful	grammar: unsigned decimal integer		
+18.9	38		faithful	verify.rs: scale above precision in exact numeric types (only DECIMAL/DEC hold a scale)		
+18.9	40		faithful	verify.rs: approximate precision 1 reported (0 under SR 29)		
+18.9	68		stricter	GROUP list types withheld whole (16.7 SR 22 group); types.rs also reports a GROUP list of a non-element type and one with no element type (literal asks nothing there)		
+18.9	69		faithful	a definition, no requirement; the refusals are 20.8 SR 4's		
+18.9	88		faithful	verify.rs and types.rs: components simply contained, known not nullable per SR 4 a, b and 85-86 (nested unions), mixed reported; the ambiguous parse is H3's		
+18.10	2		faithful	verify.rs: field names simply contained in each field type list compared; delimited field names refused globally		
+19.4	5		faithful	scope.rs exists: a body whose last statement emits FINISH, ends data-modifying without RETURN, or is catalog-modifying refused; a set operation with FINISH is refused by 14.2 SR 5; nothing else leaves a body without a table type		
+19.8	2		faithful	scope.rs expr: a group-degree reference reported, inside aggregates too; group variables withheld whole		
+19.8	3		faithful	types.rs: the reference must type as an edge; a dynamic or unknown one cannot reach (scope wants a node or edge variable), so H2' is not needed		
+19.9	2		faithful	as 19.8 SR 2		
+19.10	2	s2	faithful	as 19.8 SR 2		
+19.10	2	s3	faithful	types.rs: the node reference must type as a node (and when operands refused, 20.7 SR 2 reading)		
+19.10	3	s2	faithful	as 19.8 SR 2		
+19.10	3	s3	faithful	types.rs: the edge reference must type as an edge		
+19.11	2		stricter	every element variable reference below (not only simply contained) checked singleton		
+19.12	2		stricter	as 19.11 SR 2		
+19.13	2		faithful	as 19.8 SR 2		

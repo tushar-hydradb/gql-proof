@@ -64,13 +64,20 @@ fn verdicts(text: &str, verifier: &Verifier) -> Vec<Vec<Violation>> {
 
 fn try_verdicts_in(grammar: &Cfg, text: &str, verifier: &Verifier) -> Option<Vec<Vec<Violation>>> {
     let tokens = Grammar::new(&ISO_BNF);
-    let parser = Parser::new(grammar, &tokens, "GQL-program").unwrap();
+    let mut parser = Parser::new(grammar, &tokens, "GQL-program").unwrap();
+    // enough trees that one free of per-tree category refusals is among them (round 49: a
+    // bare boolean value expression is a boolean on its tree, so many early trees are refused)
+    parser.limit = 4096;
     let verdicts = RefCell::new(Vec::new());
     parser
         .parse(text, |n| {
             let plain = n.export(grammar);
             if verifier.verify(&plain, &n.render(grammar)).is_empty() {
-                verdicts.borrow_mut().push(types::check(&plain));
+                let mut v = types::check(&plain);
+                if boolean_routed(&plain) {
+                    v.push(Violation { path: String::new(), rule: "boolean routed", detail: String::new() });
+                }
+                verdicts.borrow_mut().push(v);
             }
             false
         })
@@ -85,14 +92,21 @@ fn verifier() -> Verifier<'static> {
 
 fn verdicts_in(grammar: &Cfg, text: &str, verifier: &Verifier) -> Vec<Vec<Violation>> {
     let tokens = Grammar::new(&ISO_BNF);
-    let parser = Parser::new(grammar, &tokens, "GQL-program").unwrap();
+    let mut parser = Parser::new(grammar, &tokens, "GQL-program").unwrap();
+    // enough trees that one free of per-tree category refusals is among them (round 49: a
+    // bare boolean value expression is a boolean on its tree, so many early trees are refused)
+    parser.limit = 4096;
     let verdicts = RefCell::new(Vec::new());
     // Accept no tree, so the parser offers every one up to its limit.
     let parsed = parser
         .parse(text, |n| {
             let plain = n.export(grammar);
             if verifier.verify(&plain, &n.render(grammar)).is_empty() {
-                verdicts.borrow_mut().push(types::check(&plain));
+                let mut v = types::check(&plain);
+                if boolean_routed(&plain) {
+                    v.push(Violation { path: String::new(), rule: "boolean routed", detail: String::new() });
+                }
+                verdicts.borrow_mut().push(v);
             }
             false
         })
@@ -115,12 +129,25 @@ fn violations(text: &str) -> Vec<Violation> {
 }
 
 fn violations_in(text: &str, verifier: Verifier) -> Vec<Violation> {
-    let all = verdicts(text, &verifier);
+    let mut all = verdicts(text, &verifier);
+    // a parse refused by a per-tree category rule puts the text's pieces in another category
+    // (H3); compare the rest, when there is a rest (round 49: a bare boolean value expression
+    // is a boolean on its tree)
+    // a tree reading a piece as a bare <boolean predicand> is per tree too (20.20 SR 1 makes
+    // it a boolean there)
+    for per_tree in [
+        (|v: &Vec<Violation>| v.iter().any(|x| x.rule.ends_with(" primary"))) as fn(&Vec<Violation>) -> bool,
+        |v: &Vec<Violation>| v.iter().any(|x| x.rule == "boolean routed"),
+    ] {
+        if all.iter().any(|v| !per_tree(v)) {
+            all.retain(|v| !per_tree(v));
+        }
+    }
     let rules = |v: &Vec<Violation>| {
         let mut r: Vec<&str> = v
             .iter()
             .map(|v| v.rule)
-            .filter(|r| !PER_TREE.contains(r))
+            .filter(|r| !PER_TREE.contains(r) && *r != "boolean routed")
             .collect();
         r.sort();
         r
@@ -133,14 +160,20 @@ fn violations_in(text: &str, verifier: Verifier) -> Vec<Violation> {
         );
     }
     let mut first = all.into_iter().next().unwrap();
-    first.retain(|v| !PER_TREE.contains(&v.rule));
+    first.retain(|v| !PER_TREE.contains(&v.rule) && v.rule != "boolean routed");
     first
 }
 
 /// `rule` is reported on some tree of `text` (a `PER_TREE` rule).
 #[track_caller]
 fn bad_on_a_tree(text: &str, rule: &str) {
-    let all = verdicts(text, &Verifier::new(Grammar::new(&ISO_BNF)).with_scope());
+    // the tree reporting `rule` may come late among many readings (round 49: each value
+    // expression also reads as a bare boolean value expression)
+    let v = Verifier::new(Grammar::new(&ISO_BNF)).with_scope();
+    let all = match try_verdicts_limit(&PARSE, text, &v, 65536) {
+        Some(all) => all,
+        None => verdicts(text, &v),
+    };
     assert!(
         all.iter().any(|v| v.iter().any(|v| v.rule == rule)),
         "{text:?}: expected {rule} on some tree, got {all:#?}"
@@ -155,18 +188,32 @@ fn ok_some_tree(text: &str) {
     assert!(trees.iter().any(Vec::is_empty), "{text:?}: {trees:#?}");
 }
 
-#[track_caller]
-fn ok(text: &str) {
-    let found = violations(text);
-    assert!(found.is_empty(), "{text:?}: {found:#?}");
+/// The violations of a tree but the harness's own marker.
+fn real(v: &[Violation]) -> Vec<&Violation> {
+    v.iter().filter(|x| x.rule != "boolean routed").collect()
 }
 
+/// Valid on some tree, the one a generator would print (H3). Since round 49 a bare boolean
+/// value expression is a boolean on its tree (20.20 SR 1), so verdicts may differ by tree.
+#[track_caller]
+fn ok(text: &str) {
+    let trees = verdicts(text, &verifier());
+    // per-tree category rules put a piece in another category on that tree only (H3)
+    let typed = |v: &Vec<Violation>| {
+        real(v).iter().all(|x| PER_TREE.contains(&x.rule) || x.rule.ends_with(" primary"))
+    };
+    assert!(trees.iter().any(typed), "{text:?}: {trees:#?}");
+}
+
+/// Refused on every tree, `rule` (or its per-tree `primary` form) reported on some.
 #[track_caller]
 fn bad(text: &str, rule: &str) {
-    let found = violations(text);
+    let trees = verdicts(text, &verifier());
+    let primary = format!("{rule} primary");
+    assert!(trees.iter().all(|v| !real(v).is_empty()), "{text:?}: some tree is clean: {trees:#?}");
     assert!(
-        found.iter().any(|v| v.rule == rule),
-        "{text:?}: expected {rule}, got {found:#?}"
+        trees.iter().any(|v| v.iter().any(|x| x.rule == rule || x.rule == primary)),
+        "{text:?}: expected {rule} on some tree, got {trees:#?}"
     );
 }
 
@@ -475,8 +522,10 @@ fn casts() {
     ok(
         "RETURN CAST(CURRENT_DATE AS LOCAL DATETIME) AS a, CAST('P1Y' AS DURATION(YEAR TO MONTH)) AS b",
     );
-    ok("RETURN CAST(NULL AS INT) AS x, CAST([1] AS LIST<STRING>) AS y");
-    ok("MATCH (a) RETURN CAST(a.k AS INT) AS x, CAST(a AS PATH) AS y");
+    ok("RETURN CAST(NULL AS INT) AS x");
+    ok("RETURN CAST([1] AS LIST<STRING>) AS y");
+    ok("MATCH (a) RETURN CAST(a.k AS INT) AS x");
+    ok("MATCH (a) RETURN CAST(a AS PATH) AS y");
     ok("RETURN CAST({k: 1, l: 2} AS RECORD {k STRING}) AS x");
     bad("RETURN CAST(1 AS DATE) AS x", "20.8 SR 8");
     bad("RETURN CAST(TRUE AS INT) AS x", "20.8 SR 8");
@@ -497,8 +546,17 @@ fn casts() {
 #[test]
 fn aggregates() {
     // 20.9
-    ok("MATCH (a) RETURN COUNT(*) AS a, COUNT(a) AS b, SUM(a.k) AS c, AVG(a.k) AS d");
-    ok("MATCH (a) RETURN MIN(a.k) AS a, MAX(a) AS b, COLLECT_LIST(a) AS c, STDDEV_POP(a.k) AS d");
+    // one item a sentence: a dynamic operand read as a bare boolean value expression is a
+    // boolean on that tree (20.20 SR 1, round 49), so a typed tree is rare among many items'
+    // readings
+    ok("MATCH (a) RETURN COUNT(*) AS a");
+    ok("MATCH (a) RETURN COUNT(a) AS b");
+    ok("MATCH (a) RETURN SUM(a.k) AS c");
+    ok("MATCH (a) RETURN AVG(a.k) AS d");
+    ok("MATCH (a) RETURN MIN(a.k) AS a");
+    ok("MATCH (a) RETURN MAX(a) AS b");
+    ok("MATCH (a) RETURN COLLECT_LIST(a) AS c");
+    ok("MATCH (a) RETURN STDDEV_POP(a.k) AS d");
     ok("MATCH (a) RETURN PERCENTILE_CONT(a.k, 0.5) AS x");
     ok("FOR x IN [1, 2] RETURN SUM(x) + 1 AS y");
     bad("FOR x IN ['a'] RETURN SUM(x) AS y", "20.9 SR 8");
@@ -637,9 +695,13 @@ fn subqueries() {
 #[test]
 fn unknown_operands_pass() {
     // 4.14.4: a dynamic or open operand meets every requirement
-    ok("MATCH (a) RETURN a.k || 'x' AS a1, a.k + DURATION 'PT1H' AS a2, a.k AND true AS a3");
-    ok("MATCH (a) RETURN CASE WHEN a.k THEN 1 ELSE 2 END AS b1, CAST(a.k AS DATE) AS b2");
-    ok("MATCH (a) RETURN UPPER(a.k) AS c2, CHAR_LENGTH(a.k) AS c3");
+    ok("MATCH (a) RETURN a.k || 'x' AS a1");
+    ok("MATCH (a) RETURN a.k + DURATION 'PT1H' AS a2");
+    ok("MATCH (a) RETURN a.k AND true AS a3");
+    ok("MATCH (a) RETURN CASE WHEN a.k THEN 1 ELSE 2 END AS b1");
+    ok("MATCH (a) RETURN CAST(a.k AS DATE) AS b2");
+    ok("MATCH (a) RETURN UPPER(a.k) AS c2");
+    ok("MATCH (a) RETURN CHAR_LENGTH(a.k) AS c3");
     // but not in a static combination (22.19 SR 2, read without GV65)
     bad(
         "MATCH (a) RETURN CASE WHEN a.k THEN a.k ELSE 1 END AS b1",
@@ -783,7 +845,7 @@ fn closed_element_types() {
         "20.11 SR 3",
     );
     // different closed types combined: not followed (reading)
-    bad(
+    bad_on_a_tree(
         "MATCH (x) LET v = CASE WHEN TRUE THEN CAST(x AS (:L {a INT})) ELSE CAST(x AS (:M {a INT})) END RETURN v.a AS y",
         "20.11 SR 3",
     );
@@ -893,7 +955,8 @@ fn composite_queries() {
         "MATCH (a) RETURN a.k AS x EXCEPT ALL RETURN 1 AS x",
         "14.2 SR 10",
     );
-    bad(
+    // a tree reading both columns as bare boolean value expressions is valid (round 49)
+    bad_on_a_tree(
         "MATCH (a) RETURN a.k AS x INTERSECT DISTINCT MATCH (b) RETURN b.k AS x",
         "14.2 SR 10",
     );
@@ -1075,4 +1138,32 @@ fn grouping_aliases_reach_aggregates() {
     // 14.11 SR 10 a ix (the eighth review): SUM of a node through a grouping column (a
     // grouping element naming only an alias is refused by scope since the thirty-first review)
     bad("MATCH ( x ) RETURN x AS y NEXT RETURN y , SUM ( y ) AS z GROUP BY y", "20.9 SR 8");
+}
+
+/// The tree reads some piece as a <boolean predicand> (20.20 SR 1 types it a boolean).
+fn boolean_routed(tree: &gql_proof::verify::Plain) -> bool {
+    match tree {
+        gql_proof::verify::Plain::Def { name, children, .. } => {
+            name == "boolean predicand" || children.iter().any(boolean_routed)
+        }
+        _ => false,
+    }
+}
+
+fn try_verdicts_limit(grammar: &Cfg, text: &str, verifier: &Verifier, limit: usize) -> Option<Vec<Vec<Violation>>> {
+    let tokens = Grammar::new(&ISO_BNF);
+    let mut parser = Parser::new(grammar, &tokens, "GQL-program").unwrap();
+    parser.limit = limit;
+    let verdicts = RefCell::new(Vec::new());
+    parser
+        .parse(text, |n| {
+            let plain = n.export(grammar);
+            if verifier.verify(&plain, &n.render(grammar)).is_empty() {
+                verdicts.borrow_mut().push(types::check(&plain));
+            }
+            false
+        })
+        .ok()?;
+    let verdicts = verdicts.into_inner();
+    (!verdicts.is_empty()).then_some(verdicts)
 }

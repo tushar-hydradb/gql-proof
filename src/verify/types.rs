@@ -1179,7 +1179,7 @@ impl<'t> Checker<'t> {
                 let t = own(otvi, "value initializer")
                     .and_then(|vi| own(vi, "value expression"))
                     .map_or(Ty::Any, |ve| {
-                        if null_literal(ve) {
+                        if null_typed(ve) {
                             Ty::Null
                         } else {
                             // typed again here only for its type: the clause was checked once
@@ -2095,6 +2095,9 @@ impl<'t> Checker<'t> {
         {
             self.report(node, "20.10 SR 3", "(reading, ID076) ELEMENT_ID's value is taken only as a RETURN or SELECT item, an IS NULL operand or an equality of two of them".into());
         }
+        // 20.20 SR 1: every <boolean value expression> is a boolean, a bare one over a null,
+        // dynamic or unknown predicand too (round 49: `DELETE ( NULL )` on its boolean tree)
+        let t = if name(node) == Some("boolean value expression") { Ty::Bool } else { t };
         // 20.1 SR 1: a value expression other than a return item's has no empty type, and
         // `[ ]`'s element is the empty type with GV72 (ID004's choice without); a FOR binding is
         // the one way to take it out, so every reference to it is refused, a return item's too
@@ -2226,7 +2229,8 @@ impl<'t> Checker<'t> {
                 Some(t) => t.clone(),
                 None => self.environment(),
             },
-            // 20.2, 20.20 SR 2
+            // 20.20 SR 2; 20.2 has no syntax rule, and a parenthesized expression takes its
+            // operand's type by H4's "a node with no declared type takes its one value child's"
             "parenthesized value expression" | "parenthesized boolean value expression" => {
                 match k
                     .iter()
@@ -3219,16 +3223,18 @@ impl<'t> Checker<'t> {
             results.extend(own(clause, "result"));
         }
         results.extend(own(cs, "else clause").and_then(|e| own(e, "result")));
+        // reading: a bare NULL is the <null literal> alternative on every tree, for SR 3
+        let all_null = results.iter().all(|r| null_literal(r));
         let mut types = Vec::new();
         let mut inputs = Vec::new();
         for r in results {
-            // reading: a bare NULL is the <null literal> alternative on every tree
-            if !null_literal(r) {
+            // a NULL is left out unless its tree routes it through a <boolean value expression>
+            if !null_typed(r) {
                 types.push(self.ty(r, env));
                 inputs.push(r);
             }
         }
-        if types.is_empty() {
+        if all_null {
             self.report(cs, "20.7 SR 3", "every <result> is NULL".into());
             return Ty::Null;
         }
@@ -4072,6 +4078,23 @@ fn find_fields<'t>(node: &'t Plain, out: &mut Vec<&'t Plain>) {
             Some("field") => out.push(k),
             Some("fields specification" | "field list") => find_fields(k, out),
             _ => {}
+        }
+    }
+}
+
+/// A <null literal> whose declared type is the null type: on a tree that passes it through a
+/// <boolean value expression> it is a boolean (20.20 SR 1), as `ty` reads it.
+fn null_typed(node: &Plain) -> bool {
+    let mut at = node;
+    loop {
+        match name(at) {
+            Some("null literal") => return true,
+            Some("boolean value expression") => return false,
+            _ => {}
+        }
+        match kids(at).as_slice() {
+            [only @ Plain::Def { .. }] => at = only,
+            _ => return false,
         }
     }
 }

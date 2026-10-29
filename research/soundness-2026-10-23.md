@@ -1526,3 +1526,102 @@ under cor 1; 14.8 SR 7, 11; 14.11 SR 6, 10; 16.15; 20.1 SR 7; catalog shapes
 (26 probes); NEXT chains of 3-4 statements (300 splices, 600 multi-token
 mutations, a 551-probe cross product), all clean derivable trees valid apart
 from the order by and page cases above.
+
+## 2026-10-28: the forty-seventh review, a sweep of every scope and type fact
+
+an exhaustive table of the facts scope.rs and types.rs compute (138 rows,
+research/audit/spec-audit-2026-10-28/scope-type-facts.tsv), each traced to the
+text: 88 declared, 15 stricter, 22 named in H, 5 withheld, 8 in four findings,
+all evident-intent facts the text never declares, each with printed sentences
+resting on it (no gate hole, no printed counterexample):
+- a linear data-modifying statement's outgoing record (9.2 SR 12 a)
+- an inner composite query expression's outgoing table with three or more
+  operands (14.2 SR 10 a iv)
+- `TABLE { .. }` as a binding table reference value type (20.1 SR 3, 10.2 SR 8)
+- a pattern variable's degree at a graph pattern WHERE and in a yield clause
+  (20.12 SR 11-13, 16.3 SR 12)
+H4 names all four now (the first two widen the undeclared outgoing types line,
+whose "two sites" was false), and the items-see-their-table line now covers a
+grouping item under GROUP BY. as the sweep was exhaustive, this class of
+finding is enumerated, not sampled. the four specification audit tables are
+kept beside it (batch1-4.tsv).
+
+## 2026-10-28: the forty-eighth review (derivable trees)
+
+no printed counterexample, no derivable gate hole. three argument gaps, all
+defects of the text the checker reads the evident way, two with printed
+sentences resting on them, so this round is not clean:
+- 21.2 SR 13: an approximate literal without an exponent is rewritten with an
+  empty mantissa when its value is zero (`0F` would become the identifier E0),
+  and every fraction needs a negative exponent the rule calls unsigned
+- 16.12 SR 6 b vii: no case for the right direction override `SS >`
+  (printed `MATCH <-/ a > /- FINISH`)
+- expression nodes typed nowhere: a parenthesized expression (20.2 has no
+  syntax rule), a numeric value expression of one term, a term of one factor,
+  a signed duration factor; requirements on them (20.9 SR 8 d i, 20.16 SR 1 a,
+  20.28 SR 1 a) read types the text never declares
+rather than one H4 line per site, two general permissions now carry the
+class: "a node with no declared type takes its one value child's" and "a
+stated rewrite keeps what it replaces" (ill-formed replacements read as the
+evident well-formed ones). the types.rs comment citing 20.2 is corrected.
+
+checked and found to hold: table rows from all four audit batches and the facts
+sweep (9.2 SR 6, 7; 14.11 SR 10 a; 16.4 SR 12, 14; 16.6 SR 2, 7, 8; 16.7 SR 8,
+9, 16, 20; 18.1 SR 8-16; 18.9 SR 88; 20.5-20.9; 20.16; 21.2 SR 20, 57), about
+3,700 numeral mutations of printed sentences, and the null, table and degree
+permissions against their words.
+
+round 48 bookkeeping: the facts table's temporal constructors row cites 20.27
+for DURATION ( .. ), whose type only 20.29's general rules give.
+
+## 2026-10-29: the forty-ninth review (derivable trees)
+
+one cause, all three kinds of finding, so this round is not clean:
+- 20.20 SR 1 gives every <boolean value expression> a boolean type, a bare one
+  (no AND, OR, NOT) over its predicand too. the checker and the generator both
+  passed the predicand's own type up the chain, so `( NULL )` read as a boolean
+  value expression stayed null, and `( x . a )` stayed dynamic. printed in
+  neo4j: `DELETE ( NULL )` and `MATCH ( ( ) WHERE ( ( NULL ) ) IS NULL )` on
+  trees where the item is a boolean (13.5 SR 5, 20.1 SR 5); derivable: `( x . a
+  ) + 1`, `UPPER ( ( x . a ) )`, `SESSION SET GRAPH ( $b )`. the facts sweep
+  had the category over a bare primary as declared, which was false here
+- fixed in both: the checker types every boolean value expression a boolean
+  (types.rs `ty`), and the generator's context typing gives a bare one Bool
+  (context/types.rs), so it no longer derives these trees
+the type tests assumed one verdict per sentence; with a value read as a bare
+boolean a boolean on that tree only, verdicts legitimately differ by tree (H3).
+`ok` now asks for some typed tree, `bad` for every tree refused and the rule on
+some; multi-item sentences were split, and the probe `bad` skips trees refused
+by a per-tree category rule.
+
+runs after the fix: 1 variable 3,226 rows and 325 withheld (3,227 and 327
+before); whole grammar 3,052 and 523 (3,055); turbolay 3,401 and 183 (3,400 and
+186); 3 variables 3,409 and 195 (3,408 and 198); neo4j 41,042 and 1,580
+(41,103). neo4j loses 70 targets, each a boolean-route reading of a non-boolean
+(`DELETE ( NULL )`, `( CURRENT_DATE )` under IS NULL read as a boolean), and
+gains 9; 0 generator bugs apart from neo4j's 34.
+
+## the fiftieth review (derivable trees)
+
+the round looked for nodes with a declared type in the text whose checker arm
+passes up a child's type, and for every syntactic shortcut that could skip
+round 49's `ty` override. every "declared type of" site in clauses 4-22 agrees;
+of the shortcuts (`null_literal`, `bare`, `reaches`, `computed`,
+`opaque_side`, the deep lookups) only two `null_literal` sites mattered.
+not clean, one derivable hole:
+- 7.1 SR 6 d ii 1 B: `SESSION SET VALUE $b = 1 SESSION SET VALUE $b = NULL`
+  (also after DATE, string, graph). the untyped arm read the second NULL as the
+  null type on every tree, but on the tree routing it as a boolean value
+  expression it is a boolean (20.20 SR 1), not assignable to the first type.
+  11 derivable trees, all clean. not printed: no set has two value commands
+- moot (underivable), same shortcut: `CASE WHEN TRUE THEN 1 ELSE NULL END`
+  read the boolean-route NULL as left out (20.7 SR 5)
+- fixed: `null_typed` stops at a boolean value expression, used at both sites.
+  20.7 SR 3 keeps the strict reading (any NULL text counts as NULL), refusing
+  more. the probe now has 10 clean of 11 derivable (the correct readings); the
+  CASE probe's clean underivable trees drop from 115 to 106
+- the other `null_literal` sites only refuse more or agree on both types (SET
+  and INSERT values, CAST's "specifies NULL", NULLIF and COALESCE)
+
+runs after the fix: the same rows and withheld counts as round 49 in all five;
+0 generator bugs apart from neo4j's 34.

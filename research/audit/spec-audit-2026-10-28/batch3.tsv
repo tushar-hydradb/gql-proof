@@ -1,0 +1,78 @@
+clause	sr	item	verdict	reason	probe	derivable counts
+20.1	1		H	every source of the empty type is refused where it is written: types.rs:cast and value_definition_both report any immaterial type at any depth of a cast target or declared value type (20.8 SR 4, also session value parameters), types.rs:value_types and verify.rs report a non-predefined property value type (18.7 SR 4), verify.rs refuses every declared binding table type (10.2 SR 8 reading, so a NOTHING field inside a table column is never declared; probed), FINISH bodies of VALUE/TABLE are refused (20.6 SR 8, 11.2 SR 2), and every reference to the element of [ ] is refused, return items included ("20.1 SR 1 empty", stricter); a parameter typed NOTHING by the request is H1 (the second pass types it dynamic). Ty::Nothing comes only from value_type's <empty type>: no route to an empty-typed operand found (probes p3: 0 clean of 100000 parses)		
+20.1	2		H	types.rs:ty_of graph reference value expression arm checks Class::Graph on the primary form; GRAPH form typed Graph by 11.1; a null operand passes under H4 (the null type meets a typed site; row named there), a dynamic one under H2' (20.1 SR 2-6 listed), an unknown under H1		
+20.1	3		H	types.rs: binding table reference value expression arm checks Class::Table on the primary form, FOR source and CARDINALITY check it too; null passes under H4 (row named there), dynamic under H2', unknown under H1		
+20.1	4		H	every <node reference value expression> on the printed tree is checked Class::Node by the category arm ("20.1 SR 4-6 primary"), path constructor start and steps ("20.1 SR 4"), property source (types.rs:property; a NULL source refused); dynamic passes under H2' (20.1 SR 2-6 named), a null-typed operand under H4's first permission (PATH [ NULL ] named via 21.2 SR 67 a), unknown under H1		
+20.1	5		H	as SR 4 for <edge reference value expression> (Class::Edge at path steps and the category arm); H2' dynamic, H4 null, H1 unknown		
+20.1	6		H	<record expression> checked Class::Record by the category arm; property of a NULL source refused; CARDINALITY argument checked; H2' dynamic, H4 null (a null CARDINALITY argument), H1 unknown		
+20.1	7	a	stricter	scope.rs:expr aggregate arm: an aggregate whose innermost <value expression> is not immediately contained in an <aggregating value expression> (vertical reset at every nested <value expression>) needs exactly one group variable; group variables and group list types are refused on the tree ("16.7 SR 22 group"), so every horizontal aggregate is refused; aggregates outside any value expression (WHERE, FILTER) are refused too (reading, more than the text). probed: COALESCE ( COUNT ( * ) , 1 ) refused		
+20.1	7	b	stricter	as item a: the same test (one group name) and no group variable is ever accepted, so b holds vacuously		
+20.5	3	b	faithful	scope.rs:let_value: a defined name already in env.vars (the record amended with the table, scope.merged(), and the outer LET .. IN names, SR 7) is reported; probed in ORDER BY, element pattern WHERE and nested LET: refused		
+20.5	4		faithful	scope.rs:let_value reports a name defined twice in one list		
+20.5	5		faithful	type-assigning: types.rs binds each name to its initializer's type FE, as SR 5 says; verify.rs refuses a typed definition inside LET .. IN (stricter)		
+20.6	3		H	types.rs:value_query reports a known column count other than one; unknown counts arise only from bodies other rules refuse (FINISH 20.6 SR 8, set operation 20.6 SR 5, non-query 9.1 SR 7); RETURN * takes the incoming working table (14.11 SR 11 a); a named procedure called without YIELD adds no column the checker sees, so RETURN * after it rests on H1 giving the procedure no result column (see report; underivable, not printed)		
+20.6	5	a	faithful	by 5.3.2.1 'is' follows single-alternative chains, so a one-operand <composite query statement> is a <linear query statement>: the row's reading is the literal text. scope.rs:emitting reports a set operation at any nesting through nested query specifications ("20.6 SR 5"; probed), a non-query last statement is 9.1 SR 7 (verify.rs). bookkeeping: check column omits the scope.rs "20.6 SR 5" string		
+20.6	6		faithful	scope.rs:expr Emitting::Other with a composite last statement reports "20.6 SR 6" (FINISH, nested omitted); recursion follows SR 5 b ii		
+20.6	8		stricter	the only PRS without a return statement is FINISH, reported (emits_finish, "20.6 SR 8"); every SELECT body is refused ("20.6 SR 10" reading), stricter than NOTE 313		
+20.6	10		stricter	scope.rs:returns_one_row: LIMIT spelled 1 on the PRS's own order by and page statement, or no GROUP BY and the single return item directly (no procedure body between) contains an aggregate; SELECT bodies refused		
+20.7	2	g	stricter	Cor 1 text applies Clause 19's SRs and CRs to the rewrite: element predicates as when operands are refused outright (verify.rs "20.7 SR 2"), comparison and normalized parts are checked (comparable, string class); null and value type predicates have no SR		
+20.7	3		stricter	types.rs:case reports when every result is a bare NULL (read as the <null literal> on every tree, stricter than the tree where it is a <result expression>); NULLIF of a bare NULL and a COALESCE ending in two NULLs reported, matching the SR 1 rewrites; missing ELSE adds nothing (SR 4)		
+20.8	4		faithful	specify = contain (5.3.2.1): types.rs:cast reports an immaterial type anywhere in TD (contains 'immaterial value type'); every immaterial spelling derives through <immaterial value type>		
+20.8	5		stricter	'CO specifies NULL' read with 5.3.2.1 as containing NULL, the literal reading: TD NOT NULL is reported for a NULL literal, an operand holding NULL ("20.8 SR 5 contains") or a null-typed operand; only then are SR 8-12 skipped (the literal 'no further rules'), otherwise they are still applied (stricter); immaterial TD always SR 4		
+20.8	8		faithful	types.rs:cast_fault matches Table 4 entry by entry (numeric to numeric and C; C to all scalars but B; D, T, DT, DU, BO, B rows; L to P and L; R to R; P, GR, NR, ER, TR to P and self; DY by SR 9, 10); the null and empty types have no Table 4 row (nothing invalid)		
+20.8	9		stricter	cast_fault (_, Dyn) uses within(): subtype by kind; every closed union target refused (reading), a NOT NULL dynamic target refused (nullability not inferred), property-value target takes only predefined scalars (H2)		
+20.8	10		H	a dynamic source needs one castable component: open union any; ANY PROPERTY VALUE only PROPERTY_COMPONENTS, the predefined scalars H2 names as supported property value types; closed union its components; an unknown source rests on H1		
+20.8	11	a	faithful	cast_fault first arm: a regular list source to anything but a regular list (PATH, a dynamic union, a group list) is reported		
+20.8	11	d	faithful	cast_fault recurses on element types ("20.8 SR 11 d"); a NOT NULL inside the target and a cast of [ ] are refused (stricter)		
+20.8	12	b	faithful	cast_fault R arm: a target field missing from a closed source record is reported (string "20.8 SR 8"); an open record on either side has no SR 12		
+20.8	12	c iii	faithful	cast_fault recurses on every shared field's types; nested NOT NULL refused (stricter)		
+20.9	3		faithful	scope.rs aggregate arm reports any procedure body or exists predicate inside (19.4 SR 2, 3 rewrite an EXISTS over a pattern into a nested query, so this is the text after its replacement)		
+20.9	4		faithful	scope.rs:aggregates reports any aggregate simply contained (no intervening aggregate; a procedure body does not stop it). bookkeeping: the note's 'inner aggregate over exactly one group variable would escape' is stale		
+20.9	7	a	faithful	scope.rs:aggregates: COUNT(*) needs an <aggregating value expression> reached before any procedure body going up (directly contained)		
+20.9	8	d i	H	types.rs:aggregate expects Class::Numeric; a dynamic argument rests on H2' (20.9 SR 8 named), a null one on H4 (SUM ( NULL ) named via 21.2 SR 67 a), an unknown on H1		
+20.9	8	e	H	as d i for STDDEV_POP and STDDEV_SAMP		
+20.10	2		stricter	scope.rs: every element variable reference in ELEMENT_ID is checked singleton, inside aggregates too; no group degree is printed (16.7 SR 22 group); conditional singleton is singleton		
+20.11	2	a	faithful	types.rs:property: Record(Some) source needs the field (report "20.11 SR 2"); closed records from constructors, closed casts and table rows, open ones from ANY RECORD (SR 2 b)		
+20.11	3	a	H	a closed node or edge type (from a <value type>) is followed through variables and lists and its property types checked; differing closed types combined are reported (Unfollowed); a pattern or insert variable is open by IW011/IW012 (named in H2)		
+20.12	8		faithful	scope.rs:reference: a name not in the incoming working record (record amended with table) is reported		
+20.12	11	a ii 2	faithful	scope.rs:verdict reports a non-local reference of group degree (Bounded or Unbounded); a conditional singleton is singleton		
+20.12	12		stricter	scope.rs:verdict reports an unbounded group; every group variable and group list type is refused anyway (16.7 SR 22 group)		
+20.13	2		H	the category arm checks every <path value primary> on the printed tree, and PATH_LENGTH, ELEMENTS, CARDINALITY and || check theirs; dynamic H2' (named), null H4, unknown H1		
+20.15	1		H	the category arm checks every <list primary>, and SIZE, TRIM, CARDINALITY, FOR and || check theirs; dynamic H2' (named), null H4, unknown H1		
+20.16	1	a	H	verify.rs:not_integer_shaped admits only unsigned integers, length and cardinality expressions (exact, scale 0 by 20.22) and + - * and signs over them (scale 0 by 20.21 SR 1 b), NULL and properties refused; the parameter form rests on H1; types.rs refuses a typed count of any other type		
+20.19	2		faithful	types.rs record constructor: the record's own <field>s (find_fields stops at nested records), names compared by representative form (ident; ID022 in H2)		
+20.20	3		H	the category arm checks every <boolean predicand> (Class::Bool), and the boolean operators and IS tests check their operands; dynamic H2' (named), null H4 (a NULL search condition), unknown H1		
+20.21	3		H	the category arm checks every <numeric primary>; signed factors, arithmetic nodes and numeric functions check theirs; dynamic H2' (named), null H4, unknown H1		
+20.21	4		faithful	verify.rs:verify compares the rendered text with the tokens joined by one space ("21.3 SR 13, 14"), so two minus signs always have a separator		
+20.23	2		H	the category arm checks every <character string primary>; LEFT, RIGHT, UPPER, NORMALIZE, CHAR_LENGTH and TRIM operands checked; dynamic H2' (named), null H4, unknown H1		
+20.23	4		H	as SR 2 for <byte string primary>		
+20.24	3	b i 1	stricter	verify.rs trim operands arm: FROM with neither a trim specification nor a trim string reported; applied to byte string trims too (stricter)		
+20.24	3	b i 2	H	types.rs:trim reports a trim string not comparable with the source (comparable read without GA04, the stricter side, H2'''); a dynamic or null operand passes (H2' names 20.24 SR 3, H4); unknown H1		
+20.24	4	b i	H	as SR 3 b i 2 for BTRIM, LTRIM, RTRIM (reported under "20.24 SR 3"); H2' names 20.24 SR 4		
+20.28	1	a	H	types.rs:arithmetic_of reports two known different unit groups, and on a duration addition tree a non-duration operand ("20.28 SR 1 primary"); Duration(None) arises only from null-typed duration terms (DURATION over a record is refused, "20.28 SR 1 record"), so a null operand rests on H4, a dynamic one on H2' (named), unknown on H1		
+20.28	3	b	H	types.rs:duration_between demands equal instant types (stricter than essentially comparable) and refuses non-instants (20.26 GR 1 reading); instant types follow 20.26 SR 1 for operator forms and H4's bare-primary permission; dynamic H2' (named), null H4, unknown H1		
+20.28	3	d	faithful	types.rs:duration_between reports YEAR TO MONTH over two times; a null or dynamic parameter has no time type, so SR 3 d does not apply to it literally		
+20.28	3	e	faithful	type-assigning: the result is the qualifier's unit group		
+22.1	3	b	faithful	verify.rs reports every <substituted parameter reference> ("22.1 SR 3")		
+22.1	3	d	faithful	as b: no $$ passes		
+22.18	2		stricter	every combination is static (Checker::combined); with GV65 the general combination accepts every statically combinable set and more (dynamic inputs, partitions), so refusing those is stricter under either claim		
+22.19	2		H	combine refuses a dynamic material input at any depth (list elements, record fields recurse via SR 4 k ii, m iv 2), the element of [ ] and ELEMENT_ID's type; immaterial inputs are static and dropped (SR 3); an unknown input passes only as a bare parameter written once (H1, checked in the second pass, "22.19 SR 2 unknown"); a table's dynamic column is no dynamic input (a table type is static)		
+22.19	4	b i	faithful	combine: a character string first input requires every material input of class Char, else 22.19 SR 4		
+22.19	4	b ii	H	H4 permission 'a supported string supertype exists' (row named)		
+22.19	4	c i	faithful	as b i for Bytes		
+22.19	4	c ii	H	H4 permission 'a supported string supertype exists' (row named)		
+22.19	4	d i	faithful	combine: Class::Numeric only if all numeric		
+22.19	4	e i	faithful	combine Instant arm: all datetimes, else all times, else all dates, else apart		
+22.19	4	f i	faithful	as e i		
+22.19	4	g	faithful	as e i		
+22.19	4	h	faithful	combine Duration arm: all durations, two known unit groups must agree; Duration(None) only for null-typed duration terms (immaterial in the text)		
+22.19	4	i	faithful	as h		
+22.19	4	j	faithful	combine: first input's class required of all (Bool)		
+22.19	4	k i	faithful	combine List arm: all lists, element types combined recursively, group only if all group		
+22.19	4	l	faithful	combine: all Path		
+22.19	4	m i	faithful	combine Record arm: every input a closed record (Record(Some)), else apart		
+22.19	4	m ii	faithful	combine Record arm: identical key sets		
+22.19	4	n i	faithful	the remaining classes are Node, Edge, Graph, Table; any other mix is apart		
+22.19	4	n ii	faithful	combine requires one class (Node, Edge, Graph or Table) for every input		
+22.19	4	n iv	H	node and edge inputs: open (IW011/IW012 open types, H2) or one closed type (the input itself) is the supertype; tables only with equal columns; graphs taken as one class, the open graph reference type as supertype under H2'''(GV60) / H2		
+22.19	5		faithful	no shall: assigns nullability, which no checked rule reads (a NOT NULL site takes only NOTHING, 4.17 reading; a NOT NULL dynamic cast target is refused)		

@@ -514,16 +514,62 @@ each line names its audit rows (status `permission`)
   fields; without GROUP BY that admits an item mixing an aggregate with a bare
   column, which 14.11 GR 3 b gives a meaning (round 45; printed sentences rest
   on it, `RETURN COUNT ( * ) AS x NEXT RETURN SUM ( x ) AS y` among them).
-  rows: 20.12 SR 8, 14.11 SR 10 b, 20.9 SR 8, 13.3 SR 3, 13.4 SR 3, 13.5 SR 5
+  a grouping return item under GROUP BY (14.11 SR 10 a gives it no incoming
+  record) is read the same way (round 47). rows: 20.12 SR 8, 14.11 SR 10 a,
+  14.11 SR 10 b, 20.9 SR 8, 13.3 SR 3, 13.4 SR 3, 13.5 SR 5
 - **undeclared outgoing types are the evident ones.** the text declares a
   statement's outgoing working table and record statement by statement, with
-  4.8.1's convention for a container of one child; two sites later rules use
+  4.8.1's convention for a container of one child; four sites later rules use
   are declared by neither: an order by and page statement (14.9 SR 4-6 give
-  only its clauses' incoming types) and a linear query statement's outgoing
+  only its clauses' incoming types), a linear query statement's outgoing
   working table (14.3 SR 6 gives its own type only, which 14.2 SR 10 a iv, b and
-  9.2 SR 12 b then read). they are read as the evident ones: the order by and
-  page statement passes its incoming table and record through, and a linear
-  query statement's outgoing working table has its declared type. every NEXT
+  9.2 SR 12 b then read), a linear data-modifying statement's outgoing record
+  (13.1 declares its type only, 9.2 SR 12 a reads it), and an inner composite
+  query expression's outgoing table when it has three or more operands (14.2 SR
+  10 a iv reads it, SR 10 a viii gives its type only). they are read as the
+  evident ones: the order by and page statement passes its incoming table and
+  record through, a linear query statement's and an inner composite query
+  expression's outgoing working table have their declared types, and a linear
+  data-modifying statement passes its incoming record on (round 47's sweep of
+  138 scope and type facts found the last two; printed `GRAPH x =
+  CURRENT_PROPERTY_GRAPH INSERT ( ) NEXT INSERT ( )` and three-operand
+  OTHERWISE chains rest on them). every NEXT
   that reads the previous result rests on the second (round 46; printed
   `RETURN COUNT ( * ) AS x NEXT ORDER BY x FINISH`). rows: 14.9 SR 4, 5, 6,
   14.3 SR 5, 6, 14.2 SR 10, 9.2 SR 12 b
+- **a nested table is a binding table reference.** `TABLE { .. }` over a
+  nested query takes the body's binding table type (11.2 SR 4 a, 4.8.1), which
+  is no binding table reference value type, so read literally it meets neither
+  20.1 SR 3 nor 10.2 SR 8 b ii; it is read as the binding table reference value
+  type of that table (round 47; printed `SELECT [ ( TABLE { RETURN CURRENT_DATE
+  AS x } ) IS NULL ] AS y`). rows: 20.1 SR 3, 10.2 SR 8
+- **a pattern variable's degree at the graph pattern is its exposure.** 20.12
+  SR 11 a gives a reference's degree in a graph pattern WHERE by the variable's
+  exposure by the graph pattern, which 16.7 SR 22 defines only up to a path
+  pattern, and gives a yield clause reference (16.3 SR 12) no case at all; both
+  are read as the degree of exposure by the variable's path pattern or
+  patterns (round 47; every printed MATCH declaring an element variable yields
+  it implicitly). rows: 20.12 SR 11, 12, 13, 16.3 SR 12
+- **a node with no declared type takes its one value child's.** the text gives
+  declared types rule by rule and, through 4.8.1, to a symbol whose every
+  instance has one nonterminal child; many expression nodes get neither: a
+  parenthesized expression (20.2 has no syntax rule; its parentheses are
+  nonterminals), a numeric value expression of one term and a term of one
+  factor (20.21 declares factors and dyadic results), a duration term or factor
+  with its optional sign (20.28 SR 2 types the whole expression only). such a
+  node is read as having the declared type of its one value-bearing child,
+  punctuation, keywords and signs aside; requirements that read those types
+  (20.9 SR 8 d i, 20.16 SR 1 a, 20.28 SR 1 a) are judged so (round 48; printed
+  `RETURN AVG ( CHAR_LENGTH ( SESSION_USER ) ) AS x`). this is the general form
+  of the outgoing types line above. rows: 20.21 SR 1, 2, 20.28 SR 1, 2, 20.9
+  SR 8, 20.16 SR 1
+- **a stated rewrite keeps what it replaces.** where the text replaces one form
+  by another ("effectively replaced") and the replacement as written is
+  ill-formed, it is read as the evident well-formed form that keeps the
+  original's meaning: 21.2 SR 13's approximate literal without an exponent
+  keeps its value, its exponent a signed integer (a zero literal like `0F`
+  would otherwise become the identifier `E0`, and every fraction needs a
+  negative exponent the rule calls unsigned), and 16.12 SR 6 b vii, which has
+  no case for the right direction override `SS >`, gives it the right-directed
+  edge the other overrides get (round 48; printed `ORDER BY 8.8F FINISH`,
+  `MATCH <-/ a > /- FINISH`). rows: 21.2 SR 13, 16.12 SR 6

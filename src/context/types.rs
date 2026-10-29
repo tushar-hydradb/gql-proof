@@ -1061,6 +1061,9 @@ impl Types {
                     Some(if years { YearMonth } else { DayTime }),
                 )
             }
+            // 20.20 SR 1: a boolean value expression is a boolean, a bare one over its
+            // predicand too (round 49: `( NULL )` and `( x . a )` kept their operand's class)
+            "boolean value expression" if classed.len() == 1 => check(only != Some(Opaque), Some(Bool)),
             // 20.20 SR 1: AND, OR, XOR take booleans.
             "boolean value expression" | "boolean term" if classed.len() == 2 => check(
                 classed.iter().all(|c| fits(Some(*c), |c| c == Bool)),

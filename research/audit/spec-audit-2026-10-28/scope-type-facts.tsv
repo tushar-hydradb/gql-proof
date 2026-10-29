@@ -1,0 +1,139 @@
+site	fact	code location	text source	verdict
+GQL-program	top incoming record empty, table unit	scope.rs:root Scope::default; types.rs:root	6 SR 9-10, 4.8.1 inheritance	declared
+session command	expressions see empty record, unit table	scope.rs:root session arm; types.rs:root Env::default	6 SR 9-10 + 4.8.1 inheritance	declared
+session parameter read by later command	type from earlier SESSION SET (22.1 SR 5 d i)	types.rs:root params	22.1 SR 5 d i	withheld (withheld family when set and read across commands)
+binding variable definition block	each definition sees record so far and a unit table	scope.rs:body; types.rs:body	9.2 SR 2 a-f, 10.x SR 6, 4.8.1 (BVD one child)	declared
+binding variable definition	outgoing record = incoming + defined field	scope.rs:body record.insert; types.rs:body	10.1/10.2/10.3 SR 9, 4.8.1 one child	declared
+value variable definition	field type = declared value type, else initializer type	types.rs:value_definition_both	10.3 SR 8	declared
+graph variable definition	field type graph (initializer type not followed; closed type refused)	types.rs:body graph arm, graph_initializer	10.1 SR 8	stricter
+binding table variable definition	field type Table(cols) of the initializer or declared type	types.rs:body, table_initializer	10.2 SR 8 (BTT = BTIT, a binding table type)	finding (F3: binding table type used as a reference value type)
+definition name	already a field of the record is refused	scope.rs:body 10.x SR 7	10.1/10.2/10.3 SR 7	declared
+statement block STM0	incoming record = definitions' outgoing or PB's; table = PB's	scope.rs:body/block; types.rs:body/block	9.2 SR 10-11	declared
+statement block STMj after composite query statement	incoming record = block record	scope.rs:block (comment: no statement changes the names of the record)	9.2 SR 12 a + 14.1 SR 2	declared
+statement block STMj after catalog statement	incoming record = block record	scope.rs:block	9.2 SR 12 a + 12.1 SR 2	declared
+statement block STMj after linear data-modifying statement	incoming record = block record	scope.rs:block; types.rs:block	none: 9.2 SR 12 a reads the outgoing record of STMj-1; 13.1 declares only LDMS's declared type (SR 9); 4.8.1 does not reach (the data-modifying body has 1 or 2 non-terminal children)	finding (F1)
+statement block STMj	incoming table = previous declared type if table, through YIELD, else unit	scope.rs:block; types.rs:block	9.2 SR 12 b	declared
+statement block	record and NEXT table name-disjoint	scope.rs:block 9.2 SR 12	9.2 SR 12 c	declared
+next statement YIELD	columns renamed from the previous result; missing column refused	scope.rs:yield_clause; types.rs:yield_columns	16.14 SR 4-7, 9.2 SR 12 b i 1	declared
+procedure body	declared type = last statement's (None when FINISH/catalog)	scope.rs:block result, emits_finish	9.2 SR 13, 14.10 SR 5, 12.1 SR 4, 13.1 SR 9	declared
+statement	declared type and outgoing types through one child	scope.rs:statement	4.8.1 one child	declared
+composite query statement	outgoing record = incoming; outgoing table = CQE type	scope.rs:statement	14.1 SR 2-4	declared
+linear catalog-modifying statement	expressions see record+table (table always unit there)	scope.rs:statement; types.rs:statement	12.1, 4.8.1; 9.2 SR 4 + 15.1 SR 7 keep the table unit	declared
+linear catalog-modifying statement	outgoing record/table pass through, type empty	scope.rs:statement None	12.1 SR 2-4	declared
+composite query expression	every operand sees the CQE's record and table	scope.rs:composite; types.rs:composite	14.2 SR 8-9, 10 a ii-iii	declared
+composite query expression, 2 operands	left operand's outgoing table = its LQS's	scope.rs:composite (first operand)	14.2 SR 10 a iv via 4.8.1 (CQE ::= CQP ::= LQS) + H4 round 46 (LQS outgoing table)	H4-named
+composite query expression, 3+ operands	outgoing table of the inner CQE (ICQE) = its declared type (combined columns)	scope.rs:conjuncts/composite; types.rs:composite recursion	none: 14.2 SR 10 a iv reads ICQE's outgoing working table; SR 10 a viii gives only its declared type; 4.8.1 does not apply (3 children)	finding (F2)
+composite query expression	result columns = combined columns	types.rs:composite	14.2 SR 10 a vi, viii, 22.18	declared
+composite query expression	FINISH operand in a composite refused	scope.rs:composite 14.2 SR 5	14.2 SR 5 (stricter through bodies)	stricter
+linear query statement	statements threaded left to right	scope.rs:linear; types.rs:linear	14.3 SR 3-5	declared
+linear query statement	declared type = last statement's	scope.rs:linear result	14.3 SR 6	declared
+linear query statement	outgoing working table = declared type	(read by composite/block)	none; H4 round 46	H4-named
+use graph clause	graph expression sees record and unit table	scope.rs:linear; types.rs:linear	16.2 SR 3-4	declared
+use graph clause in a later focused part	sees the LQS's record	scope.rs:linear (record never changes)	4.8.1 inheritance from FLQS	declared
+linear data-modifying statement	statements threaded left to right	scope.rs:linear	13.1 SR 6-8	declared
+linear data-modifying statement	declared type = last element's, implicit FINISH	scope.rs:finishes	13.1 SR 2-3, 9	declared
+linear data-modifying statement	outgoing working record = incoming	scope.rs:block (via block record)	none (13.1 declares no outgoing record or table)	finding (F1)
+nested query specification as a statement	body sees the statement's record and table	scope.rs:linear body(pb, scope)	4.8.1 inheritance, 9.1	declared
+nested query specification	declared type = body's	scope.rs:finishes/emits_finish; types.rs ty_of nested query specification	9.1 SR 1-3	declared
+simple match statement	pattern expressions see record+table minus overlap plus pattern variables; unit table	scope.rs:graph_pattern base; types.rs:graph_pattern	16.3 SR 25	declared
+simple match statement	new yielded names become table columns; overlap joins	scope.rs:pattern_match; types.rs:simple_match	14.4 SR 5 c-d, 16.3 SR 26	declared
+simple match statement	joined name keeps incoming type	types.rs:simple_match (no insert when incoming)	14.4 SR 5 c-d give the projected (IW011, open) type	stricter (a joined name is always node/edge kind with open type: scope.rs refuses a value-kind join)
+graph pattern yield clause	overlap names always yielded	scope.rs:pattern_match	16.3 SR 12 a iii-iv	declared
+graph pattern yield clause	listed names distinct and global	scope.rs:pattern_match 16.3 SR 12	16.3 SR 12 a i-ii	declared
+graph pattern variable	kind node/edge/path; type open node/edge (IW011), path	scope.rs:graph_pattern globals; types.rs:pattern_vars	20.12 SR 13, IW011 (H2)	H-named (H2 IW011)
+graph pattern variable in yield clause	degree of reference = degree of exposure by the path pattern(s)	scope.rs:graph_pattern globals degree(d); types.rs:pattern_vars	none: 20.12 SR 11 a has cases only for graph pattern WHERE and parenthesized WHERE references; SR 13 a iii's 'otherwise' then makes it a group list	finding (F4)
+graph pattern WHERE reference	degree = exposure of EV by GP = exposure by its path pattern	scope.rs:verdict Local::Graph exposed.get	none: 20.12 SR 11 a i reads exposure by GP; 16.7 SR 22 defines exposure up to <path pattern> (h) only	finding (F4)
+parenthesized WHERE reference	degree = exposure by the PPPE or innermost enclosing	scope.rs:verdict	20.12 SR 11 a ii, 16.7 SR 22 g	declared (falls back to GP exposure: F4)
+element pattern WHERE reference	own variable single	scope.rs:verdict Local::Element	16.7 SR 12 rewrite, 20.12 SR 11 a ii 1, 16.7 SR 22 a	declared
+path pattern	unbounded group exposure becomes bounded	scope.rs:graph_pattern 16.7 SR 22 h	16.7 SR 22 h	declared
+path pattern list	two path patterns expose a name: both singletons	scope.rs:graph_pattern 16.4 SR 3-4	16.4 SR 3-4	declared
+KEEP clause	prefix applied to every path pattern	scope.rs:graph_pattern prefixes	16.4 SR 6	declared
+selective path pattern	outer references refused, interior variables not declared outside	scope.rs:selective_rules, verdict	16.6 SR 7-8 (whole-program, stricter)	stricter
+group variables	degree group, list types	scope.rs/types.rs	16.7 SR 22 e	withheld (16.7 SR 22 group)
+union/alternation declaring element variables	degrees per 16.7 SR 22 d	scope.rs:expose	16.7 SR 22 d	withheld (withheld family)
+subpath variable	not a field: reference refused	scope.rs:graph_pattern (not in env); types.rs:pattern_vars	4.11.5 NOTE 79; 20.12 SR 13 b would type it	stricter
+optional match statement	operand sees record+table; new names added to table	scope.rs:match_statement; types.rs:match_statement	14.4 SR 4 rewrite to OPTIONAL CALL, 15.1, 15.2 SR 7	declared
+optional match statement	new names conditional	scope.rs:optional()	15.1 SR 12 keeps types (material)	stricter (conditional is only ever refused more)
+optional match rewrite RETURN OBVRL	items see the operand's table	scope.rs:match_statement	14.11 SR 10 b via the CALL body	H4-named (items see incoming table)
+let statement	each definition sees the LET's incoming names only	scope.rs:let_statement; types.rs:let_statement	14.7 SR 11 as Cor 1 replaces it, 15.2 SR 7	declared
+let statement	new names to the table; duplicate refused (10.3 SR 7 / 15.1 SR 9)	scope.rs:let_statement	14.7 Cor 1 + 10.3 SR 7 + 15.1 SR 9 (Cor 1)	declared
+let statement	returned name has its definition's type	types.rs:let_statement	10.3 SR 9, 14.11 SR 11	declared (RETURN RI reads the definition block's outgoing record)
+for statement	source sees record+table, unit table	scope.rs:for_statement; types.rs:for_statement	14.8 SR 7-8	declared
+for statement	outgoing record = incoming; table + new fields	scope.rs:for_statement	14.8 SR 9, 12	declared
+for statement	new names kept out of record and table	scope.rs:for_statement 14.8 SR 11	14.8 SR 11 (record), SR 12 amends	stricter
+for statement	element type: list element; table row record; ordinality exact int	types.rs:for_statement	14.8 SR 10 a, c i 3 (ID057/058)	declared
+for statement over TABLE { }	source accepted as binding table reference	types.rs:for_statement Class::Table	20.1 SR 3 wants a reference value type; 11.2 SR 4 a gives a binding table type	finding (F3), not derivable
+filter statement	WHERE sees record+table; pass-through	scope.rs:simple; types.rs:simple	14.6 SR 6-9, 16.13 SR 2-3	declared
+order by and page statement	clauses see record+table; pass-through	scope.rs:simple	14.9 SR 4-5 + 16.17 SR 5 c; outgoing: H4 round 46	H4-named
+call procedure statement	procedure sees record amended with table, unit table	scope.rs:call; types.rs:call	15.1 SR 5-7	declared
+inline procedure call	body record = scope clause names (all when none)	scope.rs:call; types.rs:call	15.2 SR 3, 5-7	declared
+inline procedure call	result columns added; a name already bound refused	scope.rs:call 15.1 SR 9	15.1 SR 8 b (Cor 1), 9 (Cor 1), 10-12	declared
+named procedure call	arguments see record+table	scope.rs:call	15.1 SR 6	declared
+named procedure call without YIELD	no columns	scope.rs:call; types.rs:call	15.3 SR 9 b (environment)	H-named (H1)
+named procedure call with YIELD	yielded columns unknown	scope.rs:yield_clause(None)	16.14 SR 7 (YC's incoming table literally unit)	withheld (withheld family)
+optional call	columns conditional	scope.rs:call optional()	15.1 SR 12 (no change)	stricter
+insert statement	property values see record+table, unit table	scope.rs:insert; types.rs:insert	16.5 SR 6 a-b	declared
+insert statement	new unbound element variables become columns	scope.rs:insert; types.rs:insert	13.2 SR 4, 7	declared
+insert statement	outgoing record = incoming	scope.rs:insert	13.2 SR 8	declared
+insert variable	type open node/edge	types.rs:insert	13.2 SR 4 a (IW012)	H-named (H2 IW012)
+bound insert element pattern	bound in record or table, node only, no labels	scope.rs:insert 16.5 SR 10	16.5 SR 8, 10 a (value kind refused: stricter)	stricter
+set/remove/delete statement	items see record+table; pass-through	scope.rs:modify; types.rs:simple/set_statement	13.3 SR 6-7, 13.4 SR 4-5, 13.5 SR 7-8; items: H4 round 45	H4-named
+set/remove/delete target	a graph element variable (value kind refused for SET/REMOVE)	scope.rs:modify	13.3 SR 3, 13.4 SR 3, 13.5 SR 5	stricter
+call data-modifying procedure statement	as call procedure statement	scope.rs:unwrap	13.6 + 4.8.1 one child (CDPS ::= CPS)	declared
+return statement	items without GROUP BY see record+table	scope.rs:result Env::new(incoming); types.rs:result	14.11 SR 10 b (record only) + H4 round 45	H4-named
+return statement GROUP BY grouping item	sees record+table	scope.rs:result (grouped items: plain env)	14.11 SR 10 a gives GRISET items nothing; 4.8.1 gives RS's record; H4 round 45 headline ('a statement's items'), not in its enumerated list	H4-named (headline; enumeration omits it)
+return statement GROUP BY aggregating item	sees record + grouping columns; aggregate argument sees the rest of the table	scope.rs:result Env{vars: group, agg: inner}; types.rs:result agg_env	14.11 SR 10 a viii-ix; argument: H4 round 45 (20.9)	H4-named
+group by clause	grouping elements see record+table; refer to incoming fields only	scope.rs:result 20.12 SR 8	16.15 SR 2 b ii 2 (alias-only refused: stricter)	stricter
+return statement	RETURN * = incoming table columns; refused on a unit table	scope.rs:result; types.rs:result	14.11 SR 6, 11 a	declared
+return statement	columns = aliases with item types; duplicate refused	scope.rs:result; types.rs:result	14.11 SR 8, 9, 11 b, 12	declared
+return statement	outgoing record = incoming	-	14.11 SR 13	declared
+primitive result statement ORDER BY	sort keys see aliases + incoming (no aggregate/DISTINCT/GROUP BY), aliases + grouping refs, or aliases only	scope.rs:result refs; types.rs:result	14.10 SR 4 c i 2 A III-IV, X, 16.17 SR 5 c	declared
+primitive result statement ORDER BY	no aggregate, LET, subquery in a sort key; nested GROUP BY/DISTINCT/set op narrows to aliases	scope.rs:result	14.10 SR 4 c i 2 A I, V, VII (read strictly)	stricter
+primitive result statement	declared type = RS outgoing table (or OPS's)	scope.rs:result	14.10 SR 4 c i 2 A XI-XII, B II, ii; OPS outgoing: H4 round 46	H4-named
+FINISH	declared type empty	scope.rs:finishes	14.10 SR 5	declared
+select statement without body	a RETURN of its items; items see record+table	scope.rs:select; types.rs:select	14.12 SR 27 a + H4 round 45	H4-named
+select statement with body	FROM matches see record only, not threaded	scope.rs:select; types.rs:select	14.12 SR 25-27 b (CALL VSC threading)	withheld (verify.rs 14.12 SR 27 reading; refine NoSelectBody)
+select statement	sort keys with aggregate/GROUP BY name aliases or grouping elements	scope.rs:select 14.12 SR 19	14.12 SR 19	declared
+binding variable reference	names a field of what the site sees	scope.rs:reference	20.12 SR 8 + site rules; H4 round 45	H4-named
+binding variable reference	type = field type	types.rs:ty_of binding variable reference	20.12 SR 9	declared
+binding variable reference outside pattern	degree from binding (kind/degree carried)	scope.rs Var.degree	20.12 SR 11 c (by declared type)	stricter (conditional only refused more)
+value query expression	body sees the expression's record, unit table; type = its one column	scope.rs:expr procedure body; types.rs:value_query	20.6 SR 3, 11-13	declared
+exists predicate	body sees the expression's record, unit table	scope.rs:exists; types.rs:ty_of exists	19.4 SR 2-4 + 4.8.1 inheritance (EP's table: unit in WHERE; item sites: H4 round 45)	declared / stricter (unit table where the item's table would be inherited)
+binding table expression TABLE { }	body sees the expression's record, unit table	scope.rs:expr procedure body; types.rs:ty_of nested query specification	4.8.1 inheritance (unit in WHERE)	declared / stricter
+binding table reference value expression TABLE { }	declared type a binding table (reference) type meeting 20.1 SR 3	types.rs:ty_of BTRVE TABLE arm -> Ty::Table(cols)	none: 11.2 SR 4 a and 4.8.1 give it the nested query's binding table type, not a binding table reference value type (20.1 SR 3)	finding (F3)
+graph reference value expression GRAPH ge	graph reference type	types.rs:ty_of	11.1 SR 3 + 4.8.1 one child	declared
+graph/binding table expression name	a bound name is VARIABLE name (material refused)	types.rs:ty_of graph expression	11.1 SR 2-3, 11.2 SR 3-4 (material: stricter)	stricter
+let value expression	definitions see the outer record; result sees outer + new	scope.rs:let_value; types.rs:ty_of let value expression	20.5 SR 3, 5, 7 + 4.8.1 inheritance	declared
+aggregate function argument	sees the table (group env) under GROUP BY	scope.rs:lookup agg; types.rs:result agg_env	20.9 (general set function: H4 round 45); SR 9 e for DVE	H4-named
+binary set function independent expression	sees the record only	scope.rs:expr independent value expression	20.9 SR 9 g-h	declared
+aggregate function	no nested aggregate or subquery; COUNT(*) placement	scope.rs:aggregates, expr	20.9 SR 3, 4, 7 a	declared
+horizontal aggregate	needs exactly one group variable	scope.rs:expr aggregate	20.1 SR 7 (stricter: any aggregate outside an aggregating value expression)	stricter
+element predicates	operand a singleton node/edge variable	scope.rs:expr; types.rs element()	19.8-19.13 SR 2, 16.10 SR 3	declared
+property reference	source a singleton	scope.rs:singleton	20.1 SR 4-6	declared
+element variable reference	names a node or edge variable	scope.rs:expr	16.10 SR 3	declared
+literals	boolean, string, bytes, null, numeric, temporal, duration	types.rs:ty_of literal arms	21.2 SR 18-21, 53, 58, 60, 63, 65, 71; H2 (21.2 SR 18, 20 sizes)	declared
+SESSION_USER	variable-length character string	types.rs general value specification	20.3 SR 2, ID061 (H2)	H-named (H2)
+dynamic parameter	request's type (unknown/dynamic)	types.rs dynamic parameter specification	20.4 SR 2; H1, H4 parameter line	H4-named
+arithmetic	Table 1 rows; exact scale rules; dynamic stays dynamic	types.rs:arithmetic_of	20.21 SR 1, 20.26 SR 1, 20.28 SR 1, 4.16.6.4; H2'	declared
+datetime value expression operator	local unless duration-first over a zoned primary	types.rs:datetime_sr1	20.26 SR 1 + H4 bare datetime line	H4-named
+concatenation	string, byte, list (combined), path	types.rs:concatenation	20.23 SR 1-4, 20.15 SR 2, 20.13	declared
+boolean operators, predicates	boolean	types.rs:ty_of	20.20, clause 19	declared
+comparison	operands comparable	types.rs:comparison_part	19.3 SR 2, 22.13/22.14 CR 1 (no GA04, H2''')	declared
+CASE/COALESCE/NULLIF	combination of results	types.rs:case, case_abbreviation, combined	20.7, 22.18, 22.19 (no GV65); H4 string supertype line	H4-named
+CAST	target type	types.rs:cast	20.8 SR 3-12 (readings stricter)	declared
+aggregate result	COUNT exact int, SUM/AVG/MIN/MAX/STDDEV/COLLECT_LIST per SR 7-9	types.rs:aggregate	20.9 SR 7 b, 8 c-f, 9 j (ID059, ID095-099)	declared
+property of open node/edge	dynamic property value type	types.rs:property	20.11 SR 3 b, IW011 (H2)	declared
+property of record	field type, or open dynamic for an open record	types.rs:property	20.11 SR 2	declared
+ELEMENT_ID	opaque, taken only as item/IS NULL/equality	types.rs:opaque_ok	20.10 SR 3, ID076 (H2)	H-named (H2)
+list constructor	combined element type; [ ] unset	types.rs:ty_of list	20.17 SR 3, ID004 (H2)	H-named (H2)
+record constructor	field types; duplicate refused	types.rs:ty_of record constructor	20.18, 20.19 SR 2	declared
+path constructor	path; start/steps node/edge	types.rs:ty_of path value constructor	20.14, 20.1 SR 4-5	declared
+length/cardinality functions	exact int	types.rs:ty_of	20.22 SR 1, 3; 20.13; 20.15	declared
+numeric functions	ABS kept, MOD, trig/log approx, FLOOR/CEIL	types.rs:ty_of	20.22 SR 4-13, 20.29	declared
+string functions	SUBSTRING/LEFT/RIGHT, UPPER/LOWER, NORMALIZE, TRIM	types.rs:ty_of, trim	20.24, 20.25	declared
+list functions	TRIM list, ELEMENTS (open dynamic element)	types.rs:ty_of	20.16 SR 1-2 (ID005 H2)	H-named (H2)
+temporal constructors	date, time (zoned), localtime, datetime (zoned), localdatetime, duration	types.rs:ty_of	20.27 SR 6-10	declared
+DURATION_BETWEEN	duration	types.rs:duration_between	20.28 SR 3	declared
+category over a bare primary	operand checked on the printed tree	types.rs:ty_of numeric primary etc.	20.21 SR 3, 20.23, 20.15 SR 1, 20.13 SR 2, 20.20 SR 3, 20.1 SR 4-6; H3	declared
+unhandled multi-child node	unknown type	types.rs:ty_of fallback	none needed: every multi-child expression nonterminal reachable from <value expression> has its own arm (checked against the BNF)	declared (no expression reaches it)
+unbound name in types	environment type	types.rs binding variable reference None	scope.rs reports the name (20.12 SR 8)	declared

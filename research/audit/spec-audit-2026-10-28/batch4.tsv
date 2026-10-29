@@ -1,0 +1,48 @@
+clause	sr	item	verdict	reason	probe	derivable counts
+21.2	1		faithful	<unsigned hexadecimal/octal/binary integer> lies under <unsigned numeric literal>, reachable from <token>, so the whole literal is one rendered chunk (Verifier::tokens); the render comparison refuses any other spacing; no separator is in the definition		
+21.2	11		faithful	the suffix is inside <approximate numeric literal>, one lexical chunk; same argument		
+21.2	17		faithful	the suffix is inside <exact numeric literal>, one lexical chunk; same argument		
+21.2	18	b	H	H2 (exact types reach 18 digits); verify.rs:1517 counts all mantissa digits (leading zeros too, stricter), refuses |exp|>18, integer digits+exp>18 or fraction-exp>18, which covers max(i+e,0)+max(f-e,0)<=18 in every sign case; radix values >=10^18 refused; other digits mapped by ascii_digits		
+21.2	20		H	H2 (approximate literal type the range of a 32 bit float); verify.rs:1543 refuses |v|>3.4e38 (below FLT_MAX, stricter) and nonzero |v|<1.2e-38 (the text bounds only max/min, so underflow refusal is stricter); D-suffixed doubles held to the float range, stricter		
+21.2	29		faithful	<no escape> is inside <character string literal>/<delimited identifier>, delimiter tokens, one chunk		
+21.2	31	a	stricter	leaf_rule refuses ' " ` and \ in every character representation whatever the delimiter; no <escaped character> is reachable, so none is needed		
+21.2	31	b	stricter	same leaf: the quote and also the other quotes and \ are refused		
+21.2	32	a	stricter	as 31 a		
+21.2	32	b	stricter	as 31 b		
+21.2	33	a	stricter	as 31 a		
+21.2	33	b	stricter	as 31 b		
+21.2	37		faithful	<double single quote> is inside a delimiter token, one chunk		
+21.2	38		faithful	as 37		
+21.2	39		faithful	as 37		
+21.2	40		stricter	a character representation is one character (Span::One) that is no quote, \, Cc, Cn or bidi control: a string literal character under either setting; escapes never accepted		
+21.2	41	b i	gap	verify.rs:293 '4.7.1 repertoire' admits every c.is_ascii_graphic(), which takes # ; ^; none is a GQL language character (21.4 special characters list them not) and H2's IV001 assumes only GQL language characters and the line feed; character representation (leaf_rule) does not refuse them either	RETURN '#' AS x	parses 39 derivable 1 clean+derivable 1 clean+underivable 2 (also RETURN 'a;^' AS x: same counts)
+21.2	41	b ii	stricter	leaf_rule refuses char::is_control (all of Cc), even whitespace Cc the text allows		
+21.2	41	b iv	faithful	leaf_rule refuses GeneralCategory::Unassigned; the repertoire check refuses all non-ASCII but other digits anyway		
+21.2	42		stricter	no reverse solidus is accepted in any character representation; <escaped character> unreachable		
+21.2	57		H	token_rule refuses a byte string separator whose text holds no line feed; newline is the line feed by H2 IA023, and leaf 'newline' is only \n		
+21.2	59		gap	conservative, ISO 8601-1 not in the repo: token_rule takes dddd-dd-dd with chrono's proleptic calendar, so years 0000-1582 pass; ISO 8601 (as I recall it, 2004 3.2.1 and the 2019 text alike) allows those years only by mutual agreement of the interchange partners, an implementation choice H2 does not name	RETURN DATE '1000-01-01' AS x	parses 78 derivable 2 clean+derivable 2 clean+underivable 2 (DATE '0000-01-01': parses 39 derivable 1 clean+derivable 1 clean+underivable 1)
+21.2	61		stricter	ISO 8601 not in the repo: only the extended +hh:mm / -hh:mm form, hours < 24, minutes < 60, no -00:00; a subset of any reading of time shift		
+21.2	62		undecided	ISO 8601 not in the repo: dd:dd:dd[.d+] via chrono, which takes second 60 at any minute (TIME '12:00:60': parses 39 derivable 1 clean+derivable 1); ISO 8601 allows 60 only for a positive leap second, and whether a local time of day can denote one (it can under a non-whole-hour shift) is not decidable without the text		
+21.2	64		gap	same year range as 59 (dddd-dd-ddTdd:dd:dd via chrono takes years 0000-1582) and the second 60 of 62	RETURN DATETIME '1000-01-01T00:00:00' AS x	parses 39 derivable 1 clean+derivable 1 clean+underivable 1
+21.2	67	a	H	H4's first permission (the null type meets a typed site) names this row		
+21.2	68		stricter	items a and b matched character by character on the BNF (Kw case-sensitive, fuel 64), plus at least one ASCII digit, which also enforces 'one or more fields'; item c never taken		
+21.2	69		stricter	only DATE 'dddd-dd-dd', years 0001+, chrono's Gregorian check; TIME and TIMESTAMP forms never taken		
+21.2	70		stricter	one-field INTERVAL 'n' UNIT, n at most 2 ASCII digits (default leading precision 2); and the duration literal arm refuses every SQL interval literal (21.2 SR 72 reading)		
+21.2	73		faithful	syntax_rules list literal arm: every list element's value expression must be literal_shaped (wrapper chain to unsigned literal, a sign only on an unsigned numeric literal, or a nested list/record whose elements are literal-shaped); nested list/record literals are checked again at their own nodes		
+21.2	75		faithful	as 73 for record literal fields		
+21.3	1		H	XID_Start or underscore via unicode_ident; H2 IE003 names UAX31's default profile		
+21.3	2		H	XID_Continue via unicode_ident; H2 IE003		
+21.3	3		faithful	regular identifier starts with one identifier start; extended identifier is one or more identifier extends; each leaf one character; check_def matches every node		
+21.3	4		faithful	syntax_rules refuses a delimited identifier with no double quoted or accent quoted character representation, which covers "" ``, @"" and @``; a doubled quote is a representation and gives a non-empty form		
+21.3	5	b	faithful	form length > 16383 refused (with @ the form is one character longer, stricter)		
+21.3	5	c	faithful	Cc Cf Cn Cs Zl Zp (and Co, IA020) refused on the form; the repertoire check refuses all of them on the text too		
+21.3	5	d	faithful	Zs other than space refused on the form and by the repertoire		
+21.3	6		faithful	char::is_whitespace is Unicode White_Space		
+21.3	8		faithful	exactly the nine listed code points		
+21.3	9		gap	same root as 21.2 SR 41 b i: the simple comment character leaf refuses only line feed, carriage return and bidi controls, and the repertoire check admits # ; ^, which IV001 (H2) does not put in the repertoire; comments reach the tree only in byte string separators	RETURN X'00' // ^\n'00' AS x	parses 39 derivable 1 clean+derivable 1 clean+underivable 2
+21.3	10		gap	same root: bracketed comment contents refuse only */ and bidi controls; # ; ^ pass the repertoire check	RETURN X'00' /* ^\n */ '00' AS x	parses 39 derivable 1 clean+derivable 1 clean+underivable 2
+21.3	13		gap	the row's premise (Grammar::check proves each chunk one token) does not hold for the assumed token <external object reference> (tokens.rs:28): leaf_rule (verify.rs:673-685) refuses // but uri_rest (verify.rs:611) admits * / - and ', so the printed chunk can hold a bracketed comment /*b*/ (a separator), a simple comment opener -- or a quote opening a string; GQL lexing then reads text other than the tree	CREATE GRAPH TYPE ab COPY OF urn:a/*b*/c	parses 3 derivable 1 clean+derivable 1 clean+underivable 0 (urn:a--b and urn:a'b: same counts; control urn:example:graph same)
+21.3	14		faithful	every token is followed by one space in the render, which must equal the printed text		
+21.3	18		faithful	token_rule uppercases regular and extended identifiers and refuses any reserved or pre-reserved word; with an ASCII repertoire uppercasing equals the case-normal form; equality is ID022's (H2)		
+21.4	1		faithful	not a GQL language character, the list in gql_language_character matching 21.4's special characters exactly		
+21.4	2		faithful	Nd and not ASCII 0-9		

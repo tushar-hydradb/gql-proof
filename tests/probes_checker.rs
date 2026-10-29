@@ -159,7 +159,13 @@ fn verdicts(text: &str) -> Vec<Vec<&'static str>> {
 #[track_caller]
 fn bad(text: &str, rule: &str) {
     let v = verdicts(text);
-    assert!(v.iter().all(|r| r.contains(&rule)), "{text:?}: some parse does not report {rule}: {v:?}");
+    // a parse already refused by a per-tree category rule ("... primary") puts the text's
+    // pieces in another category (H3), so it need not report `rule` (round 49: a bare boolean
+    // value expression is a boolean on its tree)
+    assert!(
+        v.iter().all(|r| r.contains(&rule) || r.iter().any(|x| x.ends_with(" primary"))),
+        "{text:?}: some parse does not report {rule}: {v:?}"
+    );
 }
 
 #[track_caller]
@@ -279,7 +285,9 @@ fn rewrite_findings() {
     // 21.2 SR 67 then 20.8 SR 4: a NULL to a declared null type is a cast to an immaterial type.
     bad("LET VALUE x :: NULL = NULL RETURN x", "20.8 SR 4");
     // 20.7 SR 1 b then 22.19 SR 2: NULLIF's result is its first operand, combined.
-    bad("MATCH ( x ) RETURN NULLIF ( x . p , 1 ) AS y", "22.19 SR 2");
+    // round 49: on the tree where the operand is a bare boolean value expression it is a
+    // boolean (20.20 SR 1), so not every parse reports this
+    bad_on_some_parse("MATCH ( x ) RETURN NULLIF ( x . p , 1 ) AS y", "22.19 SR 2");
 }
 
 #[test]
@@ -596,7 +604,9 @@ fn unknowns_audit_rows_and_elements() {
     fine("TABLE t = { RETURN 1 AS a } FOR r IN t RETURN r . a + 1 AS c", "20.21 SR 3");
     fine("TABLE t = { RETURN 1 AS a } FOR r IN t RETURN r . a + 1 AS c", "20.11 SR 2");
     // a dynamic source's elements stay dynamic; a null source has none
-    bad("FOR x IN CAST ( NULL AS ANY ) RETURN COALESCE ( x , 1 ) AS a", "22.19 SR 2");
+    // round 49: on the tree where the operand is a bare boolean value expression it is a
+    // boolean (20.20 SR 1), so not every parse reports this
+    bad_on_some_parse("FOR x IN CAST ( NULL AS ANY ) RETURN COALESCE ( x , 1 ) AS a", "22.19 SR 2");
     bad("FOR x IN NULL RETURN x + 1 AS a", "14.8 SR 10 null");
     bad("FOR x IN NULL || NULL RETURN x + 1 AS a", "20.15 SR 2 null");
 }
@@ -634,7 +644,9 @@ fn nineteenth_review_findings() {
     bad("RETURN TABLE { RETURN 1 AS a } AS t UNION ALL RETURN TABLE { RETURN 1 AS b } AS t", "14.2 SR 10");
     fine("RETURN COALESCE ( TABLE { RETURN 1 AS a } , TABLE { RETURN 2 AS a } ) AS c", "22.19 SR 4");
     // H1: a parameter in a combination is written once
-    bad("USE $b MATCH ( x ) RETURN COALESCE ( $b , 1 ) AS a", "22.19 SR 2 unknown");
+    // round 49: on the tree where the operand is a bare boolean value expression it is a
+    // boolean (20.20 SR 1), so not every parse reports this
+    bad_on_some_parse("USE $b MATCH ( x ) RETURN COALESCE ( $b , 1 ) AS a", "22.19 SR 2 unknown");
     fine("MATCH ( x ) RETURN COALESCE ( $b , 1 ) AS a", "22.19 SR 2 unknown");
     // H2, IL015: a list's maximum cardinality
     bad("RETURN COUNT ( CAST ( NULL AS LIST [ 99999999999999999999 ] ) ) AS x", "18.9 SR 73");
@@ -952,4 +964,17 @@ fn spec_audit_batch_four() {
     // 21.3 SR 13: an external object reference holds no comment opener and no quote (the bad
     // forms leave no parse; checked with derivable_probe)
     fine("CREATE GRAPH TYPE ab COPY OF urn:example:graph", "17.8 SR 2, 3");
+}
+
+#[test]
+fn forty_ninth_review_findings() {
+    // 20.20 SR 1: a bare boolean value expression is a boolean on its tree
+    bad_on_some_parse("MATCH ( x ) RETURN ( x . a ) + 1 AS y", "20.21 SR 3 primary");
+    bad_on_some_parse("MATCH ( x ) RETURN UPPER ( ( x . a ) ) AS y", "20.23 SR 2 primary");
+}
+
+#[test]
+fn fiftieth_review_findings() {
+    // 7.1 SR 6 d ii 1 B, 20.20 SR 1: a NULL routed as a boolean value expression is a boolean
+    bad_on_some_parse("SESSION SET VALUE $b = 1 SESSION SET VALUE $b = NULL", "7.1 SR 6");
 }
