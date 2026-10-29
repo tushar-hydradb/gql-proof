@@ -1648,3 +1648,24 @@ not clean, one derivable hole and the H1 gap under it:
 
 runs after the fix: the same rows and withheld counts as round 50 in all five;
 0 generator bugs apart from neo4j's 34.
+
+## the fifty-second review (derivable trees)
+
+not clean, one derivable hole: round 51's, one level down.
+- 7.1 SR 6 d ii 1 B: `SESSION SET VALUE $b LIST < PATH > = NULL SESSION SET
+  VALUE $b LIST < ANY > = NULL` (also a closed union element, ANY PROPERTY
+  VALUE, a record field, nested lists, a CAST to LIST < ANY > on either side):
+  100 derivable trees each, all clean. `assignable` recursed into elements and
+  fields with its top-level arm that lets any dynamic source through. 4.14.4
+  tests a value whose declared type is a dynamic union; a list of them is a
+  static type, so the cure does not reach its elements. not printed
+- fixed at the root: the dynamic-source arm applies at the top only; below it
+  a dynamic part goes only to a type holding all of it (`subtype`). the hole
+  probes go to 0 clean of 100-110 derivable; the safe direction (`LIST <
+  PATH >` into an earlier `LIST < ANY >`) stays clean
+- moot: `comparable` reads a dynamic part as wild at every depth too (`CAST (
+  NULL AS LIST < ANY > ) = CAST ( NULL AS LIST < DATE > )`, 0 derivable); and
+  the typed-table and binding-variable nested sites (0 derivable)
+
+runs after the fix: the same rows and withheld counts as round 51 in all five;
+0 generator bugs apart from neo4j's 34.

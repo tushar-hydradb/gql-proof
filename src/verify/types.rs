@@ -539,6 +539,13 @@ fn combine(types: &[Ty]) -> Result<Ty, Apart> {
 
 /// Assignability of a value of `src` to a site of `tgt` (3.9.6, 4.14-4.16, 4.17.3).
 fn assignable(src: &Ty, tgt: &Declared) -> bool {
+    assignable_at(src, tgt, true)
+}
+
+/// `assignable`, below the top when `top` is false: 4.14.4 tests a value whose declared type is
+/// a dynamic union, not a list's element or a record's field of one, so there a dynamic part
+/// goes only to a type holding all of it (the fifty-second review).
+fn assignable_at(src: &Ty, tgt: &Declared, top: bool) -> bool {
     // 4.17.4.2: the nullabilities are assignment-aligned, so a known not nullable site takes a
     // known not nullable value. The checker infers no value known not nullable (every computed
     // type is its nullable variant, and IW022 inference is not assumed), so only NOTHING goes
@@ -550,7 +557,9 @@ fn assignable(src: &Ty, tgt: &Declared) -> bool {
         // `[ ]`'s element goes only to a site of every type (ID004's choice is unknown)
         (Ty::Dyn(Union::Unset), t) => matches!(t, Ty::Any | Ty::Dyn(Union::Open)),
         // a dynamic source: 4.14.4 lets the implementation test the value at run time
-        (Ty::Any | Ty::Dyn(_) | Ty::Nothing, _) | (_, Ty::Any) => true,
+        (Ty::Any | Ty::Dyn(_) | Ty::Nothing, _) | (_, Ty::Any) if top => true,
+        (Ty::Nothing, _) | (_, Ty::Any) => true,
+        (Ty::Any | Ty::Dyn(_), t) => subtype(src, t),
         // 4.16.8: the null value only goes to a nullable site
         (Ty::Null, _) => tgt.nullable,
         (_, Ty::Null | Ty::Nothing) => false,
@@ -558,12 +567,13 @@ fn assignable(src: &Ty, tgt: &Declared) -> bool {
         (_, Ty::Dyn(Union::Open)) => true,
         (s, Ty::Dyn(Union::Property)) => s.scalar(),
         (s, Ty::Dyn(Union::Closed(cs))) => cs.iter().any(|c| {
-            assignable(
+            assignable_at(
                 s,
                 &Declared {
                     ty: c.clone(),
                     nullable: true,
                 },
+                top,
             )
         }),
         // 4.16.7: the referent's type is the constraining type; an open or unknown source is not
@@ -585,12 +595,13 @@ fn assignable(src: &Ty, tgt: &Declared) -> bool {
             },
         ) => {
             (!group || *tg)
-                && assignable(
+                && assignable_at(
                     elem,
                     &Declared {
                         ty: (**te).clone(),
                         nullable: true,
                     },
+                    false,
                 )
         }
         // 4.15.4
@@ -598,12 +609,13 @@ fn assignable(src: &Ty, tgt: &Declared) -> bool {
         (Ty::Record(Some(s)), Ty::Record(Some(t))) => {
             s.keys().eq(t.keys())
                 && s.iter().all(|(n, st)| {
-                    assignable(
+                    assignable_at(
                         st,
                         &Declared {
                             ty: t[n].clone(),
                             nullable: true,
                         },
+                        false,
                     )
                 })
         }

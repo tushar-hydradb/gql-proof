@@ -989,3 +989,16 @@ fn fifty_first_review_findings() {
     );
     bad_on_some_parse("SESSION SET VALUE $b = TRUE SESSION SET VALUE $b PROPERTY VALUE = TRUE", "7.1 SR 6");
 }
+
+#[test]
+fn fifty_second_review_findings() {
+    // 7.1 SR 6 d ii 1 B: a dynamic element or field is no value either (4.14.4 is top-level)
+    bad_on_some_parse(
+        "SESSION SET VALUE $b LIST < PATH > = NULL SESSION SET VALUE $b LIST < ANY > = NULL",
+        "7.1 SR 6",
+    );
+    bad_on_some_parse(
+        "SESSION SET VALUE $b RECORD { x PATH } = NULL SESSION SET VALUE $b RECORD { x ANY } = NULL",
+        "7.1 SR 6",
+    );
+}
