@@ -1692,3 +1692,24 @@ moot, kept for later:
   element and field types, so a dynamic element is again a top-level operand
   there; no derivable site found
 - duplicate GROUP BY elements collapse (a set of columns, 16.15, 14.11 SR 10)
+
+## the fifty-fourth review (derivable trees): clean, done
+
+no printed counterexample, no derivable hole, no argument gap. the round read
+the claim end to end against the code (E against H1, H2' against `assignable`
+and `comparable`, H3 against per-tree verdicts, every named rule string a
+literal in src/verify*, shall_coverage.py, audit.py and rewrites.py --check
+passing), spot-checked 22 audit rows and about 25 spec-audit rows, checked the
+CAST table, aggregates, arithmetic, datetime and duration rules, the 20.22
+result types, predicates and property access by hand, ran 90 hand probes and
+6,000 one-site mutations of printed sentences (1,392 clean derivable mutants,
+each read and each valid), and rescanned both printed sets (whole grammar 7
+mixed texts, turbolay 18, all H3).
+- bookkeeping, fixed: H4's null line named `FOR x IN NULL` as resting on 21.2
+  SR 67 a, but the gate refuses it ("14.8 SR 10 null"); the example is gone
+- moot: a property of a dynamic source is typed the open union on every tree,
+  where on the reference tree 20.11 SR 3 b gives the property value union;
+  underivable, and H2' would cure it anyway
+
+rounds 53 and 54 are two clean in a row, the done criterion. the conclusion is
+in the claim's status section.

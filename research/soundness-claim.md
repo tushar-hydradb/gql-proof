@@ -34,6 +34,35 @@ theorem (the seventeenth review).
 no part of the argument depends on which witness extraction picked: it is a
 property of every printed sentence, by the gate in step 1
 
+## status (2026-10-30)
+
+the done criterion, two independent review rounds in a row that find nothing,
+was met by the fifty-third and fifty-fourth reviews (commit 5a6da11; log in
+`research/soundness-2026-10-23.md`). the fifty-third swept the scope checker,
+the graph type checker and the leaf checks; the fifty-fourth read this claim
+end to end against the code, the areas of the type checker the rounds before
+had not reached, and both printed sets. neither found a printed
+counterexample, a tree the generator derives that breaks a rule H does not
+excuse, or a step of the argument below that no check or part of H backs.
+
+what rests on what, so no part of it is luck:
+- **printed sentences are checked, not sampled.** step 1 is a check run on
+  every printed tree; no sentence is printed on the strength of the generator
+  being right. the generator's rules only decide how many trees survive
+- **every rule is accounted for, by a tool.** steps 2-4 are scripts that fail
+  when a rule with a `shall` has no row, a row is open, or a relied-on row
+  names no rule string the checker reports and a red probe expects
+- **H is named, and only H is assumed.** each place the checker reads the
+  text more loosely is a named H4 permission with its audit rows; each fact
+  about the engine or its environment is in H1-H3
+- **what is trusted, not proved:** that each checker arm says what its rule
+  says (the trusted base below). the evidence is the rule-by-rule audit (312
+  constraint and type rows, 138 scope and type facts, each read against the
+  text), the probes, and fifty-four adversarial reviews, which from the
+  forty-third on counted only trees the generator can derive. this is review
+  evidence, not a mechanized proof; a refined-grammar proof that would
+  replace it for the checker's derivable fragment was costed and deferred
+
 ## the hypothesis H (what we do not control)
 
 - **H1, the environment.** every catalog object, session parameter, dynamic
@@ -439,8 +468,9 @@ each line names its audit rows (status `permission`)
   type, is taken to meet a required type wherever its context fixes a
   nullable one (21.2 SR 67 a reads every typed site as fixing one). literally
   the null type is no graph element, graph or binding table reference type.
-  rows: 21.2 SR 67 a, 13.5 SR 5 (`DELETE NULL`), 20.1 SR 2, 20.1 SR 3 (`FOR x
-  IN NULL`, `PATH [ NULL ]` and `SUM ( NULL )` rest on 21.2 SR 67 a too). IA014
+  rows: 21.2 SR 67 a, 13.5 SR 5 (`DELETE NULL`), 20.1 SR 2, 20.1 SR 3 (`PATH
+  [ NULL ]` and `SUM ( NULL )` rest on 21.2 SR 67 a too; a FOR over NULL is
+  refused, "14.8 SR 10 null"). IA014
   covers only 67 b, a NULL whose context fixes no type
 - **a dynamic parameter's type is the request's.** `$b` as a graph or binding
   table is taken to have the type the request gives it (20.4 SR 2), which no
