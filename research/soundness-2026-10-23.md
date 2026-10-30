@@ -1669,3 +1669,26 @@ not clean, one derivable hole: round 51's, one level down.
 
 runs after the fix: the same rows and withheld counts as round 51 in all five;
 0 generator bugs apart from neo4j's 34.
+
+## the fifty-third review (derivable trees): clean
+
+no printed counterexample and no derivable hole. the round moved off types.rs:
+scope.rs (every arm against 9.2, 13.2-13.5, 14.4, 14.7-14.12, 15.1-15.2,
+16.3-16.7, 20.6), graph_type.rs (18.1-18.5) and the leaf checks in verify.rs
+(21.2, 21.3), with probes per family, and re-parsed the whole printed set
+(3,052): 7 mixed texts, all known H3 cases (`NULL || NULL`, ELEMENTS and
+PATH_LENGTH over `MATCH x = <-`).
+
+moot, kept for later:
+- SELECT .. FROM: scope.rs gives the FROM body an empty record and no 15.1 SR 9
+  check, while 14.12 SR 25-26 rewrite it to a CALL seeing every incoming name.
+  every such tree is withheld ("14.12 SR 27" reading) and underivable
+  (NoSelectBody); fix if FROM is ever enabled: thread `scope.merged()` in, add
+  FROM's columns to the incoming ones, apply 15.1 SR 9
+- `GRAPH x = CURRENT_PROPERTY_GRAPH RETURN 1 AS x`: no rule forbids it (9.2 SR
+  12 c is at NEXT only, and caught); 4.7's disjointness of record and table
+  is description, not a "shall"
+- `comparable`'s nested dynamics: 19.3 SR 3 re-applies the comparison to
+  element and field types, so a dynamic element is again a top-level operand
+  there; no derivable site found
+- duplicate GROUP BY elements collapse (a set of columns, 16.15, 14.11 SR 10)
