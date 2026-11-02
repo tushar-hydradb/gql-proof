@@ -1713,3 +1713,14 @@ mixed texts, turbolay 18, all H3).
 
 rounds 53 and 54 are two clean in a row, the done criterion. the conclusion is
 in the claim's status section.
+
+## the oracle sets regenerated (2026-11-02)
+
+`sentences/typed-{2,3}vars-turbolay-claim-vars.jsonl` regenerated from a03ac7c
+with the validation flags (`--join --keys --cdrc --claim claims/turbolay.claim`):
+the old sets (main's, from the oracle branch) held about 920 sentences each
+that no derivation passing the current gate gives. 2 variables: 3,401 rows,
+3,361 distinct (3,802 before; 1,049 dropped, 608 new), 32 s; 3 variables:
+3,409 rows, 3,369 distinct, 216 s. oracle over each, 4 s: 2 variables bag
+3,339 (17 exceptions), status only 3, no parse 0; 3 variables bag 3,347 (17
+exceptions), status only 3, no parse 0; 24 unloadable on cypher and turbolay.
